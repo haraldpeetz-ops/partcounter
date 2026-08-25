@@ -14,7 +14,9 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
     private CompactMonitorWindow? _compactMonitor;
+    private MachineSetupViewModel? _machineSetupViewModel;
     private AlsViewModel? _alsViewModel;
+    private TabItem? _machineSetupTab;
     private TabItem? _alsTab;
 
     public MainWindow()
@@ -40,6 +42,15 @@ public partial class MainWindow : Window
             MachineItemsControl.ItemContainerGenerator.StatusChanged += OnMachineContainerStatusChanged;
 
             _compactMonitor = new CompactMonitorWindow(_viewModel, this);
+
+            _machineSetupViewModel = new MachineSetupViewModel();
+            await _machineSetupViewModel.InitializeAsync();
+            _machineSetupTab = new TabItem
+            {
+                Header = "Maschinen / Modbus",
+                Content = new MachineSetupView { DataContext = _machineSetupViewModel }
+            };
+            MainTabs.Items.Insert(Math.Max(0, MainTabs.Items.Count - 1), _machineSetupTab);
 
             _alsViewModel = new AlsViewModel(_viewModel);
             await _alsViewModel.InitializeAsync();
@@ -204,6 +215,7 @@ public partial class MainWindow : Window
 
         _alsViewModel?.Dispose();
         _alsViewModel = null;
+        _machineSetupViewModel = null;
 
         if (_compactMonitor is not null)
         {
