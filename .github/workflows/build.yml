@@ -1,4 +1,4 @@
-name: Build Partcounter R001.3
+name: Build Partcounter R001.4
 
 on:
   push:
@@ -27,45 +27,47 @@ jobs:
         run: dotnet build Partcounter.sln -c Release --no-restore
 
       - name: Publish portable folder win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_3_Portable_Folder_win-x64
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_4_Portable_Folder_win-x64
 
       - name: Publish single-file win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_3_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_4_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
 
       - name: Add start instructions
         shell: pwsh
         run: |
           @'
-          PARTCOUNTER R001.3
+          PARTCOUNTER R001.4
           ==================
 
           SINGLE-FILE VERSION:
           Start Partcounter.exe directly. No .NET installation is required.
 
-          New in R001.3:
-          - completed VE highlights its machine tile for 20 seconds
-          - completed VE automatically brings its machine tile into the visible area
-          - the Leitstand tab is activated for a completed VE
-          - article designation always shows the current VE quantity
+          New in R001.4:
+          - 0 to 79.9 percent: normal state
+          - 80 to 94.9 percent: yellow warning state
+          - 95 percent and above: orange critical warning state
+          - completed VE: strong full-VE indication and automatic tile focus
+          - Leitstand includes a permanent fill-level legend
+          - progress bar follows the current fill-level warning stage
 
           If startup fails, Partcounter writes:
           %LOCALAPPDATA%\Partcounter\Partcounter_startup.log
-          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_3_SingleFile_win-x64/START_HINWEIS.txt
+          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_4_SingleFile_win-x64/START_HINWEIS.txt
 
-          Copy-Item artifacts/Partcounter_R001_3_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_3_Portable_Folder_win-x64/START_HINWEIS.txt
+          Copy-Item artifacts/Partcounter_R001_4_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_4_Portable_Folder_win-x64/START_HINWEIS.txt
 
       - name: Upload portable folder artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_3_Portable_Folder_win-x64
-          path: artifacts/Partcounter_R001_3_Portable_Folder_win-x64
+          name: Partcounter_R001_4_Portable_Folder_win-x64
+          path: artifacts/Partcounter_R001_4_Portable_Folder_win-x64
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload single-file artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_3_SingleFile_win-x64
-          path: artifacts/Partcounter_R001_3_SingleFile_win-x64
+          name: Partcounter_R001_4_SingleFile_win-x64
+          path: artifacts/Partcounter_R001_4_SingleFile_win-x64
           if-no-files-found: error
           retention-days: 30
