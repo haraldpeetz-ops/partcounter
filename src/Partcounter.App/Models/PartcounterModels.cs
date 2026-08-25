@@ -237,7 +237,16 @@ public sealed class MachineState : INotifyPropertyChanged
 
     public string DisplayName => $"M{Configuration.MachineNumber:00} · {Configuration.Name}";
     public string Endpoint => $"{Configuration.IpAddress}:{Configuration.Port}";
-    public double FillPercent => TargetPartsPerVe == 0 ? 0 : Math.Min(100.0, CurrentParts * 100.0 / TargetPartsPerVe);
+
+    // ProgressBar.Value uses a TwoWay default binding mode in WPF. The setter is intentionally
+    // ignored because FillPercent is a calculated display value. This keeps the source read-only
+    // by design while preventing WPF from rejecting the binding during template creation.
+    public double FillPercent
+    {
+        get => TargetPartsPerVe == 0 ? 0 : Math.Min(100.0, CurrentParts * 100.0 / TargetPartsPerVe);
+        set { }
+    }
+
     public string FillText => $"{CurrentParts:N0} / {TargetPartsPerVe:N0} Teile";
     public string LastCycleText => LastCycleLocal?.ToString("HH:mm:ss") ?? "–";
     public string LastVeCompletedText => LastVeCompletedLocal?.ToString("HH:mm:ss") ?? "–";
