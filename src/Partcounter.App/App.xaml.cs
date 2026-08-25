@@ -1,7 +1,93 @@
+using System.IO;
+using System.Text;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace Partcounter;
 
 public partial class App : Application
 {
+    private static string LogDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Partcounter");
+
+    private static string LogPath => Path.Combine(LogDirectory, "Partcounter_startup.log");
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
+        try
+        {
+            WriteLog("START", $"Partcounter startup. OS={Environment.OSVersion}; Runtime={Environment.Version}; Base={AppContext.BaseDirectory}");
+
+            var window = new MainWindow();
+            MainWindow = window;
+            window.Show();
+
+            WriteLog("START", "Main window shown successfully.");
+        }
+        catch (Exception ex)
+        {
+            HandleFatalStartupException(ex);
+        }
+    }
+
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        WriteLog("DISPATCHER_FATAL", e.Exception.ToString());
+        MessageBox.Show(
+            $"Partcounter hat einen unerwarteten Fehler festgestellt.\n\n{e.Exception.Message}\n\nDiagnose:\n{LogPath}",
+            "Partcounter – Fehler",
+            MessageBoxButton.OK,
+            MessageBoxImage.Error);
+        e.Handled = true;
+    }
+
+    private static void OnUnhandledException(object? sender, UnhandledExceptionEventArgs e)
+    {
+        WriteLog("APPDOMAIN_FATAL", e.ExceptionObject?.ToString() ?? "Unknown AppDomain exception");
+    }
+
+    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        WriteLog("TASK_UNOBSERVED", e.Exception.ToString());
+        e.SetObserved();
+    }
+
+    private void HandleFatalStartupException(Exception ex)
+    {
+        WriteLog("STARTUP_FATAL", ex.ToString());
+
+        try
+        {
+            MessageBox.Show(
+                $"Partcounter konnte nicht gestartet werden.\n\n{ex.Message}\n\nEine Diagnose wurde gespeichert unter:\n{LogPath}",
+                "Partcounter – Startfehler",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            Shutdown(-1);
+        }
+    }
+
+    private static void WriteLog(string category, string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(LogDirectory);
+            var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{category}] {message}{Environment.NewLine}";
+            File.AppendAllText(LogPath, line, new UTF8Encoding(false));
+        }
+        catch
+        {
+            // Logging must never prevent application startup.
+        }
+    }
 }
