@@ -1,7 +1,12 @@
+using System.Collections.Specialized;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Threading;
 using Partcounter.Models;
 using Partcounter.ViewModels;
+using Partcounter.Views;
 
 namespace Partcounter;
 
@@ -9,10 +14,13 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
     private CompactMonitorWindow? _compactMonitor;
+    private AlsViewModel? _alsViewModel;
+    private TabItem? _alsTab;
 
     public MainWindow()
     {
         InitializeComponent();
+        Title = "Partcounter R001.6";
         DataContext = _viewModel;
         Loaded += OnLoaded;
         Closed += OnClosed;
@@ -28,16 +36,88 @@ public partial class MainWindow : Window
             foreach (var machine in _viewModel.Machines)
                 machine.VeCompleted += OnMachineVeCompleted;
 
+            _viewModel.VisibleMachines.CollectionChanged += OnVisibleMachinesChanged;
+            MachineItemsControl.ItemContainerGenerator.StatusChanged += OnMachineContainerStatusChanged;
+
             _compactMonitor = new CompactMonitorWindow(_viewModel, this);
+
+            _alsViewModel = new AlsViewModel(_viewModel);
+            await _alsViewModel.InitializeAsync();
+            _alsTab = new TabItem
+            {
+                Header = "ARBURG ALS",
+                Content = new AlsIntegrationView { DataContext = _alsViewModel }
+            };
+            MainTabs.Items.Insert(Math.Max(0, MainTabs.Items.Count - 1), _alsTab);
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(AttachMachineContextMenus));
         }
         catch (Exception ex)
         {
             MessageBox.Show(
                 $"Partcounter konnte nicht initialisiert werden:\n\n{ex.Message}",
-                "Partcounter R001.5",
+                "Partcounter R001.6",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
+    }
+
+    private void OnVisibleMachinesChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(AttachMachineContextMenus));
+
+    private void OnMachineContainerStatusChanged(object? sender, EventArgs e)
+    {
+        if (MachineItemsControl.ItemContainerGenerator.Status == GeneratorStatus.ContainersGenerated)
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(AttachMachineContextMenus));
+    }
+
+    private void AttachMachineContextMenus()
+    {
+        foreach (var machine in _viewModel.VisibleMachines)
+        {
+            if (MachineItemsControl.ItemContainerGenerator.ContainerFromItem(machine) is not FrameworkElement container)
+                continue;
+
+            container.ContextMenu = CreateMachineContextMenu(machine);
+        }
+    }
+
+    private ContextMenu CreateMachineContextMenu(MachineState machine)
+    {
+        var menu = new ContextMenu();
+        var pauseItem = new MenuItem { Header = "Auftrag pausieren" };
+        var resumeItem = new MenuItem { Header = "Auftrag fortsetzen" };
+        var endItem = new MenuItem { Header = "Auftrag beenden" };
+        var disableItem = new MenuItem();
+
+        pauseItem.Click += (_, _) => ExecuteMachineCommand(machine, _viewModel.PauseOrderCommand);
+        resumeItem.Click += (_, _) => ExecuteMachineCommand(machine, _viewModel.ResumeOrderCommand);
+        endItem.Click += (_, _) => ExecuteMachineCommand(machine, _viewModel.EndOrderCommand);
+        disableItem.Click += (_, _) => ExecuteMachineCommand(machine, _viewModel.ToggleMachineDisabledCommand);
+
+        menu.Items.Add(pauseItem);
+        menu.Items.Add(resumeItem);
+        menu.Items.Add(endItem);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(disableItem);
+
+        menu.Opened += (_, _) =>
+        {
+            _viewModel.SelectedMachine = machine;
+            pauseItem.IsEnabled = machine.OrderState == ProductionOrderState.Running && !machine.IsTemporarilyDisabled;
+            resumeItem.IsEnabled = machine.OrderState == ProductionOrderState.Paused && !machine.IsTemporarilyDisabled;
+            endItem.IsEnabled = machine.IsActiveOrder;
+            disableItem.Header = machine.IsTemporarilyDisabled ? "Maschine wieder aktivieren" : "Temporär deaktivieren";
+        };
+
+        return menu;
+    }
+
+    private void ExecuteMachineCommand(MachineState machine, ICommand command)
+    {
+        _viewModel.SelectedMachine = machine;
+        if (command.CanExecute(null))
+            command.Execute(null);
     }
 
     private void OnStateChanged(object? sender, EventArgs e)
@@ -118,6 +198,12 @@ public partial class MainWindow : Window
     {
         foreach (var machine in _viewModel.Machines)
             machine.VeCompleted -= OnMachineVeCompleted;
+
+        _viewModel.VisibleMachines.CollectionChanged -= OnVisibleMachinesChanged;
+        MachineItemsControl.ItemContainerGenerator.StatusChanged -= OnMachineContainerStatusChanged;
+
+        _alsViewModel?.Dispose();
+        _alsViewModel = null;
 
         if (_compactMonitor is not null)
         {
