@@ -1,3 +1,4 @@
+using System.IO;
 using Microsoft.Data.Sqlite;
 using Partcounter.Models;
 
@@ -169,8 +170,8 @@ public sealed class DatabaseService
         command.Parameters.AddWithValue("$article", article.ArticleNumber.Trim());
         command.Parameters.AddWithValue("$description", article.Description.Trim());
         command.Parameters.AddWithValue("$tool", article.ToolNumber.Trim());
-        command.Parameters.AddWithValue("$cavities", article.ActiveCavities);
-        command.Parameters.AddWithValue("$quantity", article.PackagingQuantity);
+        command.Parameters.AddWithValue("$cavities", (int)article.ActiveCavities);
+        command.Parameters.AddWithValue("$quantity", (long)article.PackagingQuantity);
         command.Parameters.AddWithValue("$active", article.Active ? 1 : 0);
         command.Parameters.AddWithValue("$updated", DateTime.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync();
@@ -194,16 +195,16 @@ public sealed class DatabaseService
         command.Parameters.AddWithValue("$id", record.Id);
         command.Parameters.AddWithValue("$machineNumber", record.MachineNumber);
         command.Parameters.AddWithValue("$machineName", record.MachineName);
-        command.Parameters.AddWithValue("$veNumber", record.VeNumber);
+        command.Parameters.AddWithValue("$veNumber", (int)record.VeNumber);
         command.Parameters.AddWithValue("$orderNumber", record.OrderNumber);
         command.Parameters.AddWithValue("$articleNumber", record.ArticleNumber);
         command.Parameters.AddWithValue("$articleDescription", record.ArticleDescription);
         command.Parameters.AddWithValue("$toolNumber", record.ToolNumber);
-        command.Parameters.AddWithValue("$cavities", record.Cavities);
-        command.Parameters.AddWithValue("$targetQuantity", record.TargetQuantity);
-        command.Parameters.AddWithValue("$actualQuantity", record.ActualQuantity);
-        command.Parameters.AddWithValue("$overfill", record.Overfill);
-        command.Parameters.AddWithValue("$completionReason", (ushort)record.CompletionReason);
+        command.Parameters.AddWithValue("$cavities", (int)record.Cavities);
+        command.Parameters.AddWithValue("$targetQuantity", (long)record.TargetQuantity);
+        command.Parameters.AddWithValue("$actualQuantity", (long)record.ActualQuantity);
+        command.Parameters.AddWithValue("$overfill", (long)record.Overfill);
+        command.Parameters.AddWithValue("$completionReason", (int)record.CompletionReason);
         command.Parameters.AddWithValue("$completedAtUtc", record.CompletedAtUtc.ToString("O"));
         command.Parameters.AddWithValue("$labelStatus", record.LabelStatus);
         command.Parameters.AddWithValue("$printedAtUtc", record.PrintedAtUtc?.ToString("O") ?? (object)DBNull.Value);
