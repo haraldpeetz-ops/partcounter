@@ -36,7 +36,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         ApplyArticleCommand = new AsyncRelayCommand(_ => ApplySelectedArticleAsync());
         SaveArticleCommand = new AsyncRelayCommand(_ => SaveArticleAsync());
         ToggleOperatingModeCommand = new AsyncRelayCommand(_ => ToggleOperatingModeAsync());
-        AddCycleCommand = new RelayCommand(machine => (machine as MachineState)?.ApplySimulationCycle());
+        AddCycleCommand = new RelayCommand(machine =>
+        {
+            if (IsSimulationMode)
+                (machine as MachineState)?.ApplySimulationCycle();
+        });
         ManualVeChangeCommand = new AsyncRelayCommand(ManualVeChangeAsync);
         ResetMachineCommand = new AsyncRelayCommand(ResetMachineAsync);
         SavePrintSettingsCommand = new AsyncRelayCommand(_ => SavePrintSettingsAsync());
@@ -222,34 +226,36 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
+        var machine = SelectedMachine;
+        var article = SelectedArticle;
         var order = string.IsNullOrWhiteSpace(OrderNumber) ? $"AUF-{DateTime.Now:yyyyMMdd-HHmmss}" : OrderNumber.Trim();
-        SelectedMachine.ApplyArticle(SelectedArticle, order, resetCounters: true);
 
         if (!IsSimulationMode)
         {
             var job = new JobParameters(
                 StableUInt32(order),
-                SelectedArticle.ArticleNumber,
-                SelectedArticle.ToolNumber,
-                SelectedArticle.ActiveCavities,
-                SelectedArticle.PackagingQuantity,
-                SelectedArticle.RequiredCycles,
+                article.ArticleNumber,
+                article.ToolNumber,
+                article.ActiveCavities,
+                article.PackagingQuantity,
+                article.RequiredCycles,
                 ValvePulseMs);
 
             try
             {
-                await _fleet.SendJobAsync(SelectedMachine.Configuration.MachineNumber, job);
+                await _fleet.SendJobAsync(machine.Configuration.MachineNumber, job);
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Auftrag lokal vorbereitet, Übertragung fehlgeschlagen: {ex.Message}";
-                await _database.AddEventAsync(SelectedMachine.Configuration.MachineNumber, "MODBUS_WRITE_ERROR", ex.Message);
+                StatusMessage = $"Auftrag nicht übernommen – LOGO!-Übertragung fehlgeschlagen: {ex.Message}";
+                await _database.AddEventAsync(machine.Configuration.MachineNumber, "MODBUS_WRITE_ERROR", ex.Message);
                 return;
             }
         }
 
-        StatusMessage = $"{SelectedMachine.DisplayName}: {SelectedArticle.ArticleNumber}, {SelectedArticle.ActiveCavities} Kavitäten, VE-Soll {SelectedArticle.PackagingQuantity:N0}, effektiv {SelectedArticle.EffectivePackagingQuantity:N0}.";
-        await _database.AddEventAsync(SelectedMachine.Configuration.MachineNumber, "JOB_APPLIED", StatusMessage);
+        machine.ApplyArticle(article, order, resetCounters: true);
+        StatusMessage = $"{machine.DisplayName}: {article.ArticleNumber}, {article.ActiveCavities} Kavitäten, VE-Soll {article.PackagingQuantity:N0}, effektiv {article.EffectivePackagingQuantity:N0}.";
+        await _database.AddEventAsync(machine.Configuration.MachineNumber, "JOB_APPLIED", StatusMessage);
     }
 
     private async Task ManualVeChangeAsync(object? parameter)
