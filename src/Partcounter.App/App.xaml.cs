@@ -7,6 +7,8 @@ namespace Partcounter;
 
 public partial class App : Application
 {
+    private bool _dispatcherErrorDialogShown;
+
     private static string LogDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Partcounter");
@@ -40,12 +42,17 @@ public partial class App : Application
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         WriteLog("DISPATCHER_FATAL", e.Exception.ToString());
+        e.Handled = true;
+
+        if (_dispatcherErrorDialogShown)
+            return;
+
+        _dispatcherErrorDialogShown = true;
         MessageBox.Show(
             $"Partcounter hat einen unerwarteten Fehler festgestellt.\n\n{e.Exception.Message}\n\nDiagnose:\n{LogPath}",
             "Partcounter – Fehler",
             MessageBoxButton.OK,
             MessageBoxImage.Error);
-        e.Handled = true;
     }
 
     private static void OnUnhandledException(object? sender, UnhandledExceptionEventArgs e)
