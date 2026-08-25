@@ -26,13 +26,44 @@ jobs:
       - name: Build Release
         run: dotnet build Partcounter.sln -c Release --no-restore
 
-      - name: Publish portable win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_Portable_win-x64
+      - name: Publish portable folder win-x64
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_1_Portable_Folder_win-x64
 
-      - name: Upload portable artifact
+      - name: Publish single-file win-x64
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_1_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+
+      - name: Add start instructions
+        shell: pwsh
+        run: |
+          @'
+          PARTCOUNTER R001.1
+          ==================
+          
+          SINGLE-FILE VERSION:
+          Start Partcounter.exe directly. No .NET installation is required.
+          
+          FOLDER VERSION:
+          Extract the COMPLETE folder before starting Partcounter.exe.
+          Do not run the EXE directly from inside the ZIP archive.
+          
+          If startup fails, Partcounter writes:
+          %LOCALAPPDATA%\Partcounter\Partcounter_startup.log
+          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_1_SingleFile_win-x64/START_HINWEIS.txt
+
+          Copy-Item artifacts/Partcounter_R001_1_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_1_Portable_Folder_win-x64/START_HINWEIS.txt
+
+      - name: Upload portable folder artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_Portable_win-x64
-          path: artifacts/Partcounter_R001_Portable_win-x64
+          name: Partcounter_R001_1_Portable_Folder_win-x64
+          path: artifacts/Partcounter_R001_1_Portable_Folder_win-x64
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload single-file artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Partcounter_R001_1_SingleFile_win-x64
+          path: artifacts/Partcounter_R001_1_SingleFile_win-x64
           if-no-files-found: error
           retention-days: 30
