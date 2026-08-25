@@ -7,14 +7,17 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.5</Version>
-    <FileVersion>0.1.5.0</FileVersion>
-    <InformationalVersion>0.1.5-r001.5-order-mini-monitor</InformationalVersion>
+    <Version>0.1.6</Version>
+    <FileVersion>0.1.6.0</FileVersion>
+    <InformationalVersion>0.1.6-r001.6-als-context-manual</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="NModbus" Version="3.0.83" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.30" />
     <PackageReference Include="ZXing.Net" Version="0.16.11" />
+    <PackageReference Include="ClosedXML" Version="0.105.1" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 </Project>
