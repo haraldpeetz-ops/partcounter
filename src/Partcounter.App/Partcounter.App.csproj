@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.0</Version>
-    <FileVersion>0.1.0.2</FileVersion>
-    <InformationalVersion>0.1.0-r001-industrial-core</InformationalVersion>
+    <Version>0.1.2</Version>
+    <FileVersion>0.1.2.0</FileVersion>
+    <InformationalVersion>0.1.2-r001.2-startup-fix</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
