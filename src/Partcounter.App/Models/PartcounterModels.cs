@@ -20,12 +20,25 @@ public sealed record ArticleDefinition(
     uint PackagingQuantity,
     bool Active = true)
 {
-    public string DisplayName => $"{ArticleNumber} · {Description}";
+    public string DisplayDescription => BuildDisplayDescription(Description, PackagingQuantity);
+    public string DisplayName => $"{ArticleNumber} · {DisplayDescription}";
     public uint RequiredCycles => ActiveCavities == 0 ? 0 : (uint)Math.Ceiling(PackagingQuantity / (double)ActiveCavities);
     public uint EffectivePackagingQuantity => RequiredCycles * ActiveCavities;
     public uint ExpectedOverfill => EffectivePackagingQuantity >= PackagingQuantity
         ? EffectivePackagingQuantity - PackagingQuantity
         : 0;
+
+    private static string BuildDisplayDescription(string description, uint packagingQuantity)
+    {
+        var text = (description ?? string.Empty).Trim();
+        var veIndex = text.LastIndexOf("VE ", StringComparison.OrdinalIgnoreCase);
+        if (veIndex >= 0)
+            text = text[..veIndex].TrimEnd(' ', '/', '-', '·', ':');
+
+        return string.IsNullOrWhiteSpace(text)
+            ? $"VE {packagingQuantity:N0}"
+            : $"{text} · VE {packagingQuantity:N0}";
+    }
 }
 
 public sealed record JobParameters(
@@ -115,6 +128,8 @@ public sealed class MachineState : INotifyPropertyChanged
     private ushort _lastCompletionSequence;
     private bool _logoSnapshotInitialized;
     private ushort _errorCode;
+    private bool _hasVeAttention;
+    private CancellationTokenSource? _veAttentionCts;
 
     public required MachineConfiguration Configuration { get; init; }
     public double SimulatedCycleTimeSeconds { get; set; } = 10.0;
@@ -198,7 +213,12 @@ public sealed class MachineState : INotifyPropertyChanged
     public uint LastCompletedVeQuantity
     {
         get => _lastCompletedVeQuantity;
-        private set { _lastCompletedVeQuantity = value; OnPropertyChanged(); }
+        private set
+        {
+            _lastCompletedVeQuantity = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(VeAttentionText));
+        }
     }
 
     public DateTime? LastCycleLocal
@@ -235,12 +255,21 @@ public sealed class MachineState : INotifyPropertyChanged
         private set { _errorCode = value; OnPropertyChanged(); }
     }
 
+    public bool HasVeAttention
+    {
+        get => _hasVeAttention;
+        private set
+        {
+            if (_hasVeAttention == value) return;
+            _hasVeAttention = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(VeAttentionText));
+        }
+    }
+
     public string DisplayName => $"M{Configuration.MachineNumber:00} · {Configuration.Name}";
     public string Endpoint => $"{Configuration.IpAddress}:{Configuration.Port}";
 
-    // ProgressBar.Value uses a TwoWay default binding mode in WPF. The setter is intentionally
-    // ignored because FillPercent is a calculated display value. This keeps the source read-only
-    // by design while preventing WPF from rejecting the binding during template creation.
     public double FillPercent
     {
         get => TargetPartsPerVe == 0 ? 0 : Math.Min(100.0, CurrentParts * 100.0 / TargetPartsPerVe);
@@ -250,6 +279,9 @@ public sealed class MachineState : INotifyPropertyChanged
     public string FillText => $"{CurrentParts:N0} / {TargetPartsPerVe:N0} Teile";
     public string LastCycleText => LastCycleLocal?.ToString("HH:mm:ss") ?? "–";
     public string LastVeCompletedText => LastVeCompletedLocal?.ToString("HH:mm:ss") ?? "–";
+    public string VeAttentionText => HasVeAttention
+        ? $"VE VOLL · {LastCompletedVeQuantity:N0} Teile · Wechsel ausgelöst"
+        : string.Empty;
     public uint RequiredCyclesPerVe => ActiveCavities == 0 || TargetPartsPerVe == 0 ? 0 : (uint)Math.Ceiling(TargetPartsPerVe / (double)ActiveCavities);
     public uint EffectiveVeQuantity => RequiredCyclesPerVe * ActiveCavities;
     public uint ProjectedOverfill => EffectiveVeQuantity >= TargetPartsPerVe ? EffectiveVeQuantity - TargetPartsPerVe : 0;
@@ -300,6 +332,7 @@ public sealed class MachineState : INotifyPropertyChanged
         CompletedVes++;
         CurrentVeNumber++;
         CurrentParts = 0;
+        TriggerVeAttention();
 
         VeCompleted?.Invoke(this, new VeCompletedEventArgs(finishedVe, quantity, reason, completedAt));
     }
@@ -320,6 +353,7 @@ public sealed class MachineState : INotifyPropertyChanged
         if (_logoSnapshotInitialized && snapshot.CompletionSequence != _lastCompletionSequence)
         {
             LastVeCompletedLocal = snapshot.ReadAtUtc.ToLocalTime();
+            TriggerVeAttention();
             VeCompleted?.Invoke(this, new VeCompletedEventArgs(
                 snapshot.LastCompletedVeNumber,
                 snapshot.LastCompletedVeQuantity,
@@ -342,10 +376,41 @@ public sealed class MachineState : INotifyPropertyChanged
         LastVeCompletedLocal = null;
         _logoSnapshotInitialized = false;
         _lastCompletionSequence = 0;
+        ClearVeAttention();
     }
 
     public event EventHandler<VeCompletedEventArgs>? VeCompleted;
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void TriggerVeAttention()
+    {
+        _veAttentionCts?.Cancel();
+        _veAttentionCts?.Dispose();
+        _veAttentionCts = new CancellationTokenSource();
+        HasVeAttention = true;
+        _ = ClearVeAttentionLaterAsync(_veAttentionCts.Token);
+    }
+
+    private async Task ClearVeAttentionLaterAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(20), cancellationToken);
+            if (!cancellationToken.IsCancellationRequested)
+                HasVeAttention = false;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void ClearVeAttention()
+    {
+        _veAttentionCts?.Cancel();
+        _veAttentionCts?.Dispose();
+        _veAttentionCts = null;
+        HasVeAttention = false;
+    }
 
     private void RaiseCalculationProperties()
     {
