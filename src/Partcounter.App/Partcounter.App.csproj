@@ -8,11 +8,13 @@
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
     <Version>0.1.0</Version>
-    <FileVersion>0.1.0.1</FileVersion>
-    <InformationalVersion>0.1.0-r001</InformationalVersion>
+    <FileVersion>0.1.0.2</FileVersion>
+    <InformationalVersion>0.1.0-r001-industrial-core</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="NModbus" Version="3.0.83" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.30" />
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
   </ItemGroup>
 </Project>

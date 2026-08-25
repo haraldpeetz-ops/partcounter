@@ -1,0 +1,38 @@
+name: Build Partcounter R001
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore Partcounter.sln
+
+      - name: Build Release
+        run: dotnet build Partcounter.sln -c Release --no-restore
+
+      - name: Publish portable win-x64
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_Portable_win-x64
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Partcounter_R001_Portable_win-x64
+          path: artifacts/Partcounter_R001_Portable_win-x64
+          if-no-files-found: error
+          retention-days: 30

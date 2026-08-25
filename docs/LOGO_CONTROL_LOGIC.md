@@ -1,93 +1,162 @@
-# Siemens LOGO! control logic – Partcounter R001
+# Siemens LOGO! – Partcounter V1 Steuerlogik
 
-## Objective
+Dieses Dokument beschreibt die Sollfunktion des standardisierten LOGO!-Programms `Partcounter_LOGO_V001`. Alle 30 Maschinen sollen dasselbe Grundprogramm verwenden; maschinenspezifisch sind primär IP-/Netzwerkparameter und die physische I/O-Zuordnung.
 
-The LOGO! is the autonomous machine-side counter and packaging-unit change controller. The PC is supervisory; WLAN availability is not allowed to be a prerequisite for correct counting.
+## I/O-Vorschlag
 
-## Physical I/O concept
+| Signal | Richtung | Funktion |
+|---|---|---|
+| I1 | Eingang | gültiger Zyklus-/Auswurfimpuls der Spritzgussmaschine |
+| I2 | Eingang | optional Endlage/Bestätigung VE-Wechsler |
+| I3 | Eingang | optional Handquittierung |
+| Q1 | Ausgang | Pneumatikventil VE-Wechsler |
+| Q2 | Ausgang | optional Lampe „VE voll / Wechsel“ |
+| Q3 | Ausgang | optional Störung / Sammelmeldung |
 
-Suggested starting point per machine:
+Die endgültige I/O-Belegung ist maschinenbezogen zu validieren.
 
-- `I1`: production cycle / parts-ejected pulse from injection molding machine
-- `I2`: optional VE changer home/position feedback
-- `I3`: optional manual change pushbutton
-- `Q1`: pneumatic valve / interposing relay for VE changer
+## Funktionsblöcke
 
-The exact voltage/interface depends on the machine and LOGO! variant. Use a potential-free or appropriately isolated machine signal. Do not connect into machine safety circuits.
-
-## Local cycle logic
-
-On the positive edge of the valid cycle signal:
-
-```text
-TotalCycles := TotalCycles + 1
-CurrentVeParts := CurrentVeParts + ActiveCavities
-
-IF AutomaticMode AND CurrentVeParts >= TargetPartsPerVe THEN
-    LastCompletedVeQuantity := CurrentVeParts
-    CompletedVeCount := CompletedVeCount + 1
-    CurrentVeNumber := CurrentVeNumber + 1
-    Pulse Q1 for ValvePulseMs
-    Set VE-completed event
-    CurrentVeParts := 0
-END_IF
-```
-
-## Why counting stays in the LOGO!
-
-A PC poll is not deterministic enough to be the primary cycle counter. With local counting:
-
-- cycle pulses are captured even if WLAN is temporarily unavailable;
-- a slow or rebooting PC does not lose production quantities;
-- the pneumatic VE change does not depend on network latency;
-- the PC can reconnect and read the current authoritative state.
-
-## Command handshake
-
-The PC writes both a command word and a command sequence number. The LOGO! stores the last processed sequence.
+Empfohlene logische Struktur:
 
 ```text
-IF ReceivedSequence <> LastProcessedSequence THEN
-    execute requested command once
-    LastProcessedSequence := ReceivedSequence
-    AckSequence := ReceivedSequence
-END_IF
+B001  Zyklus-Flankenerkennung
+B002  Eingangsentprellung / Mindestimpulszeit
+B003  Auftragsparameter-Latch
+B004  Zykluszähler aktuelle VE
+B005  Gesamtzykluszähler Auftrag
+B006  Teilewert aktuelle VE
+B007  Vergleich VE-Zielzyklen
+B008  VE-Abschluss-Latch
+B009  Ventilimpuls
+B010  VE-Nummer
+B011  Anzahl fertiger VE
+B012  LastCompleted-Speicher
+B013  CompletionSequence
+B014  CommandSequence/Acknowledge
+B015  PC-Heartbeat-Überwachung
+B016  LOGO-Heartbeat
+B017  Fehler-/Statuswort
 ```
 
-This is required because a Modbus write can be retried after a communication failure. A level bit alone could otherwise cause the same manual change or reset more than once.
+## Auftragsübernahme
 
-## VE target and cavity count
+Ein neuer Auftrag ist gültig, wenn:
 
-Only complete molding cycles can normally be assigned to one packaging unit. Therefore exact target quantity requires:
+- ProtocolVersion = 1
+- ActiveCavities zwischen 1 und 64
+- TargetPartsPerVE > 0
+- TargetCyclesPerVE > 0
+- neue `CommandSequence`
+- `CommandResetJob` gesetzt
 
-`TargetPartsPerVe mod ActiveCavities = 0`
+Bei Übernahme werden Kavitäten, Sollmenge, Zielzyklen, Ventilimpuls und Job-ID in interne Merker übernommen. Danach:
 
-If not divisible, the actual VE quantity will be the next complete cycle quantity. Partcounter records this overfill explicitly.
+```text
+CurrentVECycles = 0
+CurrentParts = 0
+CurrentVENumber = 1
+CompletedVEs = 0
+TotalCycles = 0
+AckSequence = CommandSequence
+```
 
-Example:
+## Zykluszählung
 
-- target: 1,000 parts
-- active cavities: 8
-- required cycles: 125
-- actual quantity: 1,000 (exact)
+Nur eine gültige positive Flanke von I1 darf einen Zyklus erzeugen.
 
-Example with unavoidable cycle overfill:
+```text
+wenn Zyklusflanke UND nicht Pause:
+    TotalCycles       += 1
+    CurrentVECycles   += 1
+    CurrentParts       = CurrentVECycles × ActiveCavities
+```
 
-- target: 1,000 parts
-- active cavities: 64
-- required cycles: 16
-- actual quantity: 1,024
-- overfill: 24 parts
+Die LOGO! verwendet die vom PC bereits aufgerundete Zielzykluszahl:
 
-## Recovery after network interruption
+```text
+wenn CurrentVECycles >= TargetCyclesPerVE:
+    automatische VE abschließen
+```
 
-The LOGO! keeps the active job parameters and local counters. On PC reconnect:
+Dadurch ist z. B. bei VE-Soll 1.000 und 64 Kavitäten das Ergebnis 16 Zyklen bzw. 1.024 Teile.
 
-1. PC reads protocol version and status block.
-2. PC compares active job/sequence with its database state.
-3. LOGO! state is treated as authoritative for the live part counter.
-4. Conflicts are shown to the operator; the PC does not silently reset the LOGO!.
+## Automatischer VE-Abschluss
 
-## Pneumatic changer timing
+Reihenfolge:
 
-The actual mechanical VE changer must complete its switching movement before the next produced parts arrive. `ValvePulseMs` is therefore a process parameter, not just a software preference. A position feedback input is strongly recommended for production use.
+```text
+LastCompletedVEQuantity = CurrentParts
+LastCompletedVENumber   = CurrentVENumber
+LastCompletionReason    = 1
+CompletedVEs           += 1
+CompletionSequence     += 1
+Status.VEChangeActive   = 1
+Q1                      = 1 für ValvePulseMs
+Q1                      = 0
+CurrentVENumber        += 1
+CurrentVECycles         = 0
+CurrentParts            = 0
+Status.VEChangeActive   = 0
+```
+
+Falls eine Endlagenrückmeldung vorhanden ist, soll der Ablauf statt eines reinen Zeitimpulses zusätzlich plausibilisieren, ob der Wechsler seine Zielposition erreicht hat. Ein Timeout erzeugt `ErrorCode` und Alarmstatus.
+
+## Manueller VE-Wechsel
+
+`CommandManualVeChange` mit neuer `CommandSequence` löst denselben Abschlussablauf aus, jedoch:
+
+```text
+LastCompletionReason = 2
+```
+
+Ein manueller Wechsel darf bei leerer VE wahlweise ignoriert werden; die R001-PC-Simulation ignoriert einen manuellen Wechsel bei 0 Teilen.
+
+## Befehlssequenz
+
+One-Shot-Befehle werden ausschließlich bearbeitet, wenn:
+
+```text
+CommandSequence != LastProcessedCommandSequence
+```
+
+Nach Bearbeitung:
+
+```text
+LastProcessedCommandSequence = CommandSequence
+AckSequence = CommandSequence
+```
+
+Dadurch löst ein dauerhaft gesetztes Reset- oder Manual-Bit nicht mehrfach aus.
+
+## Kommunikationsausfall
+
+Ein nicht mehr wechselnder PC-Heartbeat ist ein Diagnosefehler, **kein Produktions-Stopp-Befehl**. Die LOGO! fährt mit den zuletzt gültig übernommenen Auftragsparametern weiter:
+
+- Zyklusimpulse zählen
+- VE-Füllung fortsetzen
+- VE bei Zielzyklen wechseln
+- LastCompleted-Daten aktualisieren
+
+Nach Wiederkehr des PCs liest Partcounter den aktuellen Zustand und synchronisiert die Anzeige.
+
+## Pneumatik / sichere Auslegung
+
+Das Ventil und die Mechanik müssen so ausgelegt sein, dass ein Neustart der LOGO!, Kommunikationsverlust oder Spannungsausfall keinen gefährlichen Bewegungszustand erzeugt. Partcounter und die Standard-LOGO! sind **keine Sicherheitssteuerung**. Schutztür, Not-Halt, Maschinenfreigaben und sonstige Safety-Funktionen verbleiben vollständig im dafür vorgesehenen sicheren Steuerungssystem.
+
+## Inbetriebnahme je Maschine
+
+Vor Freigabe mindestens prüfen:
+
+1. Zyklusimpuls wird genau einmal pro Gutteilzyklus erkannt.
+2. Kavitätenzahl wird korrekt übernommen.
+3. VE-Soll und Zielzyklen stimmen mit PC-Anzeige überein.
+4. 1-, 2-, 4-, 8-, 16-, 32- und 64-fach-Werkzeuge werden korrekt gerechnet.
+5. Nicht teilbare VE-Menge wird korrekt aufgerundet.
+6. Manueller Wechsel funktioniert einmal pro CommandSequence.
+7. Automatischer Wechsel erzeugt genau einen Ventilimpuls.
+8. LastCompleted-Menge bleibt nach Reset des aktuellen Zählers erhalten.
+9. CompletionSequence erhöht sich exakt einmal je fertiger VE.
+10. PC-Ausfall während Produktion verhindert den Wechsel nicht.
+11. WLAN-Wiederverbindung synchronisiert den Leitstand ohne Doppelzählung.
+12. Etikettendruck wird genau einmal pro neu erkannter CompletionSequence ausgelöst.

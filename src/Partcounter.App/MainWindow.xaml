@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Partcounter R001"
-        Width="1600" Height="950"
-        MinWidth="1100" MinHeight="700"
+        Width="1680" Height="980"
+        MinWidth="1180" MinHeight="720"
         WindowStartupLocation="CenterScreen"
         Background="#F2F4F7">
     <DockPanel>
@@ -15,92 +15,222 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="PARTCOUNTER" Foreground="White" FontSize="28" FontWeight="Bold"/>
-                    <TextBlock Text="30-Maschinen Verpackungseinheiten-Monitoring · Siemens LOGO! · Modbus TCP"
+                    <TextBlock Text="30-Maschinen VE-Leitstand · Siemens LOGO! · WLAN/LAN · Modbus TCP · automatischer Etikettendruck"
                                Foreground="#C8D1DA" FontSize="13"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="{Binding SystemStatusText}" Foreground="#9FE870" FontWeight="SemiBold"
                                VerticalAlignment="Center" Margin="0,0,12,0"/>
-                    <Button Content="{Binding SimulationButtonText}" Command="{Binding ToggleSimulationCommand}"/>
+                    <Button Content="{Binding OperatingModeButtonText}" Command="{Binding ToggleOperatingModeCommand}"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <ItemsControl ItemsSource="{Binding Machines}" Margin="10">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <UniformGrid Columns="5"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Margin="5" Padding="11">
-                            <StackPanel>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding DisplayName}" FontSize="16" FontWeight="Bold" Foreground="#18212B"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding ConnectionState}" FontWeight="SemiBold" Foreground="#3B6E22"/>
-                                </Grid>
+        <StatusBar DockPanel.Dock="Bottom" Background="#E2E7EC">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis"/>
+            </StatusBarItem>
+        </StatusBar>
 
-                                <TextBlock Text="{Binding Endpoint}" Foreground="#657180" FontSize="11"/>
-                                <Separator Margin="0,7"/>
+        <TabControl Margin="8">
+            <TabItem Header="Leitstand">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Text="Artikel:"/><TextBlock Grid.Column="1" Text="{Binding ArticleNumber}" FontWeight="SemiBold" Margin="8,0,0,0"/>
-                                    <TextBlock Grid.Row="1" Text="Werkzeug:"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ToolNumber}" FontWeight="SemiBold" Margin="8,0,0,0"/>
-                                    <TextBlock Grid.Row="2" Text="Kavitäten:"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ActiveCavities}" FontWeight="SemiBold" Margin="8,0,0,0"/>
-                                    <TextBlock Grid.Row="3" Text="Zyklus-Überfüllung:"/><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ProjectedOverfill, StringFormat={}{0} Teile}" Margin="8,0,0,0"/>
-                                </Grid>
-
-                                <TextBlock Text="Aktuelle VE" FontWeight="Bold" Margin="0,10,0,2"/>
-                                <TextBlock Text="{Binding FillText}" FontSize="20" FontWeight="Bold"/>
-                                <ProgressBar Minimum="0" Maximum="100" Value="{Binding FillPercent}" Margin="0,4,0,3"/>
-                                <TextBlock Text="{Binding FillPercent, StringFormat={}{0:F1} %}" HorizontalAlignment="Right" Foreground="#4F5D6B"/>
-
-                                <Grid Margin="0,8,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="VE Nr." Foreground="#657180" FontSize="11"/>
-                                        <TextBlock Text="{Binding CurrentVeNumber}" FontSize="16" FontWeight="Bold"/>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock Text="VE fertig" Foreground="#657180" FontSize="11"/>
-                                        <TextBlock Text="{Binding CompletedVes}" FontSize="16" FontWeight="Bold"/>
-                                    </StackPanel>
-                                </Grid>
-
-                                <TextBlock Text="{Binding LastCompletedVeQuantity, StringFormat=Letzte VE: {0:N0} Teile}" Margin="0,7,0,0"/>
-                                <TextBlock Text="{Binding LastCycleText, StringFormat=Letzter Zyklus: {0}}" Foreground="#657180"/>
-
-                                <WrapPanel Margin="0,8,0,0">
-                                    <Button Content="+ Zyklus"
-                                            Command="{Binding DataContext.AddCycleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}"/>
-                                    <Button Content="VE wechseln"
-                                            Command="{Binding DataContext.ManualVeChangeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}"/>
-                                    <Button Content="Reset"
-                                            Command="{Binding DataContext.ResetMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}"/>
-                                </WrapPanel>
+                    <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="10" Margin="2,2,2,7">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220"/>
+                                <ColumnDefinition Width="360"/>
+                                <ColumnDefinition Width="190"/>
+                                <ColumnDefinition Width="130"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="4">
+                                <TextBlock Text="Maschine" FontWeight="SemiBold"/>
+                                <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding SelectedMachine}"
+                                          DisplayMemberPath="DisplayName" MinHeight="30"/>
                             </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+                            <StackPanel Grid.Column="1" Margin="4">
+                                <TextBlock Text="Artikelnummer / Artikel" FontWeight="SemiBold"/>
+                                <ComboBox ItemsSource="{Binding Articles}" SelectedItem="{Binding SelectedArticle}"
+                                          DisplayMemberPath="DisplayName" IsEditable="True" IsTextSearchEnabled="True" MinHeight="30"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Margin="4">
+                                <TextBlock Text="Auftragsnummer" FontWeight="SemiBold"/>
+                                <TextBox Text="{Binding OrderNumber, UpdateSourceTrigger=PropertyChanged}" MinHeight="30"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="3" Margin="4">
+                                <TextBlock Text="Ventilimpuls [ms]" FontWeight="SemiBold"/>
+                                <TextBox Text="{Binding ValvePulseMs, UpdateSourceTrigger=PropertyChanged}" MinHeight="30"/>
+                            </StackPanel>
+                            <Button Grid.Column="4" Content="Artikel / Auftrag übernehmen" Command="{Binding ApplyArticleCommand}"
+                                    VerticalAlignment="Bottom" Margin="10,4,4,4" Padding="16,8"/>
+                            <StackPanel Grid.Column="5" Margin="14,4,4,4" VerticalAlignment="Center">
+                                <TextBlock Text="VE-Regel" FontWeight="SemiBold"/>
+                                <TextBlock Text="Es werden immer ganze Zyklen gefahren. Ist die VE-Menge nicht durch die Kavitäten teilbar, wird automatisch auf den nächsten Zyklus aufgerundet."
+                                           TextWrapping="Wrap" Foreground="#566473"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Machines}" Margin="2">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="5"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Margin="4" Padding="10">
+                                        <StackPanel>
+                                            <Grid Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="Bold" Foreground="#18212B"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding ConnectionState}" FontWeight="SemiBold" Foreground="#3B6E22"/>
+                                            </Grid>
+                                            <TextBlock Text="{Binding Endpoint}" Foreground="#657180" FontSize="11"/>
+                                            <Separator Margin="0,6"/>
+
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Text="Artikel:"/><TextBlock Grid.Column="1" Text="{Binding ArticleNumber}" FontWeight="SemiBold" Margin="8,0,0,0"/>
+                                                <TextBlock Grid.Row="1" Text="Werkzeug:"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ToolNumber}" Margin="8,0,0,0"/>
+                                                <TextBlock Grid.Row="2" Text="Kavitäten:"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ActiveCavities}" Margin="8,0,0,0"/>
+                                                <TextBlock Grid.Row="3" Text="Zyklen / VE:"/><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RequiredCyclesPerVe}" Margin="8,0,0,0"/>
+                                                <TextBlock Grid.Row="4" Text="Mehrmenge:"/><TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ProjectedOverfill, StringFormat={}{0:N0} Teile}" Margin="8,0,0,0"/>
+                                            </Grid>
+
+                                            <TextBlock Text="Aktuelle VE" FontWeight="Bold" Margin="0,9,0,1"/>
+                                            <TextBlock Text="{Binding FillText}" FontSize="19" FontWeight="Bold"/>
+                                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding FillPercent}" Margin="0,4,0,3"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding RemainingCycles, StringFormat=Noch {0:N0} Zyklen}" Foreground="#4F5D6B"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding FillPercent, StringFormat={}{0:F1} %}" Foreground="#4F5D6B"/>
+                                            </Grid>
+
+                                            <Grid Margin="0,7,0,0">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="VE Nr." Foreground="#657180" FontSize="11"/>
+                                                    <TextBlock Text="{Binding CurrentVeNumber}" FontSize="16" FontWeight="Bold"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="VE fertig" Foreground="#657180" FontSize="11"/>
+                                                    <TextBlock Text="{Binding CompletedVes}" FontSize="16" FontWeight="Bold"/>
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <TextBlock Text="{Binding LastCompletedVeQuantity, StringFormat=Letzte VE: {0:N0} Teile}" Margin="0,6,0,0"/>
+                                            <TextBlock Text="{Binding LastCycleText, StringFormat=Letzter Zyklus: {0}}" Foreground="#657180"/>
+                                            <TextBlock Text="{Binding ErrorCode, StringFormat=LOGO-Fehlercode: {0}}" Foreground="#657180"/>
+
+                                            <WrapPanel Margin="0,7,0,0">
+                                                <Button Content="+ Zyklus (Sim)"
+                                                        Command="{Binding DataContext.AddCycleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="VE wechseln"
+                                                        Command="{Binding DataContext.ManualVeChangeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="Reset"
+                                                        Command="{Binding DataContext.ResetMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"/>
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Artikelstamm">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="360"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="14">
+                        <StackPanel>
+                            <TextBlock Text="Artikel anlegen / aktualisieren" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+                            <TextBlock Text="Artikelnummer"/>
+                            <TextBox Text="{Binding EditArticleNumber, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Text="Bezeichnung" Margin="0,8,0,0"/>
+                            <TextBox Text="{Binding EditArticleDescription, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Text="Werkzeugnummer" Margin="0,8,0,0"/>
+                            <TextBox Text="{Binding EditToolNumber, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Text="Aktive Kavitäten (1–64)" Margin="0,8,0,0"/>
+                            <TextBox Text="{Binding EditCavities, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Text="Stück pro Verpackungseinheit" Margin="0,8,0,0"/>
+                            <TextBox Text="{Binding EditPackagingQuantity, UpdateSourceTrigger=PropertyChanged}"/>
+                            <Button Content="Artikel speichern" Command="{Binding SaveArticleCommand}" Margin="0,14,0,0" Padding="14,8"/>
+                            <Button Content="Ausgewählten Artikel ins Formular" Command="{Binding CopySelectedArticleToEditorCommand}" Margin="0,6,0,0"/>
+                            <TextBlock Text="Die effektive VE-Menge wird automatisch aus ceil(VE-Soll / Kavitäten) × Kavitäten berechnet."
+                                       TextWrapping="Wrap" Foreground="#657180" Margin="0,14,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <DataGrid Grid.Column="2" ItemsSource="{Binding Articles}" SelectedItem="{Binding SelectedArticle}"
+                              AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Artikelnummer" Binding="{Binding ArticleNumber}" Width="140"/>
+                            <DataGridTextColumn Header="Bezeichnung" Binding="{Binding Description}" Width="*"/>
+                            <DataGridTextColumn Header="Werkzeug" Binding="{Binding ToolNumber}" Width="130"/>
+                            <DataGridTextColumn Header="Kavitäten" Binding="{Binding ActiveCavities}" Width="80"/>
+                            <DataGridTextColumn Header="VE-Soll" Binding="{Binding PackagingQuantity, StringFormat={}{0:N0}}" Width="100"/>
+                            <DataGridTextColumn Header="Zyklen" Binding="{Binding RequiredCycles, StringFormat={}{0:N0}}" Width="90"/>
+                            <DataGridTextColumn Header="Effektiv" Binding="{Binding EffectivePackagingQuantity, StringFormat={}{0:N0}}" Width="100"/>
+                            <DataGridTextColumn Header="Mehrmenge" Binding="{Binding ExpectedOverfill, StringFormat={}{0:N0}}" Width="100"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="VE-Historie">
+                <DataGrid Margin="10" ItemsSource="{Binding RecentPackagingUnits}" AutoGenerateColumns="False"
+                          IsReadOnly="True" CanUserAddRows="False">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Zeit" Binding="{Binding CompletedAtLocalText}" Width="145"/>
+                        <DataGridTextColumn Header="Maschine" Binding="{Binding MachineNumber, StringFormat=M{0:00}}" Width="80"/>
+                        <DataGridTextColumn Header="VE" Binding="{Binding VeNumber}" Width="65"/>
+                        <DataGridTextColumn Header="Auftrag" Binding="{Binding OrderNumber}" Width="130"/>
+                        <DataGridTextColumn Header="Artikel" Binding="{Binding ArticleNumber}" Width="130"/>
+                        <DataGridTextColumn Header="Werkzeug" Binding="{Binding ToolNumber}" Width="120"/>
+                        <DataGridTextColumn Header="Kav." Binding="{Binding Cavities}" Width="55"/>
+                        <DataGridTextColumn Header="Soll" Binding="{Binding TargetQuantity, StringFormat={}{0:N0}}" Width="90"/>
+                        <DataGridTextColumn Header="Ist" Binding="{Binding ActualQuantity, StringFormat={}{0:N0}}" Width="90"/>
+                        <DataGridTextColumn Header="Mehr" Binding="{Binding Overfill, StringFormat={}{0:N0}}" Width="75"/>
+                        <DataGridTextColumn Header="Grund" Binding="{Binding CompletionReason}" Width="110"/>
+                        <DataGridTextColumn Header="Etikett" Binding="{Binding LabelStatus}" Width="110"/>
+                        <DataGridTextColumn Header="VE-ID" Binding="{Binding Id}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+
+            <TabItem Header="Einstellungen / Druck">
+                <StackPanel Margin="20" Width="650" HorizontalAlignment="Left">
+                    <TextBlock Text="Etikettendruck" FontSize="20" FontWeight="Bold"/>
+                    <TextBlock Text="Windows-Druckername" Margin="0,14,0,0"/>
+                    <TextBox Text="{Binding LabelPrinterName, UpdateSourceTrigger=PropertyChanged}" MinHeight="30"/>
+                    <CheckBox Content="Etikett automatisch bei abgeschlossener VE drucken"
+                              IsChecked="{Binding AutoPrintLabels}" Margin="0,12,0,4"/>
+                    <WrapPanel>
+                        <Button Content="Druckeinstellungen speichern" Command="{Binding SavePrintSettingsCommand}" Padding="14,8"/>
+                        <Button Content="Testetikett drucken" Command="{Binding TestLabelCommand}" Padding="14,8"/>
+                    </WrapPanel>
+                    <Separator Margin="0,16"/>
+                    <TextBlock Text="Datenbank" FontSize="16" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding DatabasePath}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    <TextBlock Margin="0,14,0,0" TextWrapping="Wrap" Foreground="#657180"
+                               Text="Das R001-Etikett enthält menschenlesbare Produktionsdaten, einen Code-128 mit der eindeutigen VE-ID und einen QR-Code mit VE-ID, Maschine, Artikel, Werkzeug, Istmenge und Zeitstempel."/>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
     </DockPanel>
 </Window>

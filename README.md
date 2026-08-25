@@ -1,127 +1,127 @@
 # Partcounter
 
-**Industrial Packaging Unit Counter for Injection Molding**
+**Revision:** R001 – Industrial Core  
+**Plattform:** Windows / C# / .NET 8 / WPF  
+**Anlage:** bis zu 30 Spritzgussmaschinen · Siemens LOGO! · Modbus TCP · WLAN/LAN
 
-Revision: **R001 – System Foundation**  
-Status: Initial architecture / MVP foundation
+Partcounter überwacht den Füllgrad von Verpackungseinheiten (VE) an bis zu 30 Spritzgussmaschinen. Jede Maschine liefert einen Zyklusimpuls an eine Siemens LOGO!. Die LOGO! zählt lokal, berücksichtigt die aktive Kavitätenzahl und schaltet bei voller VE über ein pneumatisches Ventil den Verpackungswechsler. Die PC-Anwendung ist Leitstand, Artikel-/Auftragsverwaltung, Historie und Etikettendruck.
 
-## Purpose
+## Zentrales Sicherheits- und Verfügbarkeitsprinzip
 
-Partcounter supervises up to 30 injection molding machines. Each machine is equipped with a Siemens LOGO! controller. The LOGO! counts production cycles locally, converts cycles into produced parts using the active cavity count, controls a pneumatic packaging-unit changer and exposes all relevant production data to a central Windows application over Modbus TCP.
+**Zählen und automatischer VE-Wechsel laufen lokal in der LOGO!.** Der PC gibt Parameter vor und liest Statusdaten. Ein kurzer PC-, LAN- oder WLAN-Ausfall darf deshalb keinen Zyklus verlieren und keinen fälligen Kistenwechsel verhindern.
 
-The PC application displays the fill level of the active packaging unit (VE), indicates completed packaging units and provides job/configuration data to each LOGO!.
+## Rundungsregel für Verpackungseinheiten
 
-## Core design principle
-
-**Counting and automatic VE change are executed locally in the Siemens LOGO!.**
-
-The Windows application is the supervisory and configuration layer. This ensures that a temporary PC, Ethernet or WLAN failure does not cause a missed count or missed packaging-unit change.
-
-## Target architecture
+Es werden ausschließlich vollständige Maschinenzyklen gezählt. Ist die gewünschte VE-Menge nicht durch die Kavitätenzahl teilbar, wird auf den nächsten vollständigen Zyklus aufgerundet:
 
 ```text
-Injection molding machine cycle signal
-             |
-             v
-      Siemens LOGO! 8.x ----> Pneumatic valve / VE changer
-             |
-        Ethernet
-             |
-     WLAN client bridge
-             ))
-             ))  Industrial WLAN
-             ((
-       Access Point(s)
-             |
-        Ethernet LAN
-             |
-      Partcounter PC
-      .NET 8 / WPF
-      Modbus TCP Client
+Zyklen je VE        = ceil(VE-Soll / Kavitäten)
+Tatsächliche VE     = Zyklen je VE × Kavitäten
+Mehrmenge           = Tatsächliche VE - VE-Soll
 ```
 
-## Planned machine data
+Beispiel: **1.000 Stück Soll / 64 Kavitäten = 16 Zyklen = 1.024 Stück tatsächlich**.
 
-For each of up to 30 machines:
+## R001 – umgesetzt
 
-- Machine number / name
-- LOGO! IP address
-- Modbus TCP port (default 502)
-- Connection status
-- Article number
-- Tool number
-- Active cavity count (1…64)
-- Target parts per packaging unit
-- Current parts in active packaging unit
-- Current fill level in %
-- Current packaging-unit number
-- Number of completed packaging units
-- Current cycle count
-- Last cycle timestamp
-- Automatic/manual mode
-- Packaging unit full status
-- VE changer status
-- Alarm / communication status
+- WPF-Leitstand für 30 Maschinen
+- Simulation ohne Hardware
+- Echtbetrieb über Modbus TCP
+- unabhängige Kommunikationsworker pro Maschine
+- feste LOGO!-IP-Adressen im Maschinenstamm
+- Online-/Offline-Status
+- PC- und LOGO!-Heartbeat
+- Befehlssequenz/Acknowledge-Konzept
+- Artikelstamm in SQLite
+- Auswahl des Artikels über Artikelnummer
+- Werkzeugnummer je Artikel
+- Kavitätenzahl 1–64 je Artikel
+- Standard-Stückzahl je Verpackungseinheit je Artikel
+- automatische Berechnung von Zyklen, effektiver VE-Menge und Mehrmenge
+- Auftragsnummer je Maschinenauftrag
+- lokaler LOGO!-Teile-/Zykluszähler als Zielarchitektur
+- automatischer VE-Wechsel
+- manueller VE-Wechsel
+- VE-Historie mit Soll/Ist/Mehrmenge
+- eindeutige VE-ID
+- automatischer Etikettentrigger nach abgeschlossenem VE-Wechsel
+- Code-128 auf Basis der VE-ID
+- QR-Code mit VE, Maschine, Artikel, Werkzeug, Menge und Zeitstempel
+- frei konfigurierbarer Windows-Etikettendrucker
+- offene Druckaufträge bleiben als `PendingPrinter` nachvollziehbar
+- SQLite im WAL-Modus
+- Ereignisprotokoll
+- GitHub-Actions-Build auf Windows
 
-## Production logic
+## Architektur
 
-1. PC sends job parameters to LOGO!.
-2. LOGO! receives one cycle pulse from the injection molding machine.
-3. LOGO! increments local cycle counter.
-4. LOGO! adds the active cavity count to the current VE part counter.
-5. When the configured VE target is reached or exceeded, LOGO! actuates the pneumatic changer.
-6. LOGO! marks the packaging unit as completed and starts the next VE.
-7. PC reads the resulting state and updates the dashboard.
+```text
+Maschine/Zyklussignal
+       │
+       ▼
+ Siemens LOGO! ──────► Pneumatikventil / VE-Wechsler
+       │
+       │ Ethernet
+       ▼
+ WLAN-Client/Bridge )))) Access Point ─── LAN ─── Partcounter-PC
+                                                   │
+                              ┌────────────────────┼─────────────────────┐
+                              ▼                    ▼                     ▼
+                         WPF-Leitstand           SQLite            Etikettendruck
+```
 
-### Important: cavity count vs. VE target
+Die 30 LOGO!-Stationen sollten feste IP-Adressen erhalten, z. B. `192.168.50.101` bis `192.168.50.130`; der PC kann z. B. `192.168.50.10` verwenden.
 
-A packaging-unit target should ideally be divisible by the number of active cavities. Example: 8 cavities and VE target 1,000 parts cannot be filled exactly by complete cycles. The system therefore records both the configured target and the actual filled quantity and reports any cycle-related overfill.
+## Datenbank
 
-## Communications
+Beim ersten Start wird `%LOCALAPPDATA%\Partcounter\partcounter.db` angelegt. Enthalten sind:
 
-- Protocol: Modbus TCP
-- Transport: Ethernet/IP over WLAN bridge
-- Recommended topology: one persistent PC client connection per LOGO!, with independent communication workers
-- Polling is staggered/parallel so one unreachable machine cannot block the remaining machines
-- Write operations use a command sequence/acknowledgement handshake instead of short network pulses
+- `Machines`
+- `Articles`
+- `PackagingUnits`
+- `Settings`
+- `Events`
 
-See `docs/MODBUS_REGISTER_MAP.md` for the initial logical register map.
+R001 legt 30 Maschinen und zwei deutlich als `DEMO-*` gekennzeichnete Beispielartikel an. Reale Artikel werden direkt im Reiter **Artikelstamm** gepflegt.
 
-## Windows application
+## Etikettendruck
 
-Initial technical baseline:
+Beim Abschluss einer VE wird zuerst der VE-Datensatz gespeichert. Anschließend wird – sofern aktiviert – das Etikett gedruckt. Dadurch bleibt die Produktion auch bei fehlendem oder ausgeschaltetem Drucker nachvollziehbar.
 
-- C#
-- .NET 8
-- WPF
-- MVVM-oriented architecture
-- SQLite planned for configuration, production history and audit data
-- NModbus planned for Modbus TCP communication
-- Simulation mode for development without physical LOGO! hardware
+Das R001-Etikett enthält:
 
-## R001 scope
+- Maschine
+- VE-Nummer
+- Auftragsnummer
+- Artikelnummer / Bezeichnung
+- Werkzeugnummer
+- Kavitäten
+- Sollmenge
+- tatsächliche Menge
+- zyklusbedingte Mehrmenge
+- Fertigstellungszeit
+- eindeutige VE-ID
+- QR-Code
+- Code 128
 
-R001 establishes:
+## Modbus
 
-- solution/project structure
-- 30-machine data model
-- dashboard foundation
-- machine configuration model
-- communication abstraction
-- simulation mode
-- Modbus register-map specification
-- local-LOGO-first control philosophy
+Die verbindliche Partcounter-V1-Registerbelegung steht in [`docs/MODBUS_REGISTER_MAP.md`](docs/MODBUS_REGISTER_MAP.md). Die LOGO!-Ablauflogik steht in [`docs/LOGO_CONTROL_LOGIC.md`](docs/LOGO_CONTROL_LOGIC.md).
 
-## Planned revisions
+## Build
 
-- **R001** – System foundation and simulator
-- **R002** – Real Modbus TCP communication with one LOGO!
-- **R003** – 30-machine parallel communication manager
-- **R004** – Job/article/tool management and SQLite persistence
-- **R005** – VE history, alarms, statistics and audit trail
-- **R006** – Production-ready packaging change handshake and recovery logic
-- **R007** – Deployment, portable build, diagnostics and field commissioning tools
+1. `Partcounter.sln` mit Visual Studio 2022 öffnen.
+2. NuGet-Pakete wiederherstellen.
+3. `Partcounter.App` starten.
+4. Standardmäßig im Simulationsmodus testen.
+5. Erst nach I/O- und Kommunikationsprüfung den Echtbetrieb aktivieren.
 
-## Safety / commissioning note
+Verwendete Pakete:
 
-Partcounter is a production monitoring/control system, not a safety PLC. Safety functions of the injection molding machine must remain in the machine safety circuit. Interfaces to machine signals and pneumatic actuators must be electrically suitable, isolated where required, and commissioned by qualified personnel.
+- NModbus 3.0.83
+- Microsoft.Data.Sqlite 8.0.30
+- ZXing.Net 0.16.11
+
+## Inbetriebnahmehinweis
+
+Partcounter ist keine Sicherheitssteuerung. Maschinen-Sicherheitsfunktionen müssen vollständig in den vorhandenen sicheren Maschinenkreisen verbleiben. Der pneumatische Verpackungswechsler muss so ausgelegt und validiert sein, dass Neustart, Kommunikationsverlust, Spannungsausfall oder ein fehlerhaftes Datentelegramm keine gefährliche Bewegung auslösen. Vor Produktivbetrieb sind Risikobeurteilung, I/O-Prüfung und Freigabe je Maschine erforderlich.

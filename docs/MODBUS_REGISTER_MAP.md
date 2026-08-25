@@ -1,83 +1,122 @@
-# Partcounter – Modbus TCP register map R001
+# Partcounter V1 – Modbus TCP Register Map
 
-This is the initial logical contract between the Windows application and each Siemens LOGO!.
+**Protokollversion:** 1  
+**Modbus TCP:** Port 502  
+**PC:** Client/Master  
+**Siemens LOGO!:** Server/Slave  
+**Unit ID:** standardmäßig 1
 
-## Addressing rule
+> NModbus adressiert Holding Register nullbasiert. In der folgenden Tabelle ist `HR1` die fachliche erste Registerposition und entspricht in der PC-Software Adresse `0`. Die konkrete LOGO!-VM/VW-Zuordnung ist bei der Inbetriebnahme in LOGO! Soft Comfort gegen die verwendete Hardware-/Firmwareversion zu prüfen.
 
-Siemens LOGO! maps variable words to Modbus holding registers. The intended mapping is:
+## PC → LOGO! Konfiguration HR1–HR12
 
-- HR1 = VW0
-- HR2 = VW2
-- HR3 = VW4
-- ...
-
-In the PC source code NModbus uses **zero-based protocol addresses**, therefore NModbus address `0` corresponds to the first holding register (HR1).
-
-## PC → LOGO! configuration / command block
-
-| HR | LOGO VM | Meaning | Format |
+| HR | Offset | Datentyp | Bedeutung |
 |---:|---:|---|---|
-| 1 | VW0 | Protocol version | UInt16 |
-| 2 | VW2 | Command sequence | UInt16 |
-| 3 | VW4 | Command word | bit field |
-| 4 | VW6 | Active cavities | UInt16 (1…64) |
-| 5 | VW8 | VE target, high word | UInt32 high |
-| 6 | VW10 | VE target, low word | UInt32 low |
-| 7 | VW12 | Pneumatic valve pulse time | ms UInt16 |
-| 8 | VW14 | Job ID high word | UInt32 high |
-| 9 | VW16 | Job ID low word | UInt32 low |
-| 10 | VW18 | Reserved | UInt16 |
+| HR1 | 0 | UINT16 | ProtocolVersion = 1 |
+| HR2 | 1 | UINT16 | CommandSequence |
+| HR3 | 2 | UINT16 | CommandWord |
+| HR4 | 3 | UINT16 | ActiveCavities 1–64 |
+| HR5 | 4 | UINT16 | TargetPartsPerVE High Word |
+| HR6 | 5 | UINT16 | TargetPartsPerVE Low Word |
+| HR7 | 6 | UINT16 | ValvePulseMs |
+| HR8 | 7 | UINT16 | JobId High Word |
+| HR9 | 8 | UINT16 | JobId Low Word |
+| HR10 | 9 | UINT16 | TargetCyclesPerVE High Word |
+| HR11 | 10 | UINT16 | TargetCyclesPerVE Low Word |
+| HR12 | 11 | UINT16 | PC Heartbeat |
 
-### Command word
+### Zielzyklen
 
-- bit 0: automatic VE change enabled
-- bit 1: reset active job/counters
-- bit 2: manual VE change request
-- bit 3: acknowledge alarm
+Der PC berechnet vor der Übertragung:
 
-The LOGO! executes a command only when `Command sequence` changes. After execution, the LOGO! copies the processed sequence number into `Status acknowledgement sequence`. This prevents lost or repeatedly executed commands after WLAN interruptions.
+```text
+TargetCyclesPerVE = ceil(TargetPartsPerVE / ActiveCavities)
+EffectiveVE       = TargetCyclesPerVE × ActiveCavities
+```
 
-## LOGO! → PC status block
+Damit muss die LOGO! keine Rundungsdivision ausführen. Beispiel 1.000 Teile / 64 Kavitäten → 16 Zielzyklen → 1.024 Teile.
 
-| HR | LOGO VM | Meaning | Format |
+## CommandWord HR3
+
+| Bit | Maske | Bedeutung |
+|---:|---:|---|
+| 0 | 0x0001 | Automatic enabled |
+| 1 | 0x0002 | Reset / neuer Auftrag |
+| 2 | 0x0004 | Manueller VE-Wechsel |
+| 3 | 0x0008 | Alarm quittieren |
+| 4 | 0x0010 | Zählung pausieren |
+
+`CommandSequence` wird bei jedem neuen Befehl erhöht. One-Shot-Bits wie Reset oder manueller Wechsel dürfen von der LOGO! nur einmal verarbeitet werden, wenn sich die Sequenz geändert hat. Danach schreibt die LOGO! die verarbeitete Sequenz als `AckSequence` zurück.
+
+## LOGO! → PC Status HR20–HR36
+
+| HR | Offset im Statusblock | Datentyp | Bedeutung |
 |---:|---:|---|---|
-| 20 | VW38 | Protocol version | UInt16 |
-| 21 | VW40 | Status word | bit field |
-| 22 | VW42 | Current VE parts high | UInt32 high |
-| 23 | VW44 | Current VE parts low | UInt32 low |
-| 24 | VW46 | Total cycles high | UInt32 high |
-| 25 | VW48 | Total cycles low | UInt32 low |
-| 26 | VW50 | Current VE number | UInt16 |
-| 27 | VW52 | Completed VE count | UInt16 |
-| 28 | VW54 | Last completed VE quantity high | UInt32 high |
-| 29 | VW56 | Last completed VE quantity low | UInt32 low |
-| 30 | VW58 | Acknowledged command sequence | UInt16 |
-| 31 | VW60 | Active cavities echo | UInt16 |
+| HR20 | 0 | UINT16 | ProtocolVersion = 1 |
+| HR21 | 1 | UINT16 | StatusWord |
+| HR22 | 2 | UINT16 | CurrentParts High Word |
+| HR23 | 3 | UINT16 | CurrentParts Low Word |
+| HR24 | 4 | UINT16 | TotalCycles High Word |
+| HR25 | 5 | UINT16 | TotalCycles Low Word |
+| HR26 | 6 | UINT16 | CurrentVENumber |
+| HR27 | 7 | UINT16 | CompletedVEs |
+| HR28 | 8 | UINT16 | LastCompletedVEQuantity High Word |
+| HR29 | 9 | UINT16 | LastCompletedVEQuantity Low Word |
+| HR30 | 10 | UINT16 | AckSequence |
+| HR31 | 11 | UINT16 | ActiveCavitiesEcho |
+| HR32 | 12 | UINT16 | LastCompletedVENumber |
+| HR33 | 13 | UINT16 | CompletionSequence |
+| HR34 | 14 | UINT16 | LOGO Heartbeat |
+| HR35 | 15 | UINT16 | ErrorCode |
+| HR36 | 16 | UINT16 | LastCompletionReason |
 
-## Proposed status word
+## StatusWord HR21
 
-- bit 0: job active
-- bit 1: automatic mode active
-- bit 2: VE change output active
-- bit 3: VE completed event
-- bit 4: configuration valid
-- bit 5: cycle input seen
-- bit 6: local alarm
-- bit 7: manual mode
+| Bit | Maske | Bedeutung |
+|---:|---:|---|
+| 0 | 0x0001 | LOGO bereit |
+| 1 | 0x0002 | Automatik aktiv |
+| 2 | 0x0004 | VE-Wechsel läuft |
+| 3 | 0x0008 | Alarm |
+| 4 | 0x0010 | Zykluseingang aktiv |
 
-## Polling strategy
+## LastCompletionReason HR36
 
-Each LOGO! gets its own communication state machine. A lost connection to machine 07 must not block machines 01–06 or 08–30.
+| Wert | Bedeutung |
+|---:|---|
+| 0 | unbekannt / noch keine VE |
+| 1 | automatisch voll |
+| 2 | manueller VE-Wechsel |
 
-Initial recommendation:
+## VE-Abschluss-Handshake
 
-- normal status polling: 500–1000 ms per machine
-- parallel/staggered polling
-- persistent TCP connection where possible
-- short connection/read timeouts
-- exponential reconnect delay after failures
-- command read-back using the sequence/acknowledgement pair
+Vor dem Zurücksetzen des aktuellen VE-Zählers muss die LOGO! atomar bzw. in definierter Reihenfolge:
 
-## Revision control
+1. `LastCompletedVEQuantity = CurrentParts` setzen.
+2. `LastCompletedVENumber = CurrentVENumber` setzen.
+3. `LastCompletionReason` setzen.
+4. `CompletedVEs` erhöhen.
+5. `CompletionSequence` erhöhen.
+6. pneumatischen Wechsel ausführen bzw. Wechselstatus setzen.
+7. `CurrentVENumber` erhöhen.
+8. aktuellen VE-Zähler auf 0 setzen.
 
-Any incompatible register-map change increments `Protocol version`. The PC must reject an unexpected version instead of interpreting incorrect registers.
+Der PC erkennt eine neue fertige VE an einer Änderung von `CompletionSequence`. Dadurch muss er den kurzen Zustand „VE voll“ nicht exakt im Polling treffen und kann das Etikett anhand der gespeicherten Last-Completed-Werte sicher erzeugen.
+
+## Heartbeat-Verhalten
+
+- PC erhöht `HR12` zyklisch.
+- LOGO! erhöht `HR34` zyklisch.
+- Ein eingefrorener Heartbeat erzeugt Kommunikationsstatus/Diagnose.
+- **Ein PC-/WLAN-Ausfall darf die lokale Zählung und den automatischen VE-Wechsel nicht stoppen.**
+- Sicherheitsfunktionen der Maschine dürfen niemals von diesem Protokoll abhängen.
+
+## 32-Bit-Werte
+
+32-Bit-Werte werden als High Word, danach Low Word übertragen:
+
+```text
+value = (high << 16) | low
+```
+
+Diese Word-Reihenfolge ist für Partcounter V1 verbindlich.
