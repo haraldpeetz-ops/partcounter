@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.3</Version>
-    <FileVersion>0.1.3.0</FileVersion>
-    <InformationalVersion>0.1.3-r001.3-ve-attention-focus</InformationalVersion>
+    <Version>0.1.4</Version>
+    <FileVersion>0.1.4.0</FileVersion>
+    <InformationalVersion>0.1.4-r001.4-fill-level-warning-stages</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
