@@ -1,0 +1,256 @@
+<UserControl x:Class="Partcounter.Views.AlsIntegrationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="900" MinHeight="600">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border Background="#EEF3F7" BorderBrush="#C9D4DE" BorderThickness="1"
+                CornerRadius="6" Padding="10" Margin="0,0,0,8">
+            <StackPanel>
+                <TextBlock Text="ARBURG ALS – Auftragsdaten-Schnittstelle" FontSize="20" FontWeight="Bold"/>
+                <TextBlock Margin="0,5,0,0" TextWrapping="Wrap" Foreground="#465361"
+                           Text="Partcounter R001.6 kann Auftragsdaten aus einem ALS-Export (XLSX/CSV/TSV) oder über einen kundenseitig freigegebenen REST/JSON-Endpunkt einlesen. Da Feldnamen und REST-Schema je ALS-Installation/Modulstand unterschiedlich sein können, werden alle Quellfelder frei auf Partcounter-Zielfelder gemappt. Importierte Aufträge werden standardmäßig nur in die Auftragsmaske übernommen und nicht automatisch gestartet."/>
+            </StackPanel>
+        </Border>
+
+        <TabControl Grid.Row="1">
+            <TabItem Header="ALS-Aufträge">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <WrapPanel>
+                        <Button Content="Verbindung / Quelle testen" Command="{Binding TestConnectionCommand}" Padding="14,7"/>
+                        <Button Content="Aufträge laden" Command="{Binding LoadOrdersCommand}" Padding="14,7"/>
+                        <Button Content="Einstellungen speichern" Command="{Binding SaveSettingsCommand}" Padding="14,7"/>
+                        <TextBlock Text="{Binding LastImportText}" VerticalAlignment="Center" Margin="14,0,0,0" Foreground="#657180"/>
+                    </WrapPanel>
+
+                    <Border Grid.Row="1" Background="White" BorderBrush="#D8DEE6" BorderThickness="1"
+                            CornerRadius="4" Padding="8" Margin="0,8,0,8">
+                        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
+                    </Border>
+
+                    <DataGrid Grid.Row="2" ItemsSource="{Binding Orders}" SelectedItem="{Binding SelectedOrder}"
+                              AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
+                              SelectionMode="Single" HeadersVisibility="Column">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Maschine" Binding="{Binding MachineDisplay}" Width="90"/>
+                            <DataGridTextColumn Header="Auftrag" Binding="{Binding OrderNumber}" Width="140"/>
+                            <DataGridTextColumn Header="Artikel" Binding="{Binding ArticleNumber}" Width="130"/>
+                            <DataGridTextColumn Header="Sollmenge" Binding="{Binding OrderQuantity, StringFormat={}{0:N0}}" Width="100"/>
+                            <DataGridTextColumn Header="Werkzeug" Binding="{Binding ToolNumber}" Width="120"/>
+                            <DataGridTextColumn Header="Kav." Binding="{Binding CavitiesText}" Width="55"/>
+                            <DataGridTextColumn Header="VE" Binding="{Binding PackagingQuantityText}" Width="90"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding OrderStatus}" Width="100"/>
+                            <DataGridTextColumn Header="Planstart" Binding="{Binding PlannedStartText}" Width="135"/>
+                            <DataGridTextColumn Header="Arbeitsgang" Binding="{Binding OperationNumber}" Width="90"/>
+                            <DataGridTextColumn Header="Material" Binding="{Binding MaterialNumber}" Width="120"/>
+                            <DataGridTextColumn Header="Charge" Binding="{Binding Batch}" Width="100"/>
+                            <DataGridTextColumn Header="Quelle" Binding="{Binding SourceDescription}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <StackPanel Grid.Row="3" Margin="0,8,0,0">
+                        <Button Content="Ausgewählten ALS-Auftrag in Partcounter übernehmen"
+                                Command="{Binding ApplySelectedOrderCommand}" Padding="16,9"
+                                HorizontalAlignment="Left"/>
+                        <TextBlock Margin="0,5,0,0" TextWrapping="Wrap" Foreground="#657180"
+                                   Text="Übernehmen setzt Maschine, Artikel, Auftragsnummer und Auftragsmenge in der normalen Partcounter-Auftragsmaske. Der Bediener kann die Daten dort prüfen und den Auftrag starten. Nur wenn 'Beim Übernehmen automatisch starten' aktiviert ist, wird unmittelbar ein Startbefehl ausgelöst."/>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Verbindung / Quelle">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="14" MaxWidth="1050" HorizontalAlignment="Left">
+                        <TextBlock Text="Allgemein" FontSize="18" FontWeight="Bold"/>
+                        <WrapPanel Margin="0,8,0,0">
+                            <StackPanel Width="260" Margin="4">
+                                <TextBlock Text="Quellmodus" FontWeight="SemiBold"/>
+                                <ComboBox ItemsSource="{Binding SourceModes}" SelectedItem="{Binding Settings.SourceMode}" MinHeight="28"/>
+                            </StackPanel>
+                            <StackPanel Width="170" Margin="4">
+                                <TextBlock Text="Auto-Abruf" FontWeight="SemiBold"/>
+                                <CheckBox Content="aktiv" IsChecked="{Binding Settings.AutoPoll}" Margin="0,7,0,0"/>
+                            </StackPanel>
+                            <StackPanel Width="200" Margin="4">
+                                <TextBlock Text="Abrufintervall [s]" FontWeight="SemiBold"/>
+                                <TextBox Text="{Binding Settings.PollIntervalSeconds, UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+                            <StackPanel Width="200" Margin="4">
+                                <TextBlock Text="Zahlen-/Datumsformat" FontWeight="SemiBold"/>
+                                <TextBox Text="{Binding Settings.CultureName}" ToolTip="z. B. de-DE oder en-US"/>
+                            </StackPanel>
+                        </WrapPanel>
+
+                        <Separator Margin="0,14"/>
+                        <TextBlock Text="Datei-/Hotfolder-Modus (XLSX, XLSM, CSV, TXT, TSV)" FontSize="18" FontWeight="Bold"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#657180" Margin="0,3,0,7"
+                                   Text="Der Pfad darf eine konkrete Datei oder ein Verzeichnis sein. Bei einem Verzeichnis wird die neueste Datei gesucht, die zum Dateimuster passt. UNC-Pfade wie \\SERVER\ALS\Export sind zulässig, sofern der Windows-Benutzer Leserechte besitzt."/>
+                        <DockPanel Margin="4">
+                            <Button DockPanel.Dock="Right" Content="Datei auswählen …" Command="{Binding BrowseFileCommand}" Padding="10,4"/>
+                            <TextBox Text="{Binding Settings.FilePath, UpdateSourceTrigger=PropertyChanged}" MinHeight="28" Margin="0,0,8,0"/>
+                        </DockPanel>
+                        <WrapPanel>
+                            <StackPanel Width="220" Margin="4">
+                                <TextBlock Text="Dateimuster"/>
+                                <TextBox Text="{Binding Settings.FilePattern}" ToolTip="z. B. *.xlsx oder ALS_Order_*.csv"/>
+                            </StackPanel>
+                            <StackPanel Width="220" Margin="4">
+                                <TextBlock Text="Excel-Blatt (leer = erstes)"/>
+                                <TextBox Text="{Binding Settings.ExcelSheetName}"/>
+                            </StackPanel>
+                            <StackPanel Width="140" Margin="4">
+                                <TextBlock Text="Kopfzeile"/>
+                                <TextBox Text="{Binding Settings.HeaderRow}"/>
+                            </StackPanel>
+                            <StackPanel Width="140" Margin="4">
+                                <TextBlock Text="CSV-Trenner"/>
+                                <TextBox Text="{Binding Settings.CsvDelimiter}" ToolTip="z. B. ; , oder \t"/>
+                            </StackPanel>
+                            <StackPanel Width="180" Margin="4">
+                                <TextBlock Text="Dateicodierung"/>
+                                <TextBox Text="{Binding Settings.FileEncodingName}" ToolTip="utf-8, windows-1252 …"/>
+                            </StackPanel>
+                        </WrapPanel>
+                        <WrapPanel Margin="4">
+                            <CheckBox Content="Nach erfolgreichem Import archivieren" IsChecked="{Binding Settings.ArchiveAfterImport}" Margin="0,5,15,0"/>
+                            <StackPanel Width="360" Margin="4">
+                                <TextBlock Text="Archivordner"/>
+                                <TextBox Text="{Binding Settings.ArchiveFolder}"/>
+                            </StackPanel>
+                            <StackPanel Width="360" Margin="4">
+                                <TextBlock Text="Fehlerordner"/>
+                                <TextBox Text="{Binding Settings.ErrorFolder}"/>
+                            </StackPanel>
+                        </WrapPanel>
+
+                        <Separator Margin="0,14"/>
+                        <TextBlock Text="REST/JSON-Modus" FontSize="18" FontWeight="Bold"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#657180" Margin="0,3,0,7"
+                                   Text="REST-Endpunkt, Authentifizierung und JSON-Struktur müssen aus Ihrer konkreten ALS-Installation bzw. vom ARBURG ALS Support stammen. Partcounter erfindet keine ARBURG-Endpunkte; es ruft ausschließlich die hier konfigurierte URL auf."/>
+                        <TextBlock Text="REST-URL" Margin="4,0,0,0"/>
+                        <TextBox Text="{Binding Settings.RestUrl, UpdateSourceTrigger=PropertyChanged}" Margin="4"/>
+                        <WrapPanel>
+                            <StackPanel Width="150" Margin="4">
+                                <TextBlock Text="HTTP-Methode"/>
+                                <ComboBox ItemsSource="{Binding HttpMethods}" SelectedItem="{Binding Settings.HttpMethod}"/>
+                            </StackPanel>
+                            <StackPanel Width="210" Margin="4">
+                                <TextBlock Text="Authentifizierung"/>
+                                <ComboBox ItemsSource="{Binding AuthenticationTypes}" SelectedItem="{Binding Settings.AuthenticationType}"/>
+                            </StackPanel>
+                            <StackPanel Width="180" Margin="4">
+                                <TextBlock Text="Timeout [s]"/>
+                                <TextBox Text="{Binding Settings.TimeoutSeconds}"/>
+                            </StackPanel>
+                            <StackPanel Width="300" Margin="4">
+                                <TextBlock Text="JSON-Wurzelpfad"/>
+                                <TextBox Text="{Binding Settings.JsonRootPath}" ToolTip="z. B. data.orders; leer = gesamte Antwort"/>
+                            </StackPanel>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <StackPanel Width="260" Margin="4">
+                                <TextBlock Text="Benutzername (Basic Auth)"/>
+                                <TextBox Text="{Binding Settings.Username}"/>
+                            </StackPanel>
+                            <StackPanel Width="260" Margin="4">
+                                <TextBlock Text="Passwort (DPAPI-geschützt gespeichert)"/>
+                                <TextBox Text="{Binding Settings.Password}"/>
+                            </StackPanel>
+                            <StackPanel Width="260" Margin="4">
+                                <TextBlock Text="Bearer Token (DPAPI-geschützt)"/>
+                                <TextBox Text="{Binding Settings.BearerToken}"/>
+                            </StackPanel>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <StackPanel Width="260" Margin="4">
+                                <TextBlock Text="API-Key Header"/>
+                                <TextBox Text="{Binding Settings.ApiKeyHeader}"/>
+                            </StackPanel>
+                            <StackPanel Width="260" Margin="4">
+                                <TextBlock Text="API-Key Wert (DPAPI-geschützt)"/>
+                                <TextBox Text="{Binding Settings.ApiKeyValue}"/>
+                            </StackPanel>
+                            <StackPanel Width="300" Margin="4">
+                                <TextBlock Text="Client-Zertifikat (.pfx/.p12)"/>
+                                <TextBox Text="{Binding Settings.ClientCertificatePath}"/>
+                            </StackPanel>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <StackPanel Width="300" Margin="4">
+                                <TextBlock Text="Zertifikat-Passwort (DPAPI-geschützt)"/>
+                                <TextBox Text="{Binding Settings.ClientCertificatePassword}"/>
+                            </StackPanel>
+                            <CheckBox Content="Unsichere/nicht vertrauenswürdige TLS-Zertifikate akzeptieren (nur Test!)"
+                                      IsChecked="{Binding Settings.AllowUntrustedTls}" Margin="10,22,0,0"/>
+                        </WrapPanel>
+                        <TextBlock Text="Zusätzliche HTTP-Header (eine Zeile je Header, Name: Wert)" Margin="4,7,0,0"/>
+                        <TextBox Text="{Binding Settings.AdditionalHeaders}" AcceptsReturn="True" Height="75" Margin="4"
+                                 VerticalScrollBarVisibility="Auto"/>
+                        <TextBlock Text="POST-Request-Body (JSON; bei GET ignoriert)" Margin="4,7,0,0"/>
+                        <TextBox Text="{Binding Settings.RequestBody}" AcceptsReturn="True" Height="100" Margin="4"
+                                 VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+
+                        <Separator Margin="0,14"/>
+                        <TextBlock Text="Importverhalten" FontSize="18" FontWeight="Bold"/>
+                        <CheckBox Content="Fehlende Artikel automatisch aus ALS anlegen (nur wenn Kavitäten und VE-Menge geliefert werden)"
+                                  IsChecked="{Binding Settings.CreateMissingArticles}" Margin="4,8,0,0"/>
+                        <CheckBox Content="Bestehende Artikelstammdaten mit gelieferten ALS-Werten aktualisieren"
+                                  IsChecked="{Binding Settings.UpdateExistingArticles}" Margin="4,5,0,0"/>
+                        <CheckBox Content="Beim Übernehmen eines ALS-Auftrags automatisch starten"
+                                  IsChecked="{Binding Settings.AutoStartOnApply}" Margin="4,5,0,0"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#A14A00" Margin="4,4,0,0"
+                                   Text="Empfehlung: Automatischen Start erst nach vollständig validierter Maschine-/Artikelzuordnung aktivieren. Im Standard bleibt der ALS-Import ein kontrollierter Vorschlag, den der Bediener prüft."/>
+
+                        <Button Content="Einstellungen speichern" Command="{Binding SaveSettingsCommand}"
+                                Padding="16,8" HorizontalAlignment="Left" Margin="4,14,0,20"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Feldmapping / Maschinenzuordnung">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock TextWrapping="Wrap" Foreground="#465361"
+                               Text="Quellfeld ist bei XLSX/CSV exakt die Spaltenüberschrift und bei REST/JSON ein punktgetrennter JSON-Pfad relativ zum einzelnen Auftragsobjekt (z. B. order.number oder article.id). Pflichtfelder müssen auf eine vorhandene Quelle zeigen."/>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding Mappings}" AutoGenerateColumns="False"
+                              CanUserAddRows="False" Margin="0,8,0,8">
+                        <DataGrid.Columns>
+                            <DataGridCheckBoxColumn Header="Pflicht" Binding="{Binding Required}" IsReadOnly="True" Width="65"/>
+                            <DataGridTextColumn Header="Partcounter-Zielfeld" Binding="{Binding TargetField}" IsReadOnly="True" Width="155"/>
+                            <DataGridTextColumn Header="ALS Quellspalte / JSON-Pfad" Binding="{Binding SourceField, UpdateSourceTrigger=PropertyChanged}" Width="220"/>
+                            <DataGridTextColumn Header="Bedeutung" Binding="{Binding Description}" IsReadOnly="True" Width="*"/>
+                            <DataGridTextColumn Header="Beispiel" Binding="{Binding Example}" IsReadOnly="True" Width="180"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <StackPanel Grid.Row="2">
+                        <TextBlock Text="Maschinen-Alias (eine Zuordnung je Zeile: ALS-ID=M01 oder ALS-ID=1)" FontWeight="SemiBold"/>
+                        <TextBox Text="{Binding Settings.MachineAliasMap}" AcceptsReturn="True" Height="90" FontFamily="Consolas"
+                                 VerticalScrollBarVisibility="Auto" Margin="0,5,0,5"/>
+                        <WrapPanel>
+                            <Button Content="Mapping auf Standard zurücksetzen" Command="{Binding ResetMappingsCommand}" Padding="12,6"/>
+                            <Button Content="Mapping / Einstellungen speichern" Command="{Binding SaveSettingsCommand}" Padding="12,6"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>
