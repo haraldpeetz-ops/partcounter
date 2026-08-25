@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.4</Version>
-    <FileVersion>0.1.4.0</FileVersion>
-    <InformationalVersion>0.1.4-r001.4-fill-level-warning-stages</InformationalVersion>
+    <Version>0.1.5</Version>
+    <FileVersion>0.1.5.0</FileVersion>
+    <InformationalVersion>0.1.5-r001.5-order-mini-monitor</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

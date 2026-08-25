@@ -33,8 +33,13 @@ public sealed class LogoModbusClient : IAsyncDisposable
         _master = new ModbusFactory().CreateMaster(tcpClient);
     }
 
-    public async Task WriteJobAsync(JobParameters job, ushort commandSequence, bool automaticMode = true,
-        bool resetJob = true, CancellationToken cancellationToken = default)
+    public async Task WriteJobAsync(
+        JobParameters job,
+        ushort commandSequence,
+        bool automaticMode = true,
+        bool resetJob = true,
+        bool pauseCounting = false,
+        CancellationToken cancellationToken = default)
     {
         EnsureConnected();
         cancellationToken.ThrowIfCancellationRequested();
@@ -42,6 +47,8 @@ public sealed class LogoModbusClient : IAsyncDisposable
         var commandWord = automaticMode ? ModbusRegisterMap.CommandEnableAutomatic : (ushort)0;
         if (resetJob)
             commandWord |= ModbusRegisterMap.CommandResetJob;
+        if (pauseCounting)
+            commandWord |= ModbusRegisterMap.CommandPauseCounting;
 
         ushort[] registers =
         [
@@ -59,10 +66,15 @@ public sealed class LogoModbusClient : IAsyncDisposable
             0
         ];
 
-        await _master!.WriteMultipleRegistersAsync(_configuration.UnitId, ModbusRegisterMap.ConfigStart, registers);
+        await _master!.WriteMultipleRegistersAsync(
+            _configuration.UnitId,
+            ModbusRegisterMap.ConfigStart,
+            registers);
     }
 
-    public async Task SendCommandAsync(ushort commandSequence, ushort commandWord,
+    public async Task SendCommandAsync(
+        ushort commandSequence,
+        ushort commandWord,
         CancellationToken cancellationToken = default)
     {
         EnsureConnected();
@@ -78,6 +90,7 @@ public sealed class LogoModbusClient : IAsyncDisposable
     {
         EnsureConnected();
         cancellationToken.ThrowIfCancellationRequested();
+
         await _master!.WriteSingleRegisterAsync(
             _configuration.UnitId,
             (ushort)(ModbusRegisterMap.ConfigStart + ModbusRegisterMap.ConfigPcHeartbeat),

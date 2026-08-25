@@ -1,0 +1,107 @@
+<Window x:Class="Partcounter.CompactMonitorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:services="clr-namespace:Partcounter.Services"
+        Title="Partcounter Mini"
+        Width="430" Height="380"
+        MinWidth="360" MinHeight="180"
+        MaxHeight="620"
+        WindowStyle="ToolWindow"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="#F2F4F7">
+    <Window.Resources>
+        <services:FillLevelVisualConverter x:Key="FillLevelVisualConverter"/>
+    </Window.Resources>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="#18212B" Padding="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="PARTCOUNTER · MINI" Foreground="White"
+                               FontSize="16" FontWeight="Bold"/>
+                    <TextBlock Text="Always on top · Doppelklick öffnet Leitstand"
+                               Foreground="#C8D1DA" FontSize="10"/>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding ActiveMachineSummary}"
+                           Foreground="#9FE870" FontWeight="SemiBold"
+                           VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Background="#E2E7EC" Padding="6">
+            <TextBlock Text="Nur aktive / pausierte Aufträge werden angezeigt."
+                       Foreground="#566473" FontSize="10"/>
+        </Border>
+
+        <ScrollViewer x:Name="CompactScrollViewer"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl x:Name="CompactItemsControl" ItemsSource="{Binding CompactMachines}" Margin="5">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="2" Padding="7" CornerRadius="5"
+                                MouseLeftButtonDown="OnMachineRowMouseLeftButtonDown">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background"
+                                            Value="{Binding FillPercent, Converter={StaticResource FillLevelVisualConverter}, ConverterParameter=TileBackground}"/>
+                                    <Setter Property="BorderBrush"
+                                            Value="{Binding FillPercent, Converter={StaticResource FillLevelVisualConverter}, ConverterParameter=BorderBrush}"/>
+                                    <Setter Property="BorderThickness" Value="1"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasVeAttention}" Value="True">
+                                            <Setter Property="Background" Value="#FFE3E0"/>
+                                            <Setter Property="BorderBrush" Value="#C62828"/>
+                                            <Setter Property="BorderThickness" Value="3"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="86"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="{Binding Configuration.MachineNumber, StringFormat=M{0:00}}"
+                                               FontSize="18" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding OrderState}" FontSize="10" Foreground="#657180"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Margin="4,0">
+                                    <TextBlock Text="{Binding ArticleNumber}" FontWeight="Bold"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding OrderNumber}" FontSize="10"
+                                               Foreground="#657180" TextTrimming="CharacterEllipsis"/>
+                                    <ProgressBar Minimum="0" Maximum="100"
+                                                 Value="{Binding FillPercent, Mode=OneWay}"
+                                                 Foreground="{Binding FillPercent, Converter={StaticResource FillLevelVisualConverter}, ConverterParameter=ProgressForeground}"
+                                                 Height="10" Margin="0,4,0,1"/>
+                                    <TextBlock Text="{Binding FillText}" FontSize="10" Foreground="#4F5D6B"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding FillPercent, StringFormat={}{0:F0} %}"
+                                               FontSize="16" FontWeight="Bold" HorizontalAlignment="Right"/>
+                                    <TextBlock Text="{Binding OrderProgressPercent, StringFormat=Auftrag {0:F0} %}"
+                                               FontSize="10" Foreground="#657180" HorizontalAlignment="Right"/>
+                                    <TextBlock Text="{Binding RemainingCycles, StringFormat={}{0:N0} Zyklen}"
+                                               FontSize="10" Foreground="#657180" HorizontalAlignment="Right"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

@@ -57,7 +57,94 @@ public sealed class MachineFleetService : IAsyncDisposable
         {
             await EnsureConnectedAsync(session, cancellationToken);
             var sequence = session.NextCommandSequence();
-            await session.Client.WriteJobAsync(job, sequence, automaticMode: true, resetJob: true, cancellationToken);
+            await session.Client.WriteJobAsync(
+                job,
+                sequence,
+                automaticMode: true,
+                resetJob: true,
+                pauseCounting: false,
+                cancellationToken: cancellationToken);
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
+    }
+
+    public async Task UpdateVeTargetAsync(
+        int machineNumber,
+        JobParameters job,
+        bool pauseCounting,
+        CancellationToken cancellationToken = default)
+    {
+        var session = GetSession(machineNumber);
+        await session.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureConnectedAsync(session, cancellationToken);
+            var sequence = session.NextCommandSequence();
+            await session.Client.WriteJobAsync(
+                job,
+                sequence,
+                automaticMode: true,
+                resetJob: false,
+                pauseCounting: pauseCounting,
+                cancellationToken: cancellationToken);
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
+    }
+
+    public async Task PauseCountingAsync(int machineNumber, CancellationToken cancellationToken = default)
+    {
+        var session = GetSession(machineNumber);
+        await session.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureConnectedAsync(session, cancellationToken);
+            await session.Client.SendCommandAsync(
+                session.NextCommandSequence(),
+                (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandPauseCounting),
+                cancellationToken);
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
+    }
+
+    public async Task ResumeCountingAsync(int machineNumber, CancellationToken cancellationToken = default)
+    {
+        var session = GetSession(machineNumber);
+        await session.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureConnectedAsync(session, cancellationToken);
+            await session.Client.SendCommandAsync(
+                session.NextCommandSequence(),
+                ModbusRegisterMap.CommandEnableAutomatic,
+                cancellationToken);
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
+    }
+
+    public async Task SetMachinePollingEnabledAsync(
+        int machineNumber,
+        bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        var session = GetSession(machineNumber);
+        await session.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            session.PollingEnabled = enabled;
+            if (!enabled)
+                session.Client.Disconnect();
         }
         finally
         {
@@ -107,6 +194,19 @@ public sealed class MachineFleetService : IAsyncDisposable
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            if (!session.PollingEnabled)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(750), cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                continue;
+            }
+
             try
             {
                 await session.Gate.WaitAsync(cancellationToken);
@@ -181,6 +281,7 @@ public sealed class MachineFleetService : IAsyncDisposable
         public LogoModbusClient Client { get; }
         public SemaphoreSlim Gate { get; } = new(1, 1);
         public ushort Heartbeat { get; set; }
+        public bool PollingEnabled { get; set; } = true;
         public ConnectionState LastState { get; set; } = ConnectionState.Offline;
 
         public ushort NextCommandSequence()

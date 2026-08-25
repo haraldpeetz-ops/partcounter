@@ -1,4 +1,4 @@
-name: Build Partcounter R001.4
+name: Build Partcounter R001.5
 
 on:
   push:
@@ -27,47 +27,50 @@ jobs:
         run: dotnet build Partcounter.sln -c Release --no-restore
 
       - name: Publish portable folder win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_4_Portable_Folder_win-x64
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_5_Portable_Folder_win-x64
 
       - name: Publish single-file win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_4_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_5_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
 
       - name: Add start instructions
         shell: pwsh
         run: |
           @'
-          PARTCOUNTER R001.4
+          PARTCOUNTER R001.5
           ==================
 
           SINGLE-FILE VERSION:
           Start Partcounter.exe directly. No .NET installation is required.
 
-          New in R001.4:
-          - 0 to 79.9 percent: normal state
-          - 80 to 94.9 percent: yellow warning state
-          - 95 percent and above: orange critical warning state
-          - completed VE: strong full-VE indication and automatic tile focus
-          - Leitstand includes a permanent fill-level legend
-          - progress bar follows the current fill-level warning stage
+          New in R001.5:
+          - explicit machine order states: no order / running / paused / completed / ended
+          - machines without active order are hidden by default
+          - idle machines can be shown on demand
+          - machines can be temporarily disabled and removed from active monitoring
+          - production target quantity and order progress
+          - automatic calculation of the final partial packaging unit
+          - pause / resume / end order controls
+          - minimized application shows a compact always-on-top monitor
+          - double-click in mini monitor restores and focuses the machine
 
           If startup fails, Partcounter writes:
           %LOCALAPPDATA%\Partcounter\Partcounter_startup.log
-          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_4_SingleFile_win-x64/START_HINWEIS.txt
+          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_5_SingleFile_win-x64/START_HINWEIS.txt
 
-          Copy-Item artifacts/Partcounter_R001_4_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_4_Portable_Folder_win-x64/START_HINWEIS.txt
+          Copy-Item artifacts/Partcounter_R001_5_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_5_Portable_Folder_win-x64/START_HINWEIS.txt
 
       - name: Upload portable folder artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_4_Portable_Folder_win-x64
-          path: artifacts/Partcounter_R001_4_Portable_Folder_win-x64
+          name: Partcounter_R001_5_Portable_Folder_win-x64
+          path: artifacts/Partcounter_R001_5_Portable_Folder_win-x64
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload single-file artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_4_SingleFile_win-x64
-          path: artifacts/Partcounter_R001_4_SingleFile_win-x64
+          name: Partcounter_R001_5_SingleFile_win-x64
+          path: artifacts/Partcounter_R001_5_SingleFile_win-x64
           if-no-files-found: error
           retention-days: 30
