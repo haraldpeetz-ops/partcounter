@@ -59,7 +59,7 @@ public sealed class LogoModbusClient : IAsyncDisposable
             job.ActiveCavities,
             ModbusRegisterMap.HighWord(job.TargetPartsPerVe),
             ModbusRegisterMap.LowWord(job.TargetPartsPerVe),
-            job.ValvePulseMs,
+            ModbusRegisterMap.ToValvePulse10Ms(job.ValvePulseMs),
             ModbusRegisterMap.HighWord(job.JobId),
             ModbusRegisterMap.LowWord(job.JobId),
             ModbusRegisterMap.HighWord(job.TargetCyclesPerVe),
@@ -81,6 +81,9 @@ public sealed class LogoModbusClient : IAsyncDisposable
         EnsureConnected();
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (commandSequence is 0 or > ModbusRegisterMap.MaxSequenceValue)
+            throw new ArgumentOutOfRangeException(nameof(commandSequence));
+
         await _master!.WriteMultipleRegistersAsync(
             _configuration.UnitId,
             (ushort)(ModbusRegisterMap.ConfigStart + ModbusRegisterMap.ConfigCommandSequence),
@@ -91,6 +94,9 @@ public sealed class LogoModbusClient : IAsyncDisposable
     {
         EnsureConnected();
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (heartbeat is 0 or > ModbusRegisterMap.MaxHeartbeatValue)
+            throw new ArgumentOutOfRangeException(nameof(heartbeat));
 
         await _master!.WriteSingleRegisterAsync(
             _configuration.UnitId,
@@ -119,6 +125,9 @@ public sealed class LogoModbusClient : IAsyncDisposable
         var lastCompletedVeCycles = ModbusRegisterMap.ToUInt32(
             registers[ModbusRegisterMap.StatusLastVeCyclesHi],
             registers[ModbusRegisterMap.StatusLastVeCyclesLo]);
+
+        if (currentVeCycles > ModbusRegisterMap.MaxTargetCyclesPerVe || lastCompletedVeCycles > ModbusRegisterMap.MaxTargetCyclesPerVe)
+            throw new InvalidOperationException("LOGO! reported a VE cycle counter outside the Partcounter V2 range.");
 
         var currentParts = checked(currentVeCycles * (uint)activeCavities);
         var lastCompletedVeQuantity = checked(lastCompletedVeCycles * (uint)lastCompletedCavities);
@@ -161,6 +170,9 @@ public sealed class LogoModbusClient : IAsyncDisposable
 
         if (job.ValvePulseMs < ModbusRegisterMap.MinValvePulseMs || job.ValvePulseMs > ModbusRegisterMap.MaxValvePulseMs)
             throw new ArgumentOutOfRangeException(nameof(job), $"Valve pulse must be between {ModbusRegisterMap.MinValvePulseMs} and {ModbusRegisterMap.MaxValvePulseMs} ms.");
+
+        if (job.ValvePulseMs % ModbusRegisterMap.ValvePulseUnitMs != 0)
+            throw new ArgumentOutOfRangeException(nameof(job), $"Valve pulse must be a multiple of {ModbusRegisterMap.ValvePulseUnitMs} ms.");
     }
 
     private void EnsureConnected()
