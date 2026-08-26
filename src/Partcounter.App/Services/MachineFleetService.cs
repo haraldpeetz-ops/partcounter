@@ -219,8 +219,7 @@ public sealed class MachineFleetService : IAsyncDisposable
                 try
                 {
                     await EnsureConnectedAsync(session, cancellationToken);
-                    session.Heartbeat++;
-                    await session.Client.WriteHeartbeatAsync(session.Heartbeat, cancellationToken);
+                    await session.Client.WriteHeartbeatAsync(session.NextHeartbeat(), cancellationToken);
                     var snapshot = await session.Client.ReadSnapshotAsync(cancellationToken);
                     session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
                     SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
@@ -287,6 +286,7 @@ public sealed class MachineFleetService : IAsyncDisposable
     private sealed class Session
     {
         private ushort _commandSequence;
+        private ushort _heartbeat;
         private bool _commandSequenceSynchronized;
 
         public Session(MachineConfiguration configuration)
@@ -298,7 +298,6 @@ public sealed class MachineFleetService : IAsyncDisposable
         public MachineConfiguration Configuration { get; }
         public LogoModbusClient Client { get; }
         public SemaphoreSlim Gate { get; } = new(1, 1);
-        public ushort Heartbeat { get; set; }
         public bool PollingEnabled { get; set; } = true;
         public ConnectionState LastState { get; set; } = ConnectionState.Offline;
         public bool CommandSequenceSynchronized => _commandSequenceSynchronized;
@@ -307,6 +306,9 @@ public sealed class MachineFleetService : IAsyncDisposable
         {
             if (_commandSequenceSynchronized)
                 return;
+
+            if (acknowledgedSequence > ModbusRegisterMap.MaxSequenceValue)
+                throw new InvalidOperationException($"LOGO! AckSequence {acknowledgedSequence} is outside the Partcounter V2 range.");
 
             _commandSequence = acknowledgedSequence;
             _commandSequenceSynchronized = true;
@@ -317,9 +319,18 @@ public sealed class MachineFleetService : IAsyncDisposable
             if (!_commandSequenceSynchronized)
                 throw new InvalidOperationException("Command sequence has not been synchronized with the LOGO! yet.");
 
-            _commandSequence++;
-            if (_commandSequence == 0) _commandSequence = 1;
+            _commandSequence = _commandSequence >= ModbusRegisterMap.MaxSequenceValue
+                ? (ushort)1
+                : (ushort)(_commandSequence + 1);
             return _commandSequence;
+        }
+
+        public ushort NextHeartbeat()
+        {
+            _heartbeat = _heartbeat >= ModbusRegisterMap.MaxHeartbeatValue
+                ? (ushort)1
+                : (ushort)(_heartbeat + 1);
+            return _heartbeat;
         }
     }
 }
