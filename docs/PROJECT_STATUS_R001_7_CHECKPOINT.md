@@ -10,7 +10,7 @@ Verbindlicher Entwicklungsstand für die Fortsetzung nach R001.6.
 - Ziel: erste reale Siemens-LOGO!-Kopplung auf Basis des standardisierten `Partcounter_LOGO_V001`
 - Protokoll: Modbus V2 / ProtocolVersion 2
 
-## Referenzmaschine 01 – Hardware jetzt festgelegt
+## Referenzmaschine 01 – Hardware festgelegt
 
 Verbindliche Hardwarebasis der ersten realen Teststation:
 
@@ -97,6 +97,7 @@ Der Implementierungsstandard ist bis auf Block-/VM-Ebene ausgearbeitet. Enthalte
 - restart-sicherer CommandSequence/AckSequence-Decoder
 - Heartbeat-Überwachung
 - Ventilzeit mit fester 10-ms-Zeitbasis
+- optionale Endlagenüberwachung: Station 01 OFF, für spätere Maschinen aktivierbar
 - Fehlercodes und optionaler Endlagentimeout
 
 ## Verbindliche Registerbasis V2
@@ -115,19 +116,21 @@ DWord-Werte werden High Word vor Low Word übertragen.
 
 ## Inbetriebnahme-/Abnahmestandard
 
-`COMMISSIONING_TEST_PROTOCOL_R001_7.md` enthält aktuell 66 Prüfpunkte. Abgedeckt werden unter anderem:
+`COMMISSIONING_TEST_PROTOCOL_R001_7.md` enthält aktuell **75 Prüfpunkte** und ist auf Referenzmaschine 01 spezialisiert. Abgedeckt werden unter anderem:
 
-- Verdrahtung und sicherer Startzustand
+- exakte LOGO!-Identifikation und 24-V-Versorgung
+- Q1-Absicherung, Ventilspulendaten und Entstörung
 - Modbus-/VM-Zuordnung und DWord-Reihenfolge
 - TargetCycles-Mapping auf VD18
 - CommandSequence-/Heartbeat-Wrap 32767 → 1
-- reale Zyklusflanke und Pause bei anstehendem I1
+- 24-V-Zyklusflanke und Pause bei anstehendem I1
 - 1/2/4/8/16/32/64 Kavitäten
 - Rundung auf vollständige Werkzeugzyklen
 - VE-Grenzwerte 32767 / 32768
 - TotalCycles über 32767
 - stabiler Snapshot abgeschlossener VE-Daten
-- Ventilzeit 50/750/5000 ms und 10-ms-Raster
+- Ventilzeit 50/250/750/2500/5000 ms und 10-ms-Raster
+- Endlagenüberwachung Station 01 deaktiviert und optionale I2-Funktion vorbereitet
 - manueller und automatischer Wechsel
 - dynamische letzte Teil-VE
 - PC-/LAN-/WLAN-Ausfall und Wiederverbindung
@@ -157,7 +160,7 @@ Die bisher offenen Grunddaten der Testmaschine sind jetzt weitgehend festgelegt.
 1. Nennstrom oder Nennleistung der 24-V-Ventilspule,
 2. vorhandene integrierte Freilauf-/Entstörbeschaltung ja/nein.
 
-Anschließend kann `Partcounter_LOGO_V001` konkret für die LOGO! `6ED1052-2MD08-0BA2` in LOGO! Soft Comfort aufgebaut und anhand des 66-Punkte-R001.7-Inbetriebnahmeprotokolls geprüft werden.
+Anschließend kann `Partcounter_LOGO_V001` konkret für die LOGO! `6ED1052-2MD08-0BA2` in LOGO! Soft Comfort aufgebaut und anhand des 75-Punkte-R001.7-Inbetriebnahmeprotokolls geprüft werden.
 
 ## Sicherheitsgrenze
 
