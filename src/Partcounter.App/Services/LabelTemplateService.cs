@@ -86,7 +86,7 @@ public sealed class LabelTemplateService
         await connection.OpenAsync();
         var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT DefinitionJson
+            SELECT DefinitionJson, Name, WidthMm, HeightMm, IsDefault, AssignedArticleNumber, UpdatedAtUtc
             FROM LabelTemplates
             ORDER BY IsDefault DESC, Name COLLATE NOCASE;
             """;
@@ -97,8 +97,20 @@ public sealed class LabelTemplateService
             try
             {
                 var template = JsonSerializer.Deserialize<LabelTemplateDefinition>(reader.GetString(0), JsonOptions);
-                if (template is not null)
-                    result.Add(template);
+                if (template is null)
+                    continue;
+
+                // Die relationalen Spalten sind für Auswahl/Zuordnung maßgeblich. Dadurch bleiben
+                // Default- und Artikelzuordnungen eindeutig, auch wenn ältere JSON-Snapshots noch
+                // einen früheren Status enthalten.
+                template.Name = reader.GetString(1);
+                template.WidthMm = reader.GetDouble(2);
+                template.HeightMm = reader.GetDouble(3);
+                template.IsDefault = reader.GetInt32(4) != 0;
+                template.AssignedArticleNumber = reader.IsDBNull(5) ? null : reader.GetString(5);
+                template.UpdatedAtUtc = DateTime.Parse(
+                    reader.GetString(6), null, System.Globalization.DateTimeStyles.RoundtripKind);
+                result.Add(template);
             }
             catch
             {
@@ -120,6 +132,10 @@ public sealed class LabelTemplateService
     {
         ValidateTemplate(template);
         template.UpdatedAtUtc = DateTime.UtcNow;
+        var assignedArticle = string.IsNullOrWhiteSpace(template.AssignedArticleNumber)
+            ? null
+            : template.AssignedArticleNumber.Trim();
+        template.AssignedArticleNumber = assignedArticle;
 
         await using var connection = new SqliteConnection(ConnectionString);
         await connection.OpenAsync();
@@ -132,6 +148,20 @@ public sealed class LabelTemplateService
             clearDefault.CommandText = "UPDATE LabelTemplates SET IsDefault=0 WHERE Id<>$id;";
             clearDefault.Parameters.AddWithValue("$id", template.Id);
             await clearDefault.ExecuteNonQueryAsync();
+        }
+
+        if (!string.IsNullOrWhiteSpace(assignedArticle))
+        {
+            var clearArticle = connection.CreateCommand();
+            clearArticle.Transaction = (SqliteTransaction)transaction;
+            clearArticle.CommandText = """
+                UPDATE LabelTemplates
+                SET AssignedArticleNumber=NULL
+                WHERE Id<>$id AND lower(trim(AssignedArticleNumber))=lower(trim($article));
+                """;
+            clearArticle.Parameters.AddWithValue("$id", template.Id);
+            clearArticle.Parameters.AddWithValue("$article", assignedArticle);
+            await clearArticle.ExecuteNonQueryAsync();
         }
 
         var command = connection.CreateCommand();
@@ -155,9 +185,7 @@ public sealed class LabelTemplateService
         command.Parameters.AddWithValue("$width", template.WidthMm);
         command.Parameters.AddWithValue("$height", template.HeightMm);
         command.Parameters.AddWithValue("$default", template.IsDefault ? 1 : 0);
-        command.Parameters.AddWithValue("$article", string.IsNullOrWhiteSpace(template.AssignedArticleNumber)
-            ? DBNull.Value
-            : template.AssignedArticleNumber.Trim());
+        command.Parameters.AddWithValue("$article", assignedArticle is null ? DBNull.Value : assignedArticle);
         command.Parameters.AddWithValue("$json", JsonSerializer.Serialize(template, JsonOptions));
         command.Parameters.AddWithValue("$updated", template.UpdatedAtUtc.ToString("O"));
         await command.ExecuteNonQueryAsync();
