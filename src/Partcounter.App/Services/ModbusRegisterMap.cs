@@ -12,7 +12,7 @@ public static class ModbusRegisterMap
     public const int ConfigActiveCavities = 3;
     public const int ConfigTargetPartsHi = 4;
     public const int ConfigTargetPartsLo = 5;
-    public const int ConfigValvePulseMs = 6;
+    public const int ConfigValvePulse10Ms = 6;
     public const int ConfigJobIdHi = 7;
     public const int ConfigJobIdLo = 8;
     public const int ConfigTargetCyclesHi = 9;
@@ -42,7 +42,15 @@ public static class ModbusRegisterMap
     public const int StatusLastCompletedCavities = 17;
 
     public const ushort ProtocolVersion = 2;
-    public const uint MaxTargetCyclesPerVe = 999_999;
+
+    // LOGO! analog references and arithmetic use signed 16-bit integer values.
+    // Keep all values that must be copied/compared inside the LOGO! in the positive 16-bit range.
+    public const uint MaxTargetCyclesPerVe = 32_767;
+    public const ushort MaxSequenceValue = 32_767;
+    public const ushort MaxHeartbeatValue = 32_767;
+
+    // The LOGO! timer parameter uses a fixed 10 ms time base in Partcounter_LOGO_V001.
+    public const ushort ValvePulseUnitMs = 10;
     public const ushort MinValvePulseMs = 50;
     public const ushort MaxValvePulseMs = 5_000;
 
@@ -71,4 +79,12 @@ public static class ModbusRegisterMap
     public static ushort HighWord(uint value) => (ushort)(value >> 16);
     public static ushort LowWord(uint value) => (ushort)(value & 0xFFFF);
     public static uint ToUInt32(ushort high, ushort low) => ((uint)high << 16) | low;
+
+    public static ushort ToValvePulse10Ms(ushort milliseconds)
+    {
+        if (milliseconds % ValvePulseUnitMs != 0)
+            throw new ArgumentOutOfRangeException(nameof(milliseconds), $"Valve pulse must be a multiple of {ValvePulseUnitMs} ms.");
+
+        return (ushort)(milliseconds / ValvePulseUnitMs);
+    }
 }
