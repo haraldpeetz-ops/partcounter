@@ -110,15 +110,27 @@ public sealed class LogoModbusClient : IAsyncDisposable
         if (registers[ModbusRegisterMap.StatusProtocolVersion] != ModbusRegisterMap.ProtocolVersion)
             throw new InvalidOperationException("LOGO! register protocol version does not match Partcounter.");
 
+        var activeCavities = registers[ModbusRegisterMap.StatusActiveCavitiesEcho];
+        var lastCompletedCavities = registers[ModbusRegisterMap.StatusLastCompletedCavities];
+        var currentVeCycles = ModbusRegisterMap.ToUInt32(
+            registers[ModbusRegisterMap.StatusCurrentVeCyclesHi],
+            registers[ModbusRegisterMap.StatusCurrentVeCyclesLo]);
+        var lastCompletedVeCycles = ModbusRegisterMap.ToUInt32(
+            registers[ModbusRegisterMap.StatusLastVeCyclesHi],
+            registers[ModbusRegisterMap.StatusLastVeCyclesLo]);
+
+        var currentParts = currentVeCycles * (uint)activeCavities;
+        var lastCompletedVeQuantity = lastCompletedVeCycles * (uint)lastCompletedCavities;
+
         return new LogoSnapshot(
-            ModbusRegisterMap.ToUInt32(registers[ModbusRegisterMap.StatusCurrentPartsHi], registers[ModbusRegisterMap.StatusCurrentPartsLo]),
+            currentParts,
             ModbusRegisterMap.ToUInt32(registers[ModbusRegisterMap.StatusTotalCyclesHi], registers[ModbusRegisterMap.StatusTotalCyclesLo]),
             registers[ModbusRegisterMap.StatusCurrentVe],
             registers[ModbusRegisterMap.StatusCompletedVes],
-            ModbusRegisterMap.ToUInt32(registers[ModbusRegisterMap.StatusLastVeQuantityHi], registers[ModbusRegisterMap.StatusLastVeQuantityLo]),
+            lastCompletedVeQuantity,
             registers[ModbusRegisterMap.StatusWord],
             registers[ModbusRegisterMap.StatusAckSequence],
-            registers[ModbusRegisterMap.StatusActiveCavitiesEcho],
+            activeCavities,
             registers[ModbusRegisterMap.StatusLastCompletedVeNumber],
             registers[ModbusRegisterMap.StatusCompletionSequence],
             registers[ModbusRegisterMap.StatusLogoHeartbeat],
