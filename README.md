@@ -6,6 +6,23 @@
 
 Partcounter überwacht den Füllgrad von Verpackungseinheiten (VE) an bis zu 30 Spritzgussmaschinen. Jede Maschine liefert einen Zyklusimpuls an eine Siemens LOGO!. Die LOGO! zählt lokal und schaltet bei voller VE über ein pneumatisches Ventil den Verpackungswechsler. Die PC-Anwendung ist Leitstand, Artikel-/Auftragsverwaltung, Historie, ARBURG-ALS-Integration und Etikettendruck.
 
+## Referenzmaschine 01
+
+Die erste reale Teststation ist jetzt hardwareseitig festgelegt:
+
+- Siemens LOGO! 12/24RCEo, Bestellnummer `6ED1052-2MD08-0BA2`, LOGO! 8.4 ohne Display
+- Versorgung 24 V DC
+- I1 = 24-V-DC-Zyklusimpuls
+- Q1 = Relaisausgang für 24-V-DC-Pneumatikventil
+- keine Endlagenrückmeldung an der ersten Maschine; I2 bleibt optional vorbereitet
+- Ventilimpuls einstellbar von 50 bis 5000 ms im 10-ms-Raster, Standard 750 ms
+- externe Q1-Absicherung erforderlich
+- bevorzugte Industrieausführung: Q1 schaltet ein 24-V-Koppel-/Interface-Relais, das die Ventilspule schaltet
+
+Die verwendete LOGO!-Variante besitzt vier Relaisausgänge; das Datenblatt nennt maximal 10 A ohmsche bzw. 3 A induktive Kontaktlast und keinen internen Kurzschlussschutz. Vor Freigabe einer direkten Ventilansteuerung müssen Nennstrom/Nennleistung und Entstörbeschaltung der realen 24-V-Ventilspule bekannt sein.
+
+Die vollständige Hardwarefestlegung steht in [`docs/REFERENCE_MACHINE_01_HARDWARE.md`](docs/REFERENCE_MACHINE_01_HARDWARE.md).
+
 ## Zentrales Sicherheits- und Verfügbarkeitsprinzip
 
 **Zählen und automatischer VE-Wechsel laufen lokal in der LOGO!.** Der PC gibt Parameter vor und liest Statusdaten. Ein kurzer PC-, LAN- oder WLAN-Ausfall darf deshalb keinen Zyklus verlieren und keinen fälligen Kistenwechsel verhindern.
@@ -77,16 +94,16 @@ Beispiel: **1000 Stück Soll / 64 Kavitäten = 16 Zyklen = 1024 Stück tatsächl
 - ARBURG-ALS-REST/JSON-Modus mit Mapping, Basic/Bearer/API-Key und optionalem Clientzertifikat
 - PC-seitige Plausibilitätsprüfung vor jedem LOGO!-Auftragstelegramm
 - detaillierter LOGO!-V001-Implementierungsstandard bis auf Block-/VM-Ebene
-- 66-Punkte-Inbetriebnahme- und Abnahmeprotokoll
+- auf Referenzmaschine 01 spezialisierter 75-Punkte-Inbetriebnahme-/Abnahmestandard
 - GitHub-Actions-Windows-Build mit Portable- und Single-File-Ausgabe
 
 ## Architektur
 
 ```text
-Maschine / Zyklussignal
+Maschine / 24-V-Zyklussignal
         │
         ▼
- Siemens LOGO! ──────► Pneumatikventil / VE-Wechsler
+ Siemens LOGO! 12/24RCEo ──► Q1 / Koppelrelais ──► 24-V-Pneumatikventil
         │
         │ Ethernet
         ▼
@@ -123,10 +140,11 @@ Die Engineering-Vorgabe für `Partcounter_LOGO_V001` steht in:
 - [`docs/PARTCOUNTER_LOGO_V001_IMPLEMENTATION.md`](docs/PARTCOUNTER_LOGO_V001_IMPLEMENTATION.md)
 - [`docs/LOGO_CONTROL_LOGIC.md`](docs/LOGO_CONTROL_LOGIC.md)
 - [`docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md`](docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md)
+- [`docs/REFERENCE_MACHINE_01_HARDWARE.md`](docs/REFERENCE_MACHINE_01_HARDWARE.md)
 
 Der Blockplan enthält unter anderem die reale Zyklus-Flankenerkennung vor der Zählfreigabe, native VE-/Gesamtzähler, Sample-and-Hold-Speicher für die abgeschlossene VE, einen restart-sicheren Befehlsdecoder, Heartbeat-Überwachung und den zeitparametrierten Ventilimpuls.
 
-Für die erste reale Testmaschine müssen vor der finalen LOGO!-Datei noch die tatsächlichen elektrischen Randbedingungen festgelegt werden: LOGO!-Hardware/Versorgung, Pegel des Zyklusimpulses, Ventilspulenspannung bzw. Koppelrelais, Ausgangsart, vorhandene Endlagenrückmeldung und freizugebende Ventilimpulszeit.
+Die Endlagenüberwachung ist Bestandteil des Standardkonzepts, für Referenzmaschine 01 jedoch deaktiviert. I2 bleibt reserviert und kann bei späteren Maschinen als bestätigte Wechsler-Endlage aktiviert werden.
 
 ## Datenbank und Etikettierung
 
@@ -164,4 +182,4 @@ GitHub Actions erzeugt für R001.7 eine selbstenthaltende Portable-Folder-Ausgab
 
 ## Nächster Meilenstein
 
-Die Software- und Protokollbasis für die erste reale LOGO!-Kopplung ist mit R001.7 festgelegt. Nächster Meilenstein ist die Umsetzung von `Partcounter_LOGO_V001` in LOGO! Soft Comfort für eine konkrete Testmaschine, gefolgt von der Prüfung nach dem 66-Punkte-R001.7-Inbetriebnahmeprotokoll.
+Die Grundhardware der ersten realen Teststation ist jetzt festgelegt. Für die endgültige Q1-Beschaltung fehlen nur noch **Nennstrom oder Nennleistung der 24-V-Ventilspule sowie die Information zur vorhandenen Entstörbeschaltung**. Danach kann `Partcounter_LOGO_V001` konkret in LOGO! Soft Comfort aufgebaut und an der Referenzmaschine geprüft werden.
