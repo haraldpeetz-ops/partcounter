@@ -42,6 +42,7 @@ public sealed class LogoModbusClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         EnsureConnected();
+        ValidateJob(job);
         cancellationToken.ThrowIfCancellationRequested();
 
         var commandWord = automaticMode ? ModbusRegisterMap.CommandEnableAutomatic : (ushort)0;
@@ -119,8 +120,8 @@ public sealed class LogoModbusClient : IAsyncDisposable
             registers[ModbusRegisterMap.StatusLastVeCyclesHi],
             registers[ModbusRegisterMap.StatusLastVeCyclesLo]);
 
-        var currentParts = currentVeCycles * (uint)activeCavities;
-        var lastCompletedVeQuantity = lastCompletedVeCycles * (uint)lastCompletedCavities;
+        var currentParts = checked(currentVeCycles * (uint)activeCavities);
+        var lastCompletedVeQuantity = checked(lastCompletedVeCycles * (uint)lastCompletedCavities);
 
         return new LogoSnapshot(
             currentParts,
@@ -145,6 +146,21 @@ public sealed class LogoModbusClient : IAsyncDisposable
         _master = null;
         _tcpClient?.Dispose();
         _tcpClient = null;
+    }
+
+    private static void ValidateJob(JobParameters job)
+    {
+        if (job.ActiveCavities is < 1 or > 64)
+            throw new ArgumentOutOfRangeException(nameof(job), "Active cavities must be between 1 and 64.");
+
+        if (job.TargetPartsPerVe == 0)
+            throw new ArgumentOutOfRangeException(nameof(job), "Target parts per VE must be greater than zero.");
+
+        if (job.TargetCyclesPerVe is 0 or > ModbusRegisterMap.MaxTargetCyclesPerVe)
+            throw new ArgumentOutOfRangeException(nameof(job), $"Target cycles per VE must be between 1 and {ModbusRegisterMap.MaxTargetCyclesPerVe:N0}.");
+
+        if (job.ValvePulseMs < ModbusRegisterMap.MinValvePulseMs || job.ValvePulseMs > ModbusRegisterMap.MaxValvePulseMs)
+            throw new ArgumentOutOfRangeException(nameof(job), $"Valve pulse must be between {ModbusRegisterMap.MinValvePulseMs} and {ModbusRegisterMap.MaxValvePulseMs} ms.");
     }
 
     private void EnsureConnected()
