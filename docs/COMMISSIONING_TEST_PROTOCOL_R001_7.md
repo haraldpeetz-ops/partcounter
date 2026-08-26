@@ -26,7 +26,7 @@
 
 ## Freigaberegel
 
-Eine Station darf erst für den automatischen Verpackungswechsel freigegeben werden, wenn alle für die konkrete Maschine relevanten Muss-Prüfpunkte bestanden sind. Nicht vorhandene optionale Hardware ist mit `n. a.` zu kennzeichnen. Abweichungen werden mit Fehlerbild, Maßnahme und Wiederholungsprüfung dokumentiert.
+Eine Station darf erst für den automatischen Verpackungswechsel freigegeben werden, wenn alle für die konkrete Maschine relevanten Muss-Prüfpunkte bestanden sind. Nicht vorhandene optionale Hardware wird mit `n. a.` gekennzeichnet. Abweichungen werden mit Fehlerbild, Maßnahme und Wiederholungsprüfung dokumentiert.
 
 ## Prüfschritte
 
@@ -37,57 +37,77 @@ Eine Station darf erst für den automatischen Verpackungswechsel freigegeben wer
 | 3 | Netzwerk | LOGO! über konfigurierte IP erreichbar; TCP 502 verfügbar | | |
 | 4 | Modbus-Protokoll | HR20 meldet ProtocolVersion 2 | | |
 | 5 | VM-Zuordnung | HR1–HR12 und HR20–HR37 entsprechen Registerplan | | |
-| 6 | LOGO!-Heartbeat | HR34 ändert sich zyklisch | | |
-| 7 | PC-Heartbeat | HR12 ändert sich im Echtbetrieb zyklisch | | |
-| 8 | Ack-Handshake | neue CommandSequence wird genau einmal verarbeitet; HR30 übernimmt dieselbe Sequenz | | |
-| 9 | PC-Neustart | erster Befehl nach Neustart verwendet Sequenz nach aktuellem AckSequence und wird verarbeitet | | |
-| 10 | I1-Flanke | eine reale Zyklusflanke erhöht CurrentVECycles exakt um 1 | | |
-| 11 | Störimpuls / Prellen | kein Doppelzählen bei einem Maschinenzyklus | | |
-| 12 | 1 Kavität | PC-Teilezahl = CurrentVECycles × 1 | | |
-| 13 | 2 Kavitäten | PC-Teilezahl = CurrentVECycles × 2 | | |
-| 14 | 4 Kavitäten | PC-Teilezahl = CurrentVECycles × 4 | | |
-| 15 | 8 Kavitäten | PC-Teilezahl = CurrentVECycles × 8 | | |
-| 16 | 16 Kavitäten | PC-Teilezahl = CurrentVECycles × 16 | | |
-| 17 | 32 Kavitäten | PC-Teilezahl = CurrentVECycles × 32 | | |
-| 18 | 64 Kavitäten | PC-Teilezahl = CurrentVECycles × 64 | | |
-| 19 | Rundungstest | 1000 Teile / 64 Kavitäten ergibt 16 Zielzyklen und 1024 effektive Teile | | |
-| 20 | DWORD-Grenztest | Zählerdarstellung oberhalb 32767 bleibt korrekt; kein 16-Bit-Überlauf in der PC-Anzeige | | |
-| 21 | VE automatisch voll | bei Erreichen der Zielzyklen wird genau ein Abschluss erzeugt | | |
-| 22 | CompletionSequence | HR33 erhöht sich je abgeschlossener VE exakt einmal | | |
-| 23 | LastCompletedVECycles | HR28/HR29 speichern den abgeschlossenen Zykluswert vor Reset | | |
-| 24 | LastCompletedCavities | HR37 speichert die zu dieser VE gehörende Kavitätenzahl | | |
-| 25 | VE-Nummer | CurrentVENumber wird nach Abschluss genau um 1 erhöht | | |
-| 26 | CompletedVEs | Zähler erhöht sich je Abschluss genau um 1 | | |
-| 27 | Ventilimpuls | Q1 schaltet genau einmal und für die parametrierte Zeit | | |
-| 28 | Wechselanzeige Q2 | falls genutzt: Anzeige entspricht VE-Wechselstatus | | |
-| 29 | manueller VE-Wechsel | bei gefüllter Teil-VE genau ein Abschluss, Reason = 2 | | |
-| 30 | manueller Wechsel bei 0 | leerer Wechsel wird ignoriert; Befehl wird dennoch quittiert | | |
-| 31 | Pause | neue I1-Flanken verändern die Zähler nicht | | |
-| 32 | Fortsetzen | Zählung setzt ohne Auftragsreset am vorhandenen Stand fort | | |
-| 33 | letzte Teil-VE | kleinere Restmenge übernimmt neue TargetCyclesPerVE ohne Reset von TotalCycles/CompletedVEs | | |
-| 34 | PC-Verbindung trennen | LOGO! zählt mit letzten gültigen Parametern lokal weiter | | |
-| 35 | WLAN unterbrechen | ein während Ausfall fälliger automatischer VE-Wechsel wird lokal ausgeführt | | |
-| 36 | Wiederverbindung | PC synchronisiert Zähler/VE ohne Doppelabschluss | | |
-| 37 | PC-Heartbeat steht | Statusbit 5 wird gesetzt; Produktion läuft lokal weiter | | |
-| 38 | falsche Protokollversion | Auftrag wird abgewiesen; ErrorCode 1; Q1 bleibt AUS | | |
-| 39 | ungültige Kavitäten | Auftrag wird abgewiesen; ErrorCode 2 | | |
-| 40 | TargetPartsPerVE = 0 | Auftrag wird abgewiesen; ErrorCode 3 | | |
-| 41 | ungültige Zielzyklen | Auftrag wird abgewiesen; ErrorCode 4 | | |
-| 42 | ungültige Ventilzeit | Auftrag wird abgewiesen; ErrorCode 5 | | |
-| 43 | Endlagentimeout | falls I2 genutzt: ErrorCode 10, Alarm, weitere automatische Wechsel gesperrt | | |
-| 44 | Alarm quittieren | definierter quittierbarer Fehler wird kontrolliert zurückgesetzt | | |
-| 45 | LOGO!-Spannung AUS/EIN | Q1 bleibt beim Neustart AUS; Wiederanlaufverhalten entspricht Freigabekonzept | | |
-| 46 | Etikett | pro neuer CompletionSequence genau ein Etikett / ein nachvollziehbarer Druckauftrag | | |
-| 47 | VE-Historie | Soll, Ist, Mehrmenge, VE-ID, Maschine, Auftrag und Zeit sind korrekt gespeichert | | |
-| 48 | Langzeittest | mindestens mehrere aufeinanderfolgende VEs ohne Doppelzählung oder Mehrfachwechsel | | |
+| 6 | DWord-Wordreihenfolge | bekannter Testwert auf DWord-Registern wird High Word / Low Word korrekt rekonstruiert | | |
+| 7 | Zielwert-Mapping | VD18 / HR10-HR11 verändert den `On Threshold` des VE-Zählers korrekt | | |
+| 8 | LOGO!-Heartbeat | HR34 ändert sich zyklisch und bleibt im Bereich 1…32767 | | |
+| 9 | PC-Heartbeat | HR12 ändert sich im Echtbetrieb zyklisch und bleibt im Bereich 1…32767 | | |
+| 10 | Ack-Handshake | neue CommandSequence wird genau einmal verarbeitet; HR30 übernimmt dieselbe Sequenz | | |
+| 11 | PC-Neustart | erster Befehl nach Neustart verwendet die Sequenz nach aktuellem AckSequence und wird verarbeitet | | |
+| 12 | CommandSequence-Wrap | 32767 → 1 wird als neuer Befehl erkannt; keine Mehrfachauslösung | | |
+| 13 | Heartbeat-Wrap | 32767 → 1 erzeugt keine Kommunikationsstörung | | |
+| 14 | I1-Flanke | eine reale Zyklusflanke erhöht CurrentVECycles exakt um 1 | | |
+| 15 | Pause bei I1 HIGH | Fortsetzen bei noch anstehendem I1-Pegel erzeugt keinen künstlichen Zählimpuls | | |
+| 16 | Störimpuls / Prellen | kein Doppelzählen bei einem Maschinenzyklus | | |
+| 17 | 1 Kavität | PC-Teilezahl = CurrentVECycles × 1 | | |
+| 18 | 2 Kavitäten | PC-Teilezahl = CurrentVECycles × 2 | | |
+| 19 | 4 Kavitäten | PC-Teilezahl = CurrentVECycles × 4 | | |
+| 20 | 8 Kavitäten | PC-Teilezahl = CurrentVECycles × 8 | | |
+| 21 | 16 Kavitäten | PC-Teilezahl = CurrentVECycles × 16 | | |
+| 22 | 32 Kavitäten | PC-Teilezahl = CurrentVECycles × 32 | | |
+| 23 | 64 Kavitäten | PC-Teilezahl = CurrentVECycles × 64 | | |
+| 24 | Rundungstest | 1000 Teile / 64 Kavitäten ergibt 16 Zielzyklen und 1024 effektive Teile | | |
+| 25 | VE-Grenzwert 32767 | TargetCyclesPerVE = 32767 wird akzeptiert und korrekt gezählt | | |
+| 26 | VE-Grenzwert 32768 | TargetCyclesPerVE = 32768 wird vom PC abgewiesen; LOGO!-Auftrag wird nicht verändert | | |
+| 27 | TotalCycles DWORD | TotalCycles oberhalb 32767 bleibt im PC korrekt; kein 16-Bit-Überlauf | | |
+| 28 | VE automatisch voll | bei Erreichen der Zielzyklen wird genau ein Abschluss erzeugt | | |
+| 29 | CompletionSequence | HR33 erhöht sich je abgeschlossener VE exakt einmal | | |
+| 30 | LastCompletedVECycles | HR28 = 0 und HR29 enthält den abgeschlossenen Zykluswert vor Reset | | |
+| 31 | Snapshot-Stabilität | HR29 bleibt nach Reset von CurrentVECycles bis zum nächsten VE-Abschluss unverändert | | |
+| 32 | LastCompletedCavities | HR37 speichert die zur abgeschlossenen VE gehörende Kavitätenzahl und bleibt stabil | | |
+| 33 | CompletionReason automatisch | HR36 = 1 und bleibt bis zum nächsten Abschluss gespeichert | | |
+| 34 | VE-Nummer | CurrentVENumber wird nach Abschluss genau um 1 erhöht | | |
+| 35 | LastCompletedVENumber | HR32 enthält die Nummer der gerade abgeschlossenen VE | | |
+| 36 | CompletedVEs | HR27 erhöht sich je Abschluss genau um 1 | | |
+| 37 | Ventilregister 750 ms | Eingabe 750 ms führt zu HR7 = 75 | | |
+| 38 | Ventilimpuls 750 ms | Q1 schaltet genau einmal und gemessene Impulszeit entspricht 750 ms innerhalb der festgelegten Toleranz | | |
+| 39 | Ventil-Minimum | 50 ms → HR7 = 5; Ausgangsverhalten korrekt | | |
+| 40 | Ventil-Maximum | 5000 ms → HR7 = 500; Ausgangsverhalten korrekt | | |
+| 41 | ungültiges Zeitraster | z. B. 755 ms wird PC-seitig abgewiesen und nicht geschrieben | | |
+| 42 | Wechselanzeige Q2 | falls genutzt: Anzeige entspricht VE-Wechselstatus | | |
+| 43 | manueller VE-Wechsel | bei gefüllter Teil-VE genau ein Abschluss; HR36 = 2 und bleibt gespeichert | | |
+| 44 | manueller Wechsel bei 0 | leere VE wird nicht abgeschlossen; Befehl wird dennoch quittiert | | |
+| 45 | Pause | neue I1-Flanken verändern die Zähler nicht | | |
+| 46 | Fortsetzen | Zählung setzt ohne Auftragsreset am vorhandenen Stand fort | | |
+| 47 | letzte Teil-VE | kleinere Restmenge übernimmt neuen TargetCyclesPerVE nach vorherigem Abschluss ohne Reset von TotalCycles/CompletedVEs | | |
+| 48 | verbotener Zielwertwechsel | VD18 wird während CurrentVECycles > 0 durch Partcounter nicht verändert | | |
+| 49 | PC-Verbindung trennen | LOGO! zählt mit letzten gültigen Parametern lokal weiter | | |
+| 50 | WLAN unterbrechen | ein während Ausfall fälliger automatischer VE-Wechsel wird lokal ausgeführt | | |
+| 51 | Wiederverbindung | PC synchronisiert Zähler/VE ohne Doppelabschluss | | |
+| 52 | PC-Heartbeat steht | Statusbit 5 wird gesetzt; Produktion läuft lokal weiter | | |
+| 53 | falsche Protokollversion | Auftrag wird abgewiesen; ErrorCode 1; Q1 bleibt AUS | | |
+| 54 | ungültige Kavitäten | Auftrag wird abgewiesen; ErrorCode 2 | | |
+| 55 | TargetPartsPerVE = 0 | Auftrag wird abgewiesen; ErrorCode 3 | | |
+| 56 | ungültige Zielzyklen | Auftrag wird abgewiesen; ErrorCode 4 | | |
+| 57 | ungültige Ventilzeit | Auftrag wird abgewiesen; ErrorCode 5 | | |
+| 58 | Endlagentimeout | falls I2 genutzt: ErrorCode 10, Alarm, weitere automatische Wechsel gesperrt | | |
+| 59 | Alarm quittieren | definierter quittierbarer Fehler wird kontrolliert zurückgesetzt | | |
+| 60 | LOGO!-Spannung AUS/EIN | Q1 bleibt beim Neustart AUS; keine ungewollte Bewegung | | |
+| 61 | Zähler-Retentivität | Verhalten von CurrentVECycles/TotalCycles nach Power-Cycle entspricht freigegebenem Wiederanlaufkonzept | | |
+| 62 | Etikett | pro neuer CompletionSequence genau ein Etikett / ein nachvollziehbarer Druckauftrag | | |
+| 63 | VE-Historie | Soll, Ist, Mehrmenge, VE-ID, Maschine, Auftrag und Zeit sind korrekt gespeichert | | |
+| 64 | Mehrfach-VE-Test | mindestens 20 aufeinanderfolgende VEs ohne Doppelzählung, Doppelabschluss oder Mehrfach-Ventilimpuls | | |
+| 65 | Kommunikations-Langzeittest | mehrfache definierte WLAN-/LAN-Unterbrechungen ohne Verlust lokaler Zählungen | | |
+| 66 | Produktionsgrenze | kein LOGO!-Auftrag überschreitet 999999 TotalCycles bzw. 32767 CompletedVEs | | |
 
 ## Messprotokoll Ventilimpuls
 
-| Versuch | Soll [ms] | Gemessen [ms] | Endlage erreicht | Ergebnis |
-|---:|---:|---:|---|---|
-| 1 | | | | |
-| 2 | | | | |
-| 3 | | | | |
+| Versuch | Eingabe PC [ms] | HR7 [10 ms] | Gemessen [ms] | Endlage erreicht | Ergebnis |
+|---:|---:|---:|---:|---|---|
+| 1 | | | | | |
+| 2 | | | | | |
+| 3 | | | | | |
+| 4 | | | | | |
+| 5 | | | | | |
 
 ## Kommunikationstest
 
@@ -96,6 +116,16 @@ Eine Station darf erst für den automatischen Verpackungswechsel freigegeben wer
 | PC-Anwendung beendet | | | | | |
 | LAN getrennt | | | | | |
 | WLAN getrennt | | | | | |
+| PC-Neustart | | | | | |
+
+## Sequenztest
+
+| Test | Ausgangswert | Folgewert | Ack / Status | Ergebnis |
+|---|---:|---:|---|---|
+| CommandSequence normal | | | | |
+| CommandSequence Wrap | 32767 | 1 | | |
+| PC Heartbeat Wrap | 32767 | 1 | | |
+| LOGO Heartbeat Wrap | 32767 | 1 | | |
 
 ## Abweichungen und Maßnahmen
 
