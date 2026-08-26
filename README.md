@@ -12,16 +12,28 @@ Partcounter überwacht den Füllgrad von Verpackungseinheiten (VE) an bis zu 30 
 
 Partcounter und die Standard-LOGO! sind keine Sicherheitssteuerung. Not-Halt, Schutztüren, Maschinenfreigaben und weitere Safety-Funktionen verbleiben vollständig in den dafür vorgesehenen sicheren Maschinenkreisen.
 
-## R001.7 – wichtigste Änderung
+## R001.7 – Modbus V2 und LOGO V001
 
-Partcounter verwendet ab R001.7 das **Modbus-Protokoll V2**. Die LOGO! überträgt die nativen VE- und Gesamtzykluszähler als DWORD-Werte. Die PC-Anwendung berechnet daraus die Teilezahl mit der aktiven Kavitätenzahl.
+Partcounter verwendet ab R001.7 **ProtocolVersion 2**. Die LOGO! führt die Zykluszähler nativ; die PC-Anwendung berechnet daraus die Teilezahl mit der aktiven Kavitätenzahl:
 
 ```text
 CurrentParts            = CurrentVECycles × ActiveCavitiesEcho
 LastCompletedVEQuantity = LastCompletedVECycles × LastCompletedCavities
 ```
 
-Dadurch muss die LOGO! keine potenziell überlaufende 16-Bit-Analogmultiplikation `Zyklen × Kavitäten` ausführen. Außerdem wird beim PC-Neustart die lokale `CommandSequence` zuerst mit dem von der LOGO! gemeldeten `AckSequence` synchronisiert. Der erste Steuerbefehl nach einem Neustart kann dadurch nicht versehentlich als bereits bearbeitetes Duplikat verworfen werden.
+Dadurch muss die LOGO! keine potenziell überlaufende 16-Bit-Analogmultiplikation `Zyklen × Kavitäten` ausführen.
+
+Die wichtigsten V2-Grenzen sind verbindlich:
+
+- Kavitäten: 1…64
+- Zyklen je VE: 1…32767
+- Gesamtzyklen je LOGO!-Auftrag: bis 999999
+- CommandSequence / CompletionSequence / Heartbeats: 1…32767
+- Ventilimpuls: 50…5000 ms in 10-ms-Schritten
+
+Die PC-Anwendung überträgt die Ventilzeit auf HR7 in 10-ms-Einheiten. Beispiel: **750 ms → HR7 = 75**.
+
+Beim PC-Neustart wird die lokale `CommandSequence` zuerst mit dem von der LOGO! gemeldeten `AckSequence` synchronisiert. Der erste Steuerbefehl nach einem Neustart kann dadurch nicht versehentlich als bereits bearbeitetes Duplikat verworfen werden. Sequenzen und Heartbeats springen nach 32767 wieder auf 1.
 
 **R001.7 erwartet ProtocolVersion 2 und das passende `Partcounter_LOGO_V001`. Ein älteres V1-LOGO!-Programm darf nicht produktiv mit R001.7 betrieben werden.**
 
@@ -35,7 +47,7 @@ Tatsächliche VE     = Zyklen je VE × Kavitäten
 Mehrmenge           = Tatsächliche VE - VE-Soll
 ```
 
-Beispiel: **1.000 Stück Soll / 64 Kavitäten = 16 Zyklen = 1.024 Stück tatsächlich**.
+Beispiel: **1000 Stück Soll / 64 Kavitäten = 16 Zyklen = 1024 Stück tatsächlich**.
 
 ## Umgesetzter Funktionsstand
 
@@ -63,9 +75,9 @@ Beispiel: **1.000 Stück Soll / 64 Kavitäten = 16 Zyklen = 1.024 Stück tatsäc
 - SQLite im WAL-Modus und Ereignisprotokoll
 - ARBURG-ALS-Datei-/Hotfolder-Import für XLSX/XLSM/CSV/TXT/TSV
 - ARBURG-ALS-REST/JSON-Modus mit Mapping, Basic/Bearer/API-Key und optionalem Clientzertifikat
-- PC-seitige Plausibilitätsprüfung der LOGO!-Auftragsparameter vor dem Modbus-Schreiben
-- detaillierter LOGO!-V001-Implementierungsstandard
-- detailliertes Inbetriebnahme- und Abnahmeprotokoll
+- PC-seitige Plausibilitätsprüfung vor jedem LOGO!-Auftragstelegramm
+- detaillierter LOGO!-V001-Implementierungsstandard bis auf Block-/VM-Ebene
+- 66-Punkte-Inbetriebnahme- und Abnahmeprotokoll
 - GitHub-Actions-Windows-Build mit Portable- und Single-File-Ausgabe
 
 ## Architektur
@@ -88,19 +100,19 @@ Maschine / Zyklussignal
                          ARBURG ALS
 ```
 
-Die 30 LOGO!-Stationen sollten feste IP-Adressen erhalten. Die endgültige Adressierung wird bei der Anlageninbetriebnahme festgelegt.
-
 ## Modbus V2
 
 PC = Modbus-TCP-Client/Master, LOGO! = Server/Slave. Standardport ist TCP 502, Standard-Unit-ID ist 1.
 
-- PC → LOGO!: HR1–HR12
-- LOGO! → PC: HR20–HR37
-- DWORD-Werte: High Word vor Low Word
-- PC-Heartbeat und LOGO!-Heartbeat
-- CompletionSequence für verlustfreie VE-Abschlusserkennung
-- CommandSequence/AckSequence gegen Mehrfachauslösung
-- lokale LOGO!-Zählung und VE-Wechsel auch bei PC-/WLAN-Unterbrechung
+- PC → LOGO!: HR1–HR12 / VW0–VW22
+- LOGO! → PC: HR20–HR37 / VW38–VW72
+- DWord-Werte: High Word vor Low Word
+- TargetCyclesPerVE wird über VD18 direkt dem VE-Zähler-Schwellwert zugeordnet
+- CurrentVECycles und TotalCycles werden über Parameter-VM-Mapping bereitgestellt
+- LastCompletedVECycles, LastCompletionReason und LastCompletedCavities werden beim Abschluss gespeichert
+- CompletionSequence ermöglicht eine verlustfreie VE-Abschlusserkennung
+- CommandSequence/AckSequence verhindert Mehrfachauslösungen
+- lokale LOGO!-Zählung und VE-Wechsel laufen bei PC-/WLAN-Unterbrechung weiter
 
 Die verbindliche Belegung steht in [`docs/MODBUS_REGISTER_MAP.md`](docs/MODBUS_REGISTER_MAP.md).
 
@@ -112,19 +124,13 @@ Die Engineering-Vorgabe für `Partcounter_LOGO_V001` steht in:
 - [`docs/LOGO_CONTROL_LOGIC.md`](docs/LOGO_CONTROL_LOGIC.md)
 - [`docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md`](docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md)
 
+Der Blockplan enthält unter anderem die reale Zyklus-Flankenerkennung vor der Zählfreigabe, native VE-/Gesamtzähler, Sample-and-Hold-Speicher für die abgeschlossene VE, einen restart-sicheren Befehlsdecoder, Heartbeat-Überwachung und den zeitparametrierten Ventilimpuls.
+
 Für die erste reale Testmaschine müssen vor der finalen LOGO!-Datei noch die tatsächlichen elektrischen Randbedingungen festgelegt werden: LOGO!-Hardware/Versorgung, Pegel des Zyklusimpulses, Ventilspulenspannung bzw. Koppelrelais, Ausgangsart, vorhandene Endlagenrückmeldung und freizugebende Ventilimpulszeit.
 
-## Datenbank
+## Datenbank und Etikettierung
 
-Beim ersten Start wird `%LOCALAPPDATA%\Partcounter\partcounter.db` angelegt. Enthalten sind unter anderem:
-
-- `Machines`
-- `Articles`
-- `PackagingUnits`
-- `Settings`
-- `Events`
-
-## Etikettendruck
+Beim ersten Start wird `%LOCALAPPDATA%\Partcounter\partcounter.db` angelegt. Enthalten sind unter anderem `Machines`, `Articles`, `PackagingUnits`, `Settings` und `Events`.
 
 Beim Abschluss einer VE wird zuerst der VE-Datensatz gespeichert. Anschließend wird – sofern aktiviert – das Etikett gedruckt. Dadurch bleibt die Produktion auch bei fehlendem oder ausgeschaltetem Drucker nachvollziehbar.
 
@@ -147,7 +153,7 @@ Der konkrete ALS-Endpunkt beziehungsweise die realen Exportspalten müssen bei d
 4. Zuerst im Simulationsmodus prüfen.
 5. Für Echtbetrieb ausschließlich eine LOGO!-Station mit ProtocolVersion 2 verwenden.
 
-Verwendete Kernpakete:
+Kernpakete:
 
 - NModbus 3.0.83
 - Microsoft.Data.Sqlite 8.0.30
@@ -158,4 +164,4 @@ GitHub Actions erzeugt für R001.7 eine selbstenthaltende Portable-Folder-Ausgab
 
 ## Nächster Meilenstein
 
-Die Software- und Protokollbasis für die erste reale LOGO!-Kopplung ist mit R001.7 festgelegt. Nächster Meilenstein ist die Umsetzung von `Partcounter_LOGO_V001` in LOGO! Soft Comfort für eine konkrete Testmaschine, gefolgt von der Prüfung nach dem R001.7-Inbetriebnahmeprotokoll.
+Die Software- und Protokollbasis für die erste reale LOGO!-Kopplung ist mit R001.7 festgelegt. Nächster Meilenstein ist die Umsetzung von `Partcounter_LOGO_V001` in LOGO! Soft Comfort für eine konkrete Testmaschine, gefolgt von der Prüfung nach dem 66-Punkte-R001.7-Inbetriebnahmeprotokoll.
