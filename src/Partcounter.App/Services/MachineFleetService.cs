@@ -49,6 +49,34 @@ public sealed class MachineFleetService : IAsyncDisposable
         _cts = null;
     }
 
+    public MachineCommunicationDiagnostics? GetCommunicationDiagnostics(int machineNumber)
+    {
+        if (!_sessions.TryGetValue(machineNumber, out var session))
+            return null;
+
+        var snapshot = session.LastSnapshot;
+        return new MachineCommunicationDiagnostics(
+            machineNumber,
+            true,
+            session.PollingEnabled,
+            session.LastState,
+            session.Heartbeat,
+            session.CommandSequence,
+            session.CommandSequenceSynchronized,
+            snapshot?.AcknowledgedCommandSequence ?? 0,
+            snapshot?.LogoHeartbeat ?? 0,
+            snapshot?.StatusWord ?? 0,
+            snapshot?.ErrorCode ?? 0,
+            snapshot?.CompletionSequence ?? 0,
+            snapshot?.ActiveCavitiesEcho ?? 0,
+            snapshot?.CurrentParts ?? 0,
+            snapshot?.TotalCycles ?? 0,
+            snapshot?.CurrentVeNumber ?? 0,
+            snapshot?.CompletedVes ?? 0,
+            snapshot?.ReadAtUtc,
+            session.LastMessage);
+    }
+
     public async Task SendJobAsync(int machineNumber, JobParameters job, CancellationToken cancellationToken = default)
     {
         var session = GetSession(machineNumber);
@@ -221,6 +249,8 @@ public sealed class MachineFleetService : IAsyncDisposable
                     await EnsureConnectedAsync(session, cancellationToken);
                     await session.Client.WriteHeartbeatAsync(session.NextHeartbeat(), cancellationToken);
                     var snapshot = await session.Client.ReadSnapshotAsync(cancellationToken);
+                    session.LastSnapshot = snapshot;
+                    session.LastMessage = null;
                     session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
                     SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
                     PublishConnection(session, ConnectionState.Online, null);
@@ -237,6 +267,7 @@ public sealed class MachineFleetService : IAsyncDisposable
             catch (Exception ex)
             {
                 session.Client.Disconnect();
+                session.LastMessage = ex.Message;
                 PublishConnection(session, ConnectionState.Offline, ex.Message);
             }
 
@@ -263,6 +294,8 @@ public sealed class MachineFleetService : IAsyncDisposable
             return;
 
         var snapshot = await session.Client.ReadSnapshotAsync(cancellationToken);
+        session.LastSnapshot = snapshot;
+        session.LastMessage = null;
         session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
         SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
     }
@@ -276,6 +309,7 @@ public sealed class MachineFleetService : IAsyncDisposable
 
     private void PublishConnection(Session session, ConnectionState state, string? message)
     {
+        session.LastMessage = message;
         if (session.LastState == state && state == ConnectionState.Online) return;
         session.LastState = state;
         ConnectionChanged?.Invoke(this, new MachineConnectionEventArgs(session.Configuration.MachineNumber, state, message));
@@ -300,7 +334,11 @@ public sealed class MachineFleetService : IAsyncDisposable
         public SemaphoreSlim Gate { get; } = new(1, 1);
         public bool PollingEnabled { get; set; } = true;
         public ConnectionState LastState { get; set; } = ConnectionState.Offline;
+        public LogoSnapshot? LastSnapshot { get; set; }
+        public string? LastMessage { get; set; }
         public bool CommandSequenceSynchronized => _commandSequenceSynchronized;
+        public ushort CommandSequence => _commandSequence;
+        public ushort Heartbeat => _heartbeat;
 
         public void SynchronizeCommandSequence(ushort acknowledgedSequence)
         {
