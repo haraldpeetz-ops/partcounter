@@ -56,6 +56,7 @@ public sealed class MachineFleetService : IAsyncDisposable
         try
         {
             await EnsureConnectedAsync(session, cancellationToken);
+            await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
             var sequence = session.NextCommandSequence();
             await session.Client.WriteJobAsync(
                 job,
@@ -82,6 +83,7 @@ public sealed class MachineFleetService : IAsyncDisposable
         try
         {
             await EnsureConnectedAsync(session, cancellationToken);
+            await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
             var sequence = session.NextCommandSequence();
             await session.Client.WriteJobAsync(
                 job,
@@ -104,6 +106,7 @@ public sealed class MachineFleetService : IAsyncDisposable
         try
         {
             await EnsureConnectedAsync(session, cancellationToken);
+            await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
             await session.Client.SendCommandAsync(
                 session.NextCommandSequence(),
                 (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandPauseCounting),
@@ -122,6 +125,7 @@ public sealed class MachineFleetService : IAsyncDisposable
         try
         {
             await EnsureConnectedAsync(session, cancellationToken);
+            await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
             await session.Client.SendCommandAsync(
                 session.NextCommandSequence(),
                 ModbusRegisterMap.CommandEnableAutomatic,
@@ -159,6 +163,7 @@ public sealed class MachineFleetService : IAsyncDisposable
         try
         {
             await EnsureConnectedAsync(session, cancellationToken);
+            await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
             await session.Client.SendCommandAsync(
                 session.NextCommandSequence(),
                 (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandManualVeChange),
@@ -177,6 +182,7 @@ public sealed class MachineFleetService : IAsyncDisposable
         try
         {
             await EnsureConnectedAsync(session, cancellationToken);
+            await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
             await session.Client.SendCommandAsync(
                 session.NextCommandSequence(),
                 (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandResetJob),
@@ -216,6 +222,7 @@ public sealed class MachineFleetService : IAsyncDisposable
                     session.Heartbeat++;
                     await session.Client.WriteHeartbeatAsync(session.Heartbeat, cancellationToken);
                     var snapshot = await session.Client.ReadSnapshotAsync(cancellationToken);
+                    session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
                     SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
                     PublishConnection(session, ConnectionState.Online, null);
                 }
@@ -251,6 +258,16 @@ public sealed class MachineFleetService : IAsyncDisposable
         await session.Client.ConnectAsync(cancellationToken);
     }
 
+    private async Task EnsureCommandSequenceSynchronizedAsync(Session session, CancellationToken cancellationToken)
+    {
+        if (session.CommandSequenceSynchronized)
+            return;
+
+        var snapshot = await session.Client.ReadSnapshotAsync(cancellationToken);
+        session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
+        SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
+    }
+
     private Session GetSession(int machineNumber)
     {
         if (!_sessions.TryGetValue(machineNumber, out var session))
@@ -270,6 +287,7 @@ public sealed class MachineFleetService : IAsyncDisposable
     private sealed class Session
     {
         private ushort _commandSequence;
+        private bool _commandSequenceSynchronized;
 
         public Session(MachineConfiguration configuration)
         {
@@ -283,9 +301,22 @@ public sealed class MachineFleetService : IAsyncDisposable
         public ushort Heartbeat { get; set; }
         public bool PollingEnabled { get; set; } = true;
         public ConnectionState LastState { get; set; } = ConnectionState.Offline;
+        public bool CommandSequenceSynchronized => _commandSequenceSynchronized;
+
+        public void SynchronizeCommandSequence(ushort acknowledgedSequence)
+        {
+            if (_commandSequenceSynchronized)
+                return;
+
+            _commandSequence = acknowledgedSequence;
+            _commandSequenceSynchronized = true;
+        }
 
         public ushort NextCommandSequence()
         {
+            if (!_commandSequenceSynchronized)
+                throw new InvalidOperationException("Command sequence has not been synchronized with the LOGO! yet.");
+
             _commandSequence++;
             if (_commandSequence == 0) _commandSequence = 1;
             return _commandSequence;
