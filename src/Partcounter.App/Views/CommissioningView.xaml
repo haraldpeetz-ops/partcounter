@@ -1,0 +1,212 @@
+<UserControl x:Class="Partcounter.Views.CommissioningView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="950" MinHeight="650">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="310"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Inbetriebnahmezentrum R001.9" FontSize="20" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding MachineTitle}" Foreground="#566473" Margin="0,2,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="14,0">
+                    <TextBlock Text="Maschine" FontWeight="SemiBold"/>
+                    <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding SelectedMachine}"
+                              DisplayMemberPath="DisplayName" MinHeight="30"/>
+                    <TextBlock Text="{Binding EndpointText}" Foreground="#657180" Margin="0,3,0,0"/>
+                </StackPanel>
+                <WrapPanel Grid.Column="2" VerticalAlignment="Center">
+                    <Button Content="Live aktualisieren" Command="{Binding RefreshCommand}" Padding="12,7"/>
+                    <Button Content="Direkte Modbus-Leseprobe" Command="{Binding ProbeReadCommand}" Padding="12,7"/>
+                </WrapPanel>
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="1">
+            <TabItem Header="Live-Diagnose">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <WrapPanel>
+                            <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="4" Width="300">
+                                <StackPanel>
+                                    <TextBlock Text="Verbindung" FontWeight="Bold" FontSize="15"/>
+                                    <TextBlock Text="{Binding ConnectionText}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                    <TextBlock Text="{Binding LastReadText, StringFormat=Letzte Antwort: {0}}" Foreground="#657180" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="4" Width="300">
+                                <StackPanel>
+                                    <TextBlock Text="Heartbeat" FontWeight="Bold" FontSize="15"/>
+                                    <TextBlock Text="{Binding PcHeartbeatText, StringFormat=PC: {0}}" Margin="0,6,0,0"/>
+                                    <TextBlock Text="{Binding LogoHeartbeatText, StringFormat=LOGO!: {0}}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="4" Width="300">
+                                <StackPanel>
+                                    <TextBlock Text="Befehls-Handshake" FontWeight="Bold" FontSize="15"/>
+                                    <TextBlock Text="{Binding SequenceText}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="4" Width="300">
+                                <StackPanel>
+                                    <TextBlock Text="StatusWord" FontWeight="Bold" FontSize="15"/>
+                                    <TextBlock Text="{Binding StatusWordText}" FontSize="16" FontWeight="SemiBold" Margin="0,6,0,0"/>
+                                    <TextBlock Text="{Binding StatusBitsText}" TextWrapping="Wrap" Foreground="#566473" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="4" Width="300">
+                                <StackPanel>
+                                    <TextBlock Text="ErrorCode" FontWeight="Bold" FontSize="15"/>
+                                    <TextBlock Text="{Binding ErrorText}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="4" Width="300">
+                                <StackPanel>
+                                    <TextBlock Text="Zähler" FontWeight="Bold" FontSize="15"/>
+                                    <TextBlock Text="{Binding CounterText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                    <TextBlock Text="{Binding VeText}" TextWrapping="Wrap" Foreground="#566473" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </WrapPanel>
+
+                        <Border Background="#EEF3F7" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="4,12,4,4">
+                            <StackPanel>
+                                <TextBlock Text="Direkte Modbus-Leseprobe" FontWeight="Bold" FontSize="15"/>
+                                <TextBlock Text="Die Leseprobe öffnet eine separate TCP-Verbindung und liest ausschließlich den Statusblock. Es werden keine Ausgänge geschaltet und keine Auftragsparameter geschrieben."
+                                           TextWrapping="Wrap" Foreground="#566473" Margin="0,4,0,8"/>
+                                <TextBlock Text="{Binding ProbeStatusText}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Hardware / Freigabe">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid Margin="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel>
+                                <TextBlock Text="LOGO! / Eingang" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+                                <TextBlock Text="LOGO! Bestellnummer"/>
+                                <TextBox Text="{Binding LogoOrderNumber, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Text="LOGO! Typ" Margin="0,7,0,0"/>
+                                <TextBox Text="{Binding LogoType, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Text="Versorgung" Margin="0,7,0,0"/>
+                                <TextBox Text="{Binding SupplyVoltage, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Text="Zykluseingang" Margin="0,7,0,0"/>
+                                <TextBox Text="{Binding CycleInput, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Text="Zyklussignal" Margin="0,7,0,0"/>
+                                <TextBox Text="{Binding CycleSignal, UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel>
+                                <TextBlock Text="Ventil / Freigabe" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+                                <TextBlock Text="Ventilausgang"/>
+                                <TextBox Text="{Binding ValveOutput, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Text="Ventilspannung" Margin="0,7,0,0"/>
+                                <TextBox Text="{Binding ValveVoltage, UpdateSourceTrigger=PropertyChanged}"/>
+                                <CheckBox Content="24-V-Koppel-/Interface-Relais verwenden" IsChecked="{Binding UseInterfaceRelay}" Margin="0,10,0,0"/>
+                                <TextBlock Text="Standard-Ventilimpuls [ms]" Margin="0,7,0,0"/>
+                                <TextBox Text="{Binding DefaultValvePulseMs, UpdateSourceTrigger=PropertyChanged}"/>
+                                <CheckBox Content="Endlagenüberwachung aktiv" IsChecked="{Binding EndPositionMonitoring}" Margin="0,10,0,0"/>
+                                <TextBlock Text="Endlageneingang" Margin="0,7,0,0"/>
+                                <TextBox Text="{Binding EndPositionInput, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Text="Freigabestatus" Margin="0,10,0,0" FontWeight="SemiBold"/>
+                                <ComboBox ItemsSource="{Binding ReleaseStates}" SelectedItem="{Binding ReleaseState}"/>
+                                <TextBlock Text="{Binding ReleaseStateText}" FontWeight="Bold" Margin="0,4,0,0"/>
+                                <TextBlock Text="Notizen" Margin="0,10,0,0"/>
+                                <TextBox Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Height="90" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                <Button Content="Hardware-/Freigabeprofil speichern" Command="{Binding SaveProfileCommand}" Padding="14,8" Margin="0,12,0,0" HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Prüfablauf / Abnahme">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Background="#EEF3F7" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Geführte Inbetriebnahme" FontSize="17" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding ChecklistProgressText}" Foreground="#566473"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Prüfprotokoll als CSV exportieren" Command="{Binding ExportProtocolCommand}" Padding="12,7"/>
+                        </Grid>
+                    </Border>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding Checks}" SelectedItem="{Binding SelectedCheck}"
+                              AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="False"
+                              HeadersVisibility="Column" SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Code" Binding="{Binding Code}" Width="85" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Gruppe" Binding="{Binding Group}" Width="115" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Prüfschritt" Binding="{Binding Description}" Width="2*" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Akzeptanzkriterium" Binding="{Binding AcceptanceCriteria}" Width="3*" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Ergebnis" Binding="{Binding ResultText}" Width="140" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Zeit" Binding="{Binding CheckedAtText}" Width="145" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Notiz" Binding="{Binding Note, UpdateSourceTrigger=PropertyChanged}" Width="2*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding LastExportPath}" Foreground="#657180" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <WrapPanel Grid.Column="1">
+                            <Button Content="Bestanden" Command="{Binding MarkPassedCommand}" Padding="12,6"/>
+                            <Button Content="Nicht bestanden" Command="{Binding MarkFailedCommand}" Padding="12,6"/>
+                            <Button Content="N. A." Command="{Binding MarkNotApplicableCommand}" Padding="12,6"/>
+                            <Button Content="Zurück auf offen" Command="{Binding ResetCheckCommand}" Padding="12,6"/>
+                        </WrapPanel>
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <StatusBar Grid.Row="2" Margin="0,8,0,0" Background="#E2E7EC">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis"/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</UserControl>
