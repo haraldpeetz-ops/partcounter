@@ -42,6 +42,9 @@ public static class ModbusRegisterMap
     public const int StatusLastCompletedCavities = 17;
 
     public const ushort ProtocolVersion = 2;
+    public const uint MaxTargetCyclesPerVe = 999_999;
+    public const ushort MinValvePulseMs = 50;
+    public const ushort MaxValvePulseMs = 5_000;
 
     public const ushort CommandEnableAutomatic = 1 << 0;
     public const ushort CommandResetJob = 1 << 1;
