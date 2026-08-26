@@ -16,9 +16,11 @@ public partial class MainWindow : Window
     private CompactMonitorWindow? _compactMonitor;
     private MachineSetupViewModel? _machineSetupViewModel;
     private CommissioningViewModel? _commissioningViewModel;
+    private CommissioningFleetOverviewViewModel? _commissioningFleetOverviewViewModel;
     private AlsViewModel? _alsViewModel;
     private TabItem? _machineSetupTab;
     private TabItem? _commissioningTab;
+    private TabItem? _commissioningFleetTab;
     private TabItem? _alsTab;
 
     public MainWindow()
@@ -62,6 +64,15 @@ public partial class MainWindow : Window
                 Content = new CommissioningView { DataContext = _commissioningViewModel }
             };
             MainTabs.Items.Insert(Math.Max(0, MainTabs.Items.Count - 1), _commissioningTab);
+
+            _commissioningFleetOverviewViewModel = new CommissioningFleetOverviewViewModel(_viewModel);
+            await _commissioningFleetOverviewViewModel.InitializeAsync();
+            _commissioningFleetTab = new TabItem
+            {
+                Header = "Rolloutstatus 30 Maschinen",
+                Content = new CommissioningFleetOverviewView { DataContext = _commissioningFleetOverviewViewModel }
+            };
+            MainTabs.Items.Insert(Math.Max(0, MainTabs.Items.Count - 1), _commissioningFleetTab);
 
             _alsViewModel = new AlsViewModel(_viewModel);
             await _alsViewModel.InitializeAsync();
@@ -226,6 +237,8 @@ public partial class MainWindow : Window
 
         _alsViewModel?.Dispose();
         _alsViewModel = null;
+        _commissioningFleetOverviewViewModel?.Dispose();
+        _commissioningFleetOverviewViewModel = null;
         _commissioningViewModel?.Dispose();
         _commissioningViewModel = null;
         _machineSetupViewModel = null;
