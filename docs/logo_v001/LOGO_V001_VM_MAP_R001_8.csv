@@ -1,0 +1,31 @@
+Direction;HoldingRegister;PCOffset;LOGOVM;Type;Name;RangeOrValue;Notes
+PC_TO_LOGO;HR1;0;VW0;UINT16;ProtocolVersion;2;Must equal 2
+PC_TO_LOGO;HR2;1;VW2;UINT16;CommandSequence;1..32767;Wrap to 1
+PC_TO_LOGO;HR3;2;VW4;UINT16;CommandWord;bitfield;Bits 0..4 used
+PC_TO_LOGO;HR4;3;VW6;UINT16;ActiveCavities;1..64;Active mold cavities
+PC_TO_LOGO;HR5;4;VW8;UINT16;TargetPartsPerVE_HI;0..65535;Informational DWord high
+PC_TO_LOGO;HR6;5;VW10;UINT16;TargetPartsPerVE_LO;0..65535;Informational DWord low
+PC_TO_LOGO;HR7;6;VW12;UINT16;ValvePulse10Ms;5..500;50..5000 ms
+PC_TO_LOGO;HR8;7;VW14;UINT16;JobId_HI;0..65535;DWord high
+PC_TO_LOGO;HR9;8;VW16;UINT16;JobId_LO;0..65535;DWord low
+PC_TO_LOGO;HR10;9;VW18;UINT16;TargetCyclesPerVE_HI;0;V2 VE limit keeps high word zero
+PC_TO_LOGO;HR11;10;VW20;UINT16;TargetCyclesPerVE_LO;1..32767;Mapped to counter threshold via VD18
+PC_TO_LOGO;HR12;11;VW22;UINT16;PcHeartbeat;1..32767;Diagnostic only
+LOGO_TO_PC;HR20;0;VW38;UINT16;ProtocolVersion;2;LOGO protocol version
+LOGO_TO_PC;HR21;1;VW40;UINT16;StatusWord;bitfield;Bits 0..5 used
+LOGO_TO_PC;HR22;2;VW42;UINT16;CurrentVECycles_HI;0;VE cycle count <=32767
+LOGO_TO_PC;HR23;3;VW44;UINT16;CurrentVECycles_LO;0..32767;Current VE cycle count
+LOGO_TO_PC;HR24;4;VW46;UINT16;TotalCycles_HI;0..15;Total cycles DWord high
+LOGO_TO_PC;HR25;5;VW48;UINT16;TotalCycles_LO;0..65535;Total cycles DWord low
+LOGO_TO_PC;HR26;6;VW50;UINT16;CurrentVENumber;1..32767;CompletedVEs + 1
+LOGO_TO_PC;HR27;7;VW52;UINT16;CompletedVEs;0..32767;Completed packaging units
+LOGO_TO_PC;HR28;8;VW54;UINT16;LastCompletedVECycles_HI;0;Reserved high word
+LOGO_TO_PC;HR29;9;VW56;UINT16;LastCompletedVECycles_LO;0..32767;Sample-and-hold snapshot
+LOGO_TO_PC;HR30;10;VW58;UINT16;AckSequence;0..32767;Last processed command sequence
+LOGO_TO_PC;HR31;11;VW60;UINT16;ActiveCavitiesEcho;1..64;Echo of active cavities
+LOGO_TO_PC;HR32;12;VW62;UINT16;LastCompletedVENumber;0..32767;Last completed VE number
+LOGO_TO_PC;HR33;13;VW64;UINT16;CompletionSequence;0..32767;Changes once per completed VE
+LOGO_TO_PC;HR34;14;VW66;UINT16;LogoHeartbeat;1..32767;Diagnostic only
+LOGO_TO_PC;HR35;15;VW68;UINT16;ErrorCode;0..30;Defined error codes
+LOGO_TO_PC;HR36;16;VW70;UINT16;LastCompletionReason;0..2;0 unknown 1 automatic 2 manual
+LOGO_TO_PC;HR37;17;VW72;UINT16;LastCompletedCavities;0..64;Cavities stored at completion
