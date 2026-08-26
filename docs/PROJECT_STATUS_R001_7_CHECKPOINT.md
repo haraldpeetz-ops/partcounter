@@ -10,6 +10,25 @@ Verbindlicher Entwicklungsstand für die Fortsetzung nach R001.6.
 - Ziel: erste reale Siemens-LOGO!-Kopplung auf Basis des standardisierten `Partcounter_LOGO_V001`
 - Protokoll: Modbus V2 / ProtocolVersion 2
 
+## Referenzmaschine 01 – Hardware jetzt festgelegt
+
+Verbindliche Hardwarebasis der ersten realen Teststation:
+
+- Siemens LOGO! `6ED1052-2MD08-0BA2`
+- Bezeichnung: LOGO! 12/24RCEo, LOGO! 8.4, ohne Display
+- Versorgung: 24 V DC
+- Zyklussignal: I1, 24 V DC, positive Flanke = ein Produktionszyklus
+- VE-Wechsler: Q1, LOGO!-Relaisausgang, Ventilspule 24 V DC
+- Endlagenrückmeldung: an Station 01 nicht vorhanden; I2 bleibt optional vorbereitet
+- Endlagenüberwachung für Station 01: OFF
+- Ventilimpuls einstellbar: 50…5000 ms in 10-ms-Schritten
+- Standardimpuls: 750 ms
+- HR7 überträgt die Ventilzeit in 10-ms-Einheiten; 750 ms = 75
+
+Das technische Datenblatt der verwendeten LOGO!-Variante nennt vier Relaisausgänge, keine interne Kurzschlussabsicherung, maximal 10 A ohmsche und 3 A induktive Kontaktlast. Für Q1 ist deshalb eine externe Absicherung verbindlich. Für die industrielle Standardausführung wird ein 24-V-Koppel-/Interface-Relais zwischen LOGO! und Ventil bevorzugt; eine direkte Ventilansteuerung wird erst nach Prüfung der realen Spulenstromaufnahme freigegeben.
+
+Die Hardwaredetails stehen in `docs/REFERENCE_MACHINE_01_HARDWARE.md`.
+
 ## Wesentliche Änderungen gegenüber R001.6
 
 ### LOGO!-hardwaregerechtes Modbus-Protokoll V2
@@ -63,6 +82,7 @@ Verbindliche Unterlagen:
 - `docs/LOGO_CONTROL_LOGIC.md`
 - `docs/MODBUS_REGISTER_MAP.md`
 - `docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md`
+- `docs/REFERENCE_MACHINE_01_HARDWARE.md`
 
 Der Implementierungsstandard ist bis auf Block-/VM-Ebene ausgearbeitet. Enthalten sind unter anderem:
 
@@ -95,7 +115,7 @@ DWord-Werte werden High Word vor Low Word übertragen.
 
 ## Inbetriebnahme-/Abnahmestandard
 
-`COMMISSIONING_TEST_PROTOCOL_R001_7.md` enthält aktuell **66 Prüfpunkte**. Abgedeckt werden unter anderem:
+`COMMISSIONING_TEST_PROTOCOL_R001_7.md` enthält aktuell 66 Prüfpunkte. Abgedeckt werden unter anderem:
 
 - Verdrahtung und sicherer Startzustand
 - Modbus-/VM-Zuordnung und DWord-Reihenfolge
@@ -132,15 +152,12 @@ DWord-Werte werden High Word vor Low Word übertragen.
 
 ## Nächster realer Arbeitsschritt
 
-Für die konkrete Testmaschine müssen folgende elektrische Daten festgelegt bzw. bestätigt werden:
+Die bisher offenen Grunddaten der Testmaschine sind jetzt weitgehend festgelegt. Für die endgültige Q1-Verdrahtungsfreigabe fehlt nur noch:
 
-1. exakter LOGO!-Typ, Firmware und Versorgungsspannung,
-2. Signalart und Pegel des Zyklusimpulses an I1,
-3. Ventilspulenspannung und benötigte Ausgangs-/Koppelrelais-Lösung,
-4. vorhandene Endlagenrückmeldung an I2 ja/nein,
-5. freizugebende Ventilimpulszeit.
+1. Nennstrom oder Nennleistung der 24-V-Ventilspule,
+2. vorhandene integrierte Freilauf-/Entstörbeschaltung ja/nein.
 
-Danach wird `Partcounter_LOGO_V001` in LOGO! Soft Comfort für die erste Station umgesetzt und anhand des 66-Punkte-R001.7-Inbetriebnahmeprotokolls geprüft.
+Anschließend kann `Partcounter_LOGO_V001` konkret für die LOGO! `6ED1052-2MD08-0BA2` in LOGO! Soft Comfort aufgebaut und anhand des 66-Punkte-R001.7-Inbetriebnahmeprotokolls geprüft werden.
 
 ## Sicherheitsgrenze
 
