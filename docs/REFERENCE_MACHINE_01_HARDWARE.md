@@ -14,12 +14,16 @@
 | Generation | LOGO! 8.4 |
 | Display | ohne Display (`o`) |
 | Versorgung | 12/24 V DC |
-| Digitaleingänge | 8 DI, davon 4 als AI nutzbar |
+| zulässiger Versorgungsbereich | 10,8…28,8 V DC |
+| Digitaleingänge | 8 DI, davon 4 als AI 0…10 V nutzbar |
 | Digitalausgänge | 4 Relaisausgänge |
+| Kurzschlussschutz Ausgänge | nein; externe Absicherung erforderlich |
+| max. Relaislast ohmsch | 10 A |
+| max. Relaislast induktiv | 3 A |
 | Netzwerk | Ethernet |
 | LOGO! Soft Comfort | V8.4 oder höher |
 
-Herstellerabgleich: Siemens führt die Bestellnummer `6ED1052-2MD08-0BA2` als LOGO! 12/24RCEo mit 12/24-V-DC-Versorgung, Relaisausgängen und Ethernet.
+Herstellerabgleich: Siemens führt die Bestellnummer `6ED1052-2MD08-0BA2` als LOGO! 12/24RCEo mit 12/24-V-DC-Versorgung, Relaisausgängen und Ethernet. Das technische Datenblatt nennt für die Relaiskontakte maximal 10 A ohmsche bzw. 3 A induktive Last und fordert eine externe Absicherung.
 
 ## 2. Reale I/O-Belegung Teststation
 
@@ -56,7 +60,7 @@ Empfohlene Grundschaltung:
 ```text
 +24 V DC
    |
-   +-- Sicherung / abgesicherter Steuerstromkreis
+   +-- externe Sicherung / abgesicherter Steuerstromkreis
    |
    +-- Q1 Relaiskontakt LOGO!
    |
@@ -69,16 +73,16 @@ Bei einer DC-Magnetspule ist eine geeignete **Freilauf-/Entstörbeschaltung dire
 
 ### Direkt oder über Koppelrelais
 
-Die LOGO! besitzt bei dieser Gerätevariante Relaisausgänge. Ob Q1 die 24-V-Ventilspule direkt schaltet, wird erst nach Erfassung der realen Spulendaten freigegeben.
+Die LOGO! besitzt Relaisausgänge. Laut technischem Datenblatt liegt die maximale Kontaktbelastung bei 3 A für induktive Last. Das bedeutet jedoch nicht automatisch, dass jede 24-V-Ventilspule ohne weitere Prüfung direkt geschaltet werden soll.
 
-Noch zu erfassen:
+Für die Freigabe werden noch erfasst:
 
-- Nennstrom der Ventilspule bei 24 V DC,
-- Einschalt-/Anzugsstrom, sofern vom Hersteller angegeben,
+- Nennstrom oder Nennleistung der Ventilspule bei 24 V DC,
+- Einschalt-/Anzugsstrom, sofern angegeben,
 - integrierte Schutzbeschaltung ja/nein,
-- gewünschte Lebensdauer / Schalthäufigkeit.
+- erwartete Schalthäufigkeit und gewünschte Lebensdauer.
 
-**Standard für die industrielle Ausführung:** Wenn Spulenstrom, Einschaltstrom oder Schalthäufigkeit nicht eindeutig innerhalb der freizugebenden LOGO!-Kontaktbelastung liegen, wird ein 24-V-DC-Koppelrelais bzw. geeignetes Interface-Relais zwischen LOGO! Q1 und Ventil eingesetzt. Dies schützt den LOGO!-Ausgang und vereinfacht Wartung und Austausch.
+**Bevorzugter Industriestandard für Partcounter:** Q1 steuert ein 24-V-DC-Koppel-/Interface-Relais an, das wiederum die Ventilspule schaltet. Das reduziert die elektrische und mechanische Belastung des fest eingebauten LOGO!-Relaiskontakts und vereinfacht Wartung und Austausch. Eine direkte Ventilansteuerung bleibt zulässig, wenn die realen Spulendaten, Schutzbeschaltung und Schalthäufigkeit dies eindeutig erlauben.
 
 ## 5. Ventilimpuls
 
@@ -152,6 +156,7 @@ Folgende Parameter sollen künftig pro Maschine im Partcounter-Maschinenstamm ge
 | Parameter | Station 01 |
 |---|---|
 | LOGO!-Typ | 6ED1052-2MD08-0BA2 |
+| LOGO!-Variante | 12/24RCEo, Relaisausgänge |
 | Versorgung | 24 V DC |
 | Zykluseingang | I1 / 24 V DC |
 | Ventilausgang | Q1 / Relais |
