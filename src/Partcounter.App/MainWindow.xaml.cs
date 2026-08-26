@@ -15,14 +15,16 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel = new();
     private CompactMonitorWindow? _compactMonitor;
     private MachineSetupViewModel? _machineSetupViewModel;
+    private CommissioningViewModel? _commissioningViewModel;
     private AlsViewModel? _alsViewModel;
     private TabItem? _machineSetupTab;
+    private TabItem? _commissioningTab;
     private TabItem? _alsTab;
 
     public MainWindow()
     {
         InitializeComponent();
-        Title = "Partcounter R001.6";
+        Title = "Partcounter R001.9";
         DataContext = _viewModel;
         Loaded += OnLoaded;
         Closed += OnClosed;
@@ -52,6 +54,15 @@ public partial class MainWindow : Window
             };
             MainTabs.Items.Insert(Math.Max(0, MainTabs.Items.Count - 1), _machineSetupTab);
 
+            _commissioningViewModel = new CommissioningViewModel(_viewModel);
+            await _commissioningViewModel.InitializeAsync();
+            _commissioningTab = new TabItem
+            {
+                Header = "Inbetriebnahme / Diagnose",
+                Content = new CommissioningView { DataContext = _commissioningViewModel }
+            };
+            MainTabs.Items.Insert(Math.Max(0, MainTabs.Items.Count - 1), _commissioningTab);
+
             _alsViewModel = new AlsViewModel(_viewModel);
             await _alsViewModel.InitializeAsync();
             _alsTab = new TabItem
@@ -67,7 +78,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 $"Partcounter konnte nicht initialisiert werden:\n\n{ex.Message}",
-                "Partcounter R001.6",
+                "Partcounter R001.9",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
@@ -215,6 +226,8 @@ public partial class MainWindow : Window
 
         _alsViewModel?.Dispose();
         _alsViewModel = null;
+        _commissioningViewModel?.Dispose();
+        _commissioningViewModel = null;
         _machineSetupViewModel = null;
 
         if (_compactMonitor is not null)
