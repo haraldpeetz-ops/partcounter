@@ -46,13 +46,17 @@ jobs:
             Copy-Item docs/LOGO_CONTROL_LOGIC.md "$target/LOGO_V001_Engineering/"
             Copy-Item docs/REFERENCE_MACHINE_01_HARDWARE.md "$target/LOGO_V001_Engineering/"
             Copy-Item docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md "$target/LOGO_V001_Engineering/"
-            Copy-Item docs/PROJECT_STATUS_R001_8_CHECKPOINT.md "$target/LOGO_V001_Engineering/"
+            Copy-Item docs/COMMISSIONING_CENTER_R001_9.md "$target/LOGO_V001_Engineering/"
+            Copy-Item docs/PROJECT_STATUS_R001_9_CHECKPOINT.md "$target/LOGO_V001_Engineering/"
           }
 
           New-Item -ItemType Directory -Force -Path 'artifacts/Commissioning_R001_9' | Out-Null
           Copy-Item docs/REFERENCE_MACHINE_01_HARDWARE.md 'artifacts/Commissioning_R001_9/'
           Copy-Item docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md 'artifacts/Commissioning_R001_9/'
+          Copy-Item docs/COMMISSIONING_CENTER_R001_9.md 'artifacts/Commissioning_R001_9/'
+          Copy-Item docs/PROJECT_STATUS_R001_9_CHECKPOINT.md 'artifacts/Commissioning_R001_9/'
           Copy-Item docs/MODBUS_REGISTER_MAP.md 'artifacts/Commissioning_R001_9/'
+          Copy-Item docs/LOGO_CONTROL_LOGIC.md 'artifacts/Commissioning_R001_9/'
           Copy-Item docs/logo_v001/* 'artifacts/Commissioning_R001_9/' -Recurse
 
       - name: Add start instructions
@@ -70,8 +74,13 @@ jobs:
           - direct read-only Modbus probe (no output switching, no parameter write)
           - machine hardware profile and release state
           - guided commissioning checklist persisted in SQLite
-          - CSV commissioning protocol export to Documents\Partcounter\Inbetriebnahme
+          - per-machine CSV commissioning protocol export
+          - 30-machine rollout overview with live state, release status and checklist progress
+          - rollout overview CSV export
           - Station 01 reference profile: Siemens 6ED1052-2MD08-0BA2, I1 24 V, Q1 interface relay, optional I2
+
+          COMMISSIONING EXPORTS:
+          Documents\Partcounter\Inbetriebnahme
 
           LOGO V001 engineering files remain in:
           LOGO_V001_Engineering
