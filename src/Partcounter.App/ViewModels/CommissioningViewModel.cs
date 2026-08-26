@@ -12,6 +12,7 @@ namespace Partcounter.ViewModels;
 public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly MainViewModel _main;
+    private readonly DatabaseService _database = new();
     private readonly DispatcherTimer _refreshTimer;
     private MachineState? _selectedMachine;
     private CommissioningCheckRow? _selectedCheck;
@@ -154,6 +155,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task InitializeAsync()
     {
+        await _database.InitializeAsync();
         SelectedMachine = Machines.FirstOrDefault();
         if (SelectedMachine is not null)
             await LoadSelectedMachineAsync();
@@ -167,7 +169,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            var profile = await _main.Database.LoadCommissioningProfileAsync(machine.Configuration.MachineNumber)
+            var profile = await _database.LoadCommissioningProfileAsync(machine.Configuration.MachineNumber)
                 ?? BuildDefaultProfile(machine.Configuration.MachineNumber);
             ApplyProfile(profile);
             await LoadChecksAsync(machine.Configuration.MachineNumber);
@@ -233,8 +235,8 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            await _main.Database.UpsertCommissioningProfileAsync(profile);
-            await _main.Database.AddEventAsync(machine.Configuration.MachineNumber, "COMMISSIONING_PROFILE", $"Freigabestatus: {ReleaseState}");
+            await _database.UpsertCommissioningProfileAsync(profile);
+            await _database.AddEventAsync(machine.Configuration.MachineNumber, "COMMISSIONING_PROFILE", $"Freigabestatus: {ReleaseState}");
             StatusMessage = "Hardware-/Freigabeprofil gespeichert.";
             OnPropertyChanged(nameof(ReleaseStateText));
         }
@@ -246,7 +248,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task LoadChecksAsync(int machineNumber)
     {
-        var stored = (await _main.Database.LoadCommissioningChecksAsync(machineNumber))
+        var stored = (await _database.LoadCommissioningChecksAsync(machineNumber))
             .ToDictionary(c => c.CheckCode, StringComparer.OrdinalIgnoreCase);
 
         Checks.Clear();
@@ -278,7 +280,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
         check.Result = result;
         check.CheckedAtUtc = result == CommissioningCheckResult.Open ? null : DateTime.UtcNow;
 
-        await _main.Database.UpsertCommissioningCheckAsync(new CommissioningCheckRecord(
+        await _database.UpsertCommissioningCheckAsync(new CommissioningCheckRecord(
             machine.Configuration.MachineNumber,
             check.Code,
             check.Result,
@@ -300,7 +302,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
         var machine = SelectedMachine;
         if (machine is null) return;
 
-        var diagnostics = _main.Fleet.GetCommunicationDiagnostics(machine.Configuration.MachineNumber);
+        var diagnostics = MachineFleetService.GetGlobalCommunicationDiagnostics(machine.Configuration.MachineNumber);
         if (diagnostics is null)
         {
             ConnectionText = _main.IsSimulationMode
@@ -388,12 +390,12 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
             ApplySnapshotOnly(snapshot);
             LastReadText = $"Direkte Probe: {snapshot.ReadAtUtc.ToLocalTime():dd.MM.yyyy HH:mm:ss}";
             ProbeStatusText = $"OK · Protocol V{ModbusRegisterMap.ProtocolVersion} · ACK {snapshot.AcknowledgedCommandSequence} · LOGO-HB {snapshot.LogoHeartbeat}";
-            await _main.Database.AddEventAsync(machine.Configuration.MachineNumber, "COMMISSIONING_PROBE_OK", ProbeStatusText);
+            await _database.AddEventAsync(machine.Configuration.MachineNumber, "COMMISSIONING_PROBE_OK", ProbeStatusText);
         }
         catch (Exception ex)
         {
             ProbeStatusText = $"Leseprobe fehlgeschlagen: {ex.Message}";
-            await _main.Database.AddEventAsync(machine.Configuration.MachineNumber, "COMMISSIONING_PROBE_ERROR", ex.Message);
+            await _database.AddEventAsync(machine.Configuration.MachineNumber, "COMMISSIONING_PROBE_ERROR", ex.Message);
         }
     }
 
@@ -455,7 +457,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
             await File.WriteAllTextAsync(path, sb.ToString(), new UTF8Encoding(true));
             LastExportPath = path;
             StatusMessage = $"Inbetriebnahmeprotokoll exportiert: {path}";
-            await _main.Database.AddEventAsync(machine.Configuration.MachineNumber, "COMMISSIONING_EXPORT", path);
+            await _database.AddEventAsync(machine.Configuration.MachineNumber, "COMMISSIONING_EXPORT", path);
         }
         catch (Exception ex)
         {
@@ -471,6 +473,19 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
         var text = value ?? string.Empty;
         return $"\"{text.Replace("\"", "\"\"")}\"";
     }
+
+    private static string BuildErrorText(ushort errorCode) => errorCode switch
+    {
+        ModbusRegisterMap.ErrorNone => "0 · kein Fehler",
+        ModbusRegisterMap.ErrorProtocolVersion => "1 · falsche Protokollversion",
+        ModbusRegisterMap.ErrorInvalidCavities => "2 · ungültige Kavitätenzahl",
+        ModbusRegisterMap.ErrorInvalidTargetParts => "3 · TargetPartsPerVE = 0",
+        ModbusRegisterMap.ErrorInvalidTargetCycles => "4 · ungültige Zielzyklen",
+        ModbusRegisterMap.ErrorInvalidValvePulse => "5 · ungültige Ventilzeit",
+        ModbusRegisterMap.ErrorVeChangerTimeout => "10 · Wechsler-Endlage Timeout",
+        ModbusRegisterMap.ErrorInternalState => "30 · interner Ablaufzustand ungültig",
+        _ => $"{errorCode} · unbekannter Fehlercode"
+    };
 
     private static CommissioningProfile BuildDefaultProfile(int machineNumber) => new(
         machineNumber,
