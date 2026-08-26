@@ -18,10 +18,12 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel = new();
     private CompactMonitorWindow? _compactMonitor;
     private MachineSetupViewModel? _machineSetupViewModel;
+    private LabelDesignerViewModel? _labelDesignerViewModel;
     private CommissioningViewModel? _commissioningViewModel;
     private CommissioningFleetOverviewViewModel? _commissioningFleetOverviewViewModel;
     private AlsViewModel? _alsViewModel;
     private TabItem? _machineSetupTab;
+    private TabItem? _labelDesignerTab;
     private TabItem? _commissioningTab;
     private TabItem? _commissioningFleetTab;
     private TabItem? _alsTab;
@@ -30,7 +32,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        Title = "Partcounter R001.9";
+        Title = "Partcounter R001.10";
         DataContext = _viewModel;
         _viewModel.PropertyChanged += OnMainViewModelPropertyChanged;
         Loaded += OnLoaded;
@@ -60,6 +62,15 @@ public partial class MainWindow : Window
                 Content = new MachineSetupView { DataContext = _machineSetupViewModel }
             };
             MainTabs.Items.Insert(Math.Max(0, MainTabs.Items.Count - 1), _machineSetupTab);
+
+            _labelDesignerViewModel = new LabelDesignerViewModel(_viewModel);
+            await _labelDesignerViewModel.InitializeAsync();
+            _labelDesignerTab = new TabItem
+            {
+                Header = "Etiketteneditor",
+                Content = new LabelDesignerView { DataContext = _labelDesignerViewModel }
+            };
+            MainTabs.Items.Insert(Math.Max(0, MainTabs.Items.Count - 1), _labelDesignerTab);
 
             _commissioningViewModel = new CommissioningViewModel(_viewModel);
             await _commissioningViewModel.InitializeAsync();
@@ -99,7 +110,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 $"Partcounter konnte nicht initialisiert werden:\n\n{ex.Message}",
-                "Partcounter R001.9",
+                "Partcounter R001.10",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
@@ -124,8 +135,8 @@ public partial class MainWindow : Window
             return;
 
         _versionStatusTextBlock.Text = _viewModel.IsSimulationMode
-            ? "R001.9 · SIMULATION"
-            : "R001.9 · ECHTBETRIEB MODBUS TCP";
+            ? "R001.10 · SIMULATION"
+            : "R001.10 · ECHTBETRIEB MODBUS TCP";
     }
 
     private static TextBlock? FindBoundTextBlock(DependencyObject root, string bindingPath)
@@ -295,6 +306,7 @@ public partial class MainWindow : Window
         _commissioningFleetOverviewViewModel = null;
         _commissioningViewModel?.Dispose();
         _commissioningViewModel = null;
+        _labelDesignerViewModel = null;
         _machineSetupViewModel = null;
 
         if (_compactMonitor is not null)
