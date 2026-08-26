@@ -1,8 +1,11 @@
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Partcounter.Models;
 using Partcounter.ViewModels;
@@ -22,12 +25,14 @@ public partial class MainWindow : Window
     private TabItem? _commissioningTab;
     private TabItem? _commissioningFleetTab;
     private TabItem? _alsTab;
+    private TextBlock? _versionStatusTextBlock;
 
     public MainWindow()
     {
         InitializeComponent();
         Title = "Partcounter R001.9";
         DataContext = _viewModel;
+        _viewModel.PropertyChanged += OnMainViewModelPropertyChanged;
         Loaded += OnLoaded;
         Closed += OnClosed;
         StateChanged += OnStateChanged;
@@ -83,7 +88,12 @@ public partial class MainWindow : Window
             };
             MainTabs.Items.Insert(Math.Max(0, MainTabs.Items.Count - 1), _alsTab);
 
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(AttachMachineContextMenus));
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            {
+                AttachMachineContextMenus();
+                LocateVersionStatusTextBlock();
+                RefreshVersionStatusText();
+            }));
         }
         catch (Exception ex)
         {
@@ -93,6 +103,49 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
+    }
+
+    private void OnMainViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
+            RefreshVersionStatusText();
+    }
+
+    private void LocateVersionStatusTextBlock()
+    {
+        _versionStatusTextBlock = FindBoundTextBlock(this, "SystemStatusText");
+        if (_versionStatusTextBlock is not null)
+            BindingOperations.ClearBinding(_versionStatusTextBlock, TextBlock.TextProperty);
+    }
+
+    private void RefreshVersionStatusText()
+    {
+        if (_versionStatusTextBlock is null)
+            return;
+
+        _versionStatusTextBlock.Text = _viewModel.IsSimulationMode
+            ? "R001.9 · SIMULATION"
+            : "R001.9 · ECHTBETRIEB MODBUS TCP";
+    }
+
+    private static TextBlock? FindBoundTextBlock(DependencyObject root, string bindingPath)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is TextBlock textBlock)
+            {
+                var expression = BindingOperations.GetBindingExpression(textBlock, TextBlock.TextProperty);
+                if (expression?.ParentBinding.Path?.Path == bindingPath)
+                    return textBlock;
+            }
+
+            var nested = FindBoundTextBlock(child, bindingPath);
+            if (nested is not null)
+                return nested;
+        }
+
+        return null;
     }
 
     private void OnVisibleMachinesChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
@@ -232,6 +285,7 @@ public partial class MainWindow : Window
         foreach (var machine in _viewModel.Machines)
             machine.VeCompleted -= OnMachineVeCompleted;
 
+        _viewModel.PropertyChanged -= OnMainViewModelPropertyChanged;
         _viewModel.VisibleMachines.CollectionChanged -= OnVisibleMachinesChanged;
         MachineItemsControl.ItemContainerGenerator.StatusChanged -= OnMachineContainerStatusChanged;
 
