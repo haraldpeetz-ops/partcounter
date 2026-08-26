@@ -1,16 +1,18 @@
 # Partcounter LOGO V001 – Implementierungsstandard
 
 **Partcounter Revision:** R001.7  
-**LOGO-Programm:** `Partcounter_LOGO_V001`  
-**Zielplattform:** Siemens LOGO! 8.3 / 8.4  
+**LOGO!-Programm:** `Partcounter_LOGO_V001`  
+**Zielplattform Referenzmaschine 01:** Siemens LOGO! 12/24RCEo, `6ED1052-2MD08-0BA2`, LOGO! 8.4  
 **Kommunikation:** Modbus TCP, LOGO! als Server, PC als Client  
 **Partcounter-Protokoll:** Version 2
 
 ## 1. Ziel
 
-Dieses Dokument ist die verbindliche Engineering-Vorgabe für das erste reale LOGO!-Programm von Partcounter. Alle Maschinen verwenden dieselbe Grundlogik. Maschinenbezogen werden nur Netzwerkparameter, reale I/O-Verdrahtung und optional die Endlagenüberwachung angepasst.
+Dieses Dokument ist die verbindliche Engineering-Vorgabe für das erste reale LOGO!-Programm von Partcounter. Alle Maschinen verwenden dieselbe Grundlogik. Maschinenbezogen werden Netzwerkparameter, reale I/O-Verdrahtung und die optionale Endlagenüberwachung angepasst.
 
 Die LOGO! zählt Maschinenzyklen und löst den VE-Wechsel lokal aus. Ein Ausfall von PC, LAN oder WLAN darf weder Zyklen verlieren noch einen fälligen Verpackungswechsel verhindern.
+
+Für die erste reale Teststation gilt die Hardwarefestlegung aus `REFERENCE_MACHINE_01_HARDWARE.md`.
 
 ## 2. Hardwaregerechte Zählstrategie
 
@@ -27,20 +29,65 @@ Daraus folgt für Partcounter V2:
 
 Der Gesamtzykluszähler bleibt davon unabhängig und kann bis zum nativen LOGO!-Grenzwert 999999 zählen.
 
-## 3. Standard-I/O
+## 3. Hardware Referenzmaschine 01
 
-| Signal | Standard | Funktion | Bemerkung |
+| Merkmal | Festlegung |
+|---|---|
+| LOGO! | 6ED1052-2MD08-0BA2 / 12/24RCEo |
+| Versorgung | 24 V DC |
+| I1 | 24-V-DC-Zyklusimpuls |
+| Q1 | Relaisausgang für 24-V-DC-Ventil |
+| Q1 externe Absicherung | erforderlich |
+| Ventilspule | 24 V DC; Strom/Leistung vor Freigabe dokumentieren |
+| Endlagenrückmeldung | an Station 01 nicht vorhanden |
+| I2 | für spätere Endlagenrückmeldung reserviert |
+| Ventilimpuls | 50…5000 ms, 10-ms-Raster |
+| Standardimpuls | 750 ms |
+
+Die verwendete LOGO! besitzt Relaisausgänge. Die technische Kontaktgrenze liegt bei maximal 10 A ohmscher bzw. 3 A induktiver Last; die Ausgänge sind nicht intern kurzschlussgeschützt. Für Partcounter wird daher eine externe Q1-Absicherung vorgesehen. Ein 24-V-Koppel-/Interface-Relais zwischen Q1 und Ventil ist die bevorzugte industrielle Ausführung, bis Spulenstrom und Schalthäufigkeit eine direkte Ansteuerung ausdrücklich freigeben.
+
+## 4. Standard-I/O
+
+| Signal | Standard | Funktion | Referenzmaschine 01 |
 |---|---|---|---|
-| Zyklusimpuls | I1 | gültiger Maschinenzyklus / Auswurf | positive Flanke = genau 1 Zyklus |
-| Wechsler-Endlage | I2 | optionale Rückmeldung | nur aktivieren, wenn real vorhanden |
+| Zyklusimpuls | I1 | gültiger Maschinenzyklus / Auswurf | 24 V DC, aktiv |
+| Wechsler-Endlage | I2 | optionale Rückmeldung | nicht belegt / Überwachung OFF |
 | Handquittierung | I3 | lokale Quittierung | optional |
-| Ventil VE-Wechsler | Q1 | Pneumatikventil | monostabiler Impuls |
+| Ventil VE-Wechsler | Q1 | Pneumatikventil | 24 V DC, aktiv |
 | Wechselanzeige | Q2 | Lampe „VE-Wechsel“ | optional |
 | Störung | Q3 | Sammelstörung | optional |
 
 Safety-Signale wie Not-Halt, Schutztür oder Maschinenfreigabe werden nicht durch Partcounter geführt.
 
-## 4. Modbus-/VM-Zuordnung
+## 5. Optionale Endlagenüberwachung
+
+`Partcounter_LOGO_V001` wird so aufgebaut, dass **dieselbe Programmversion** sowohl mit als auch ohne Endlagensensor eingesetzt werden kann.
+
+Maschinenparameter:
+
+```text
+EndPositionMonitoringEnabled = 0 / 1
+```
+
+Referenzmaschine 01:
+
+```text
+EndPositionMonitoringEnabled = 0
+I2 = ignoriert
+```
+
+Spätere Maschine mit Sensor:
+
+```text
+EndPositionMonitoringEnabled = 1
+I2 = bestätigte Wechsler-Endlage
+```
+
+Bei aktivierter Überwachung wird nach dem Ventilimpuls ein konfiguriertes Bestätigungsfenster gestartet. Bleibt die erwartete I2-Bestätigung aus, setzt die LOGO! `ErrorCode = 10`, Alarmstatus und sperrt weitere automatische Wechsel bis zur kontrollierten Quittierung.
+
+Bei deaktivierter Überwachung darf ein offener I2-Eingang **keinen Alarm, keinen Wechselabbruch und keinen Produktionsstopp** erzeugen.
+
+## 6. Modbus-/VM-Zuordnung
 
 ### PC → LOGO!
 
@@ -93,7 +140,7 @@ Verbindliches Parameter-/VM-Mapping:
 
 HR28/VW54 bleibt in V2 auf 0, da `LastCompletedVECycles` maximal 32767 beträgt. Die DWord-Struktur bleibt trotzdem erhalten, damit die PC-Struktur einheitlich und erweiterbar bleibt.
 
-## 5. CommandWord und StatusWord
+## 7. CommandWord und StatusWord
 
 Die unteren Bits des Modbus-Wortes HR3/VW4 liegen aufgrund der VM-Byteordnung im Low Byte `VB5`. In der LOGO!-Schaltung werden daher lokale VM-Bits verwendet:
 
@@ -107,7 +154,7 @@ Die unteren Bits des Modbus-Wortes HR3/VW4 liegen aufgrund der VM-Byteordnung im
 
 StatusWord HR21 liegt in VW40; die unteren Statusbits werden auf V41.0…V41.5 ausgegeben.
 
-## 6. Funktionsblockplan V001
+## 8. Funktionsblockplan V001
 
 Die folgende Nummerierung ist die Zielnummerierung für den ersten Aufbau in LOGO! Soft Comfort. Falls LSC beim Einfügen andere Nummern vergibt, werden die realen Nummern nach Fertigstellung einmalig nachgezogen und danach eingefroren.
 
@@ -140,17 +187,17 @@ Die folgende Nummerierung ist die Zielnummerierung für den ersten Aufbau in LOG
 | B025 | Impulsgeber / Takt | `LogoHeartbeatClock` | Diagnose-Takt |
 | B026 | Vor-/Rückwärtszähler | `LogoHeartbeatCounter` | 1…32767; kontrollierter Wrap auf 1 |
 | B027 | Heartbeat-Überwachung | `PcHeartbeatWatch` | Änderung von VW22 überwachen |
-| B028 | Alarm-/Freigabelogik | `ConfigAndFaultLogic` | Parameter-/Endlagenfehler |
+| B028 | Alarm-/Freigabelogik | `ConfigAndFaultLogic` | Parameterfehler und optionale Endlagenlogik |
 
 Zusätzliche Network-/Analog-Network-Inputs lesen die relevanten VW-/V-Bereiche. Die endgültige LSC-Blockliste wird beim Aufbau des realen Projekts exportiert und gegen diese Tabelle geprüft.
 
-## 7. Zyklusflanke vor CountGate
+## 9. Zyklusflanke vor CountGate
 
 Der Zyklusimpuls wird **vor** Auto/Pause/Wechsel-Freigaben auf eine echte positive Flanke reduziert. Würde zuerst ein normales AND aus I1 und der Freigabe gebildet, könnte das Aufheben einer Pause bei noch anstehendem I1-Pegel eine künstliche 0→1-Flanke und damit einen falschen Zählimpuls erzeugen.
 
 B001 isoliert deshalb die reale Maschinenflanke. B002 darf diesen bereits erzeugten Ein-Zyklus-Puls anschließend nur noch freigeben oder sperren.
 
-## 8. Snapshot der abgeschlossenen VE
+## 10. Snapshot der abgeschlossenen VE
 
 Der Analog-Watchdog B009 wird als Sample-and-Hold verwendet. Bei einer positiven Flanke an `En` speichert er den aktuellen analogen Eingang als Vergleichswert `Aen`.
 
@@ -172,7 +219,7 @@ Damit bleiben `LastCompletedVECycles`, `LastCompletionReason` und `LastCompleted
 
 `LastCompletedVENumber` entspricht nach einem Abschluss dem aktualisierten Zähler `CompletedVEs` und wird deshalb über B015 aus B012.Cnt ausgegeben. `CurrentVENumber` ist `CompletedVEs + 1`.
 
-## 9. Abschlussgrund dauerhaft speichern
+## 11. Abschlussgrund dauerhaft speichern
 
 B017 erzeugt für den aktuellen Abschluss einen Kandidatenwert:
 
@@ -183,7 +230,7 @@ manueller Abschluss     → 2
 
 B018 speichert diesen Kandidaten nur auf der positiven Flanke von `CompletionPulse`. Dadurch fällt HR36 nach dem kurzzeitigen Manual-Signal nicht wieder auf 1 zurück, sondern behält den tatsächlichen Grund der zuletzt abgeschlossenen VE.
 
-## 10. Befehlssequenz ohne 16-Bit-Überlauf
+## 12. Befehlssequenz ohne 16-Bit-Überlauf
 
 `CommandSequence` und `AckSequence` liegen zwischen 1 und 32767. Nach 32767 folgt wieder 1.
 
@@ -199,7 +246,7 @@ Damit wird auch der Wrap 32767 → 1 erkannt. B021 übernimmt den neuen Wert auf
 
 Beim PC-Neustart liest Partcounter zunächst HR30 und synchronisiert den lokalen Sequenzstand mit diesem Wert. Der nächste Befehl verwendet den darauffolgenden Wert.
 
-## 11. Zähl- und VE-Ablauf
+## 13. Zähl- und VE-Ablauf
 
 Zählen nur bei:
 
@@ -224,7 +271,7 @@ NewCommand AND ManualVeChangeBit AND CurrentVECycles > 0
 
 Der aktuelle VE-Zähler wird erst nach allen Abschluss-Snapshots zurückgesetzt. Q1 wird monostabil für die konfigurierte Zeit eingeschaltet. Während Q1 aktiv ist, ist `CountGate` gesperrt.
 
-## 12. Dynamischer Zielwert
+## 14. Dynamischer Zielwert
 
 Der Ein-Schwellwert von B003 wird direkt aus VD18 gespeist. Deshalb gilt als verbindliche Systemregel:
 
@@ -234,7 +281,7 @@ Der Ein-Schwellwert von B003 wird direkt aus VD18 gespeist. Deshalb gilt als ver
 
 Für die letzte Teil-VE eines Auftrags schreibt der PC den kleineren Zielwert erst nach dem vorherigen Completion-Ereignis.
 
-## 13. Parameterprüfung
+## 15. Parameterprüfung
 
 PC-seitig wird vor jedem Auftrags-Telegramm geprüft:
 
@@ -246,7 +293,7 @@ PC-seitig wird vor jedem Auftrags-Telegramm geprüft:
 
 LOGO!-seitig werden mindestens Protokollversion, Kavitätenbereich, Zielzyklen, Zeitwert und zulässige Steuerbits plausibilisiert. Ein ungültiger Befehl darf Q1 nicht aktivieren.
 
-## 14. Ventilzeit
+## 16. Ventilzeit
 
 Partcounter überträgt HR7 in Einheiten von 10 ms:
 
@@ -264,13 +311,13 @@ Beispiele:
 
 B011 ist fest auf die Zeitbasis 10 ms eingestellt. Der Zeitparameter wird auf VW12 gemappt.
 
-## 15. Heartbeats
+## 17. Heartbeats
 
 PC und LOGO! verwenden Werte 1…32767 und springen danach wieder auf 1. Entscheidend ist die Änderung des jeweiligen Wertes innerhalb des Diagnosefensters.
 
 Ein stehender PC-Heartbeat setzt lediglich den Kommunikationsstatus. Die lokale Zählung und ein fälliger automatischer VE-Wechsel laufen weiter.
 
-## 16. Fehlercodes
+## 18. Fehlercodes
 
 | Code | Bedeutung | Verhalten |
 |---:|---|---|
@@ -283,20 +330,7 @@ Ein stehender PC-Heartbeat setzt lediglich den Kommunikationsstatus. Die lokale 
 | 10 | optionale Wechsler-Endlage nicht rechtzeitig erreicht | Alarm, weitere automatische Wechsel sperren |
 | 30 | interner ungültiger Ablaufzustand | Q1 aus, Alarm |
 
-## 17. Optionaler Endlagentest
-
-Falls I2 vorhanden und aktiviert ist, wird nach dem Ventilimpuls die erwartete Endlage innerhalb eines definierten Fensters geprüft. Bei Timeout:
-
-```text
-ErrorCode = 10
-Alarm = 1
-Q1 = 0
-weitere automatische Wechsel sperren
-```
-
-Diese Funktion wird erst nach realer Prüfung der Mechanik freigegeben.
-
-## 18. Neustartverhalten
+## 19. Neustartverhalten
 
 ### PC-Neustart
 
@@ -310,7 +344,7 @@ Die LOGO! läuft mit den zuletzt gültigen Parametern weiter. Partcounter liest 
 - ein LOGO!-Power-Cycle ist nicht mit einem reinen WLAN-/PC-Ausfall gleichzusetzen.
 - das Wiederanlaufkonzept wird erst nach realem Power-Cycle-Test freigegeben.
 
-## 19. Betriebsgrenzen V2
+## 20. Betriebsgrenzen V2
 
 - 1…64 Kavitäten
 - 1…32767 Zyklen pro VE
@@ -320,15 +354,11 @@ Die LOGO! läuft mit den zuletzt gültigen Parametern weiter. Partcounter liest 
 
 Größere Produktionslose werden in mehrere LOGO!-Aufträge segmentiert, solange kein erweitertes Zählkonzept freigegeben ist.
 
-## 20. Noch offen für die reale Testmaschine
+## 21. Noch offen für Referenzmaschine 01
 
-Vor Erstellung der finalen LOGO!-Datei müssen die realen elektrischen Randbedingungen festgelegt werden:
+Die Grundhardware ist festgelegt. Für die endgültige Q1-Freigabe fehlen nur:
 
-- exakter LOGO!-Typ / Firmware / Versorgungsspannung,
-- Signalart und Pegel des Zyklusimpulses,
-- Ventilspulenspannung und notwendiges Koppelrelais,
-- tatsächliche Ausgangsart Q1,
-- Endlagenrückmeldung I2 vorhanden ja/nein,
-- freizugebende Ventilimpulszeit.
+- Nennstrom oder Nennleistung der 24-V-Ventilspule,
+- Information, ob Ventil/Stecker bereits eine Freilauf-/Entstörbeschaltung enthält.
 
-Danach wird diese Spezifikation in LOGO! Soft Comfort als `Partcounter_LOGO_V001` umgesetzt, simuliert und an einer Testmaschine anhand des R001.7-Abnahmeprotokolls validiert.
+Anschließend wird diese Spezifikation in LOGO! Soft Comfort als `Partcounter_LOGO_V001` umgesetzt, simuliert und an der Referenzmaschine anhand des R001.7-Abnahmeprotokolls validiert.
