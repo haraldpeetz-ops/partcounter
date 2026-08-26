@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Partcounter.Models;
 
 namespace Partcounter.Services;
@@ -7,12 +8,17 @@ public sealed record MachineConnectionEventArgs(int MachineNumber, ConnectionSta
 
 public sealed class MachineFleetService : IAsyncDisposable
 {
+    private static readonly ConcurrentDictionary<int, MachineCommunicationDiagnostics> GlobalDiagnostics = new();
+
     private readonly Dictionary<int, Session> _sessions = new();
     private readonly List<Task> _workers = new();
     private CancellationTokenSource? _cts;
 
     public event EventHandler<MachineSnapshotEventArgs>? SnapshotReceived;
     public event EventHandler<MachineConnectionEventArgs>? ConnectionChanged;
+
+    public static MachineCommunicationDiagnostics? GetGlobalCommunicationDiagnostics(int machineNumber) =>
+        GlobalDiagnostics.TryGetValue(machineNumber, out var diagnostics) ? diagnostics : null;
 
     public async Task StartAsync(IEnumerable<MachineConfiguration> configurations)
     {
@@ -23,6 +29,7 @@ public sealed class MachineFleetService : IAsyncDisposable
         {
             var session = new Session(configuration);
             _sessions[configuration.MachineNumber] = session;
+            UpdateGlobalDiagnostics(session);
             _workers.Add(Task.Run(() => PollLoopAsync(session, _cts.Token), _cts.Token));
         }
     }
@@ -41,7 +48,10 @@ public sealed class MachineFleetService : IAsyncDisposable
         }
 
         foreach (var session in _sessions.Values)
+        {
             await session.Client.DisposeAsync();
+            GlobalDiagnostics.TryRemove(session.Configuration.MachineNumber, out _);
+        }
 
         _workers.Clear();
         _sessions.Clear();
@@ -49,33 +59,8 @@ public sealed class MachineFleetService : IAsyncDisposable
         _cts = null;
     }
 
-    public MachineCommunicationDiagnostics? GetCommunicationDiagnostics(int machineNumber)
-    {
-        if (!_sessions.TryGetValue(machineNumber, out var session))
-            return null;
-
-        var snapshot = session.LastSnapshot;
-        return new MachineCommunicationDiagnostics(
-            machineNumber,
-            true,
-            session.PollingEnabled,
-            session.LastState,
-            session.Heartbeat,
-            session.CommandSequence,
-            session.CommandSequenceSynchronized,
-            snapshot?.AcknowledgedCommandSequence ?? 0,
-            snapshot?.LogoHeartbeat ?? 0,
-            snapshot?.StatusWord ?? 0,
-            snapshot?.ErrorCode ?? 0,
-            snapshot?.CompletionSequence ?? 0,
-            snapshot?.ActiveCavitiesEcho ?? 0,
-            snapshot?.CurrentParts ?? 0,
-            snapshot?.TotalCycles ?? 0,
-            snapshot?.CurrentVeNumber ?? 0,
-            snapshot?.CompletedVes ?? 0,
-            snapshot?.ReadAtUtc,
-            session.LastMessage);
-    }
+    public MachineCommunicationDiagnostics? GetCommunicationDiagnostics(int machineNumber) =>
+        _sessions.TryGetValue(machineNumber, out var session) ? BuildDiagnostics(session) : null;
 
     public async Task SendJobAsync(int machineNumber, JobParameters job, CancellationToken cancellationToken = default)
     {
@@ -93,6 +78,7 @@ public sealed class MachineFleetService : IAsyncDisposable
                 resetJob: true,
                 pauseCounting: false,
                 cancellationToken: cancellationToken);
+            UpdateGlobalDiagnostics(session);
         }
         finally
         {
@@ -120,6 +106,7 @@ public sealed class MachineFleetService : IAsyncDisposable
                 resetJob: false,
                 pauseCounting: pauseCounting,
                 cancellationToken: cancellationToken);
+            UpdateGlobalDiagnostics(session);
         }
         finally
         {
@@ -139,6 +126,7 @@ public sealed class MachineFleetService : IAsyncDisposable
                 session.NextCommandSequence(),
                 (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandPauseCounting),
                 cancellationToken);
+            UpdateGlobalDiagnostics(session);
         }
         finally
         {
@@ -158,6 +146,7 @@ public sealed class MachineFleetService : IAsyncDisposable
                 session.NextCommandSequence(),
                 ModbusRegisterMap.CommandEnableAutomatic,
                 cancellationToken);
+            UpdateGlobalDiagnostics(session);
         }
         finally
         {
@@ -177,6 +166,7 @@ public sealed class MachineFleetService : IAsyncDisposable
             session.PollingEnabled = enabled;
             if (!enabled)
                 session.Client.Disconnect();
+            UpdateGlobalDiagnostics(session);
         }
         finally
         {
@@ -196,6 +186,7 @@ public sealed class MachineFleetService : IAsyncDisposable
                 session.NextCommandSequence(),
                 (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandManualVeChange),
                 cancellationToken);
+            UpdateGlobalDiagnostics(session);
         }
         finally
         {
@@ -215,6 +206,7 @@ public sealed class MachineFleetService : IAsyncDisposable
                 session.NextCommandSequence(),
                 (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandResetJob),
                 cancellationToken);
+            UpdateGlobalDiagnostics(session);
         }
         finally
         {
@@ -252,6 +244,7 @@ public sealed class MachineFleetService : IAsyncDisposable
                     session.LastSnapshot = snapshot;
                     session.LastMessage = null;
                     session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
+                    UpdateGlobalDiagnostics(session);
                     SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
                     PublishConnection(session, ConnectionState.Online, null);
                 }
@@ -297,6 +290,7 @@ public sealed class MachineFleetService : IAsyncDisposable
         session.LastSnapshot = snapshot;
         session.LastMessage = null;
         session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
+        UpdateGlobalDiagnostics(session);
         SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
     }
 
@@ -310,9 +304,40 @@ public sealed class MachineFleetService : IAsyncDisposable
     private void PublishConnection(Session session, ConnectionState state, string? message)
     {
         session.LastMessage = message;
-        if (session.LastState == state && state == ConnectionState.Online) return;
         session.LastState = state;
+        UpdateGlobalDiagnostics(session);
+        if (state == ConnectionState.Online && session.ConnectionStatePublishedOnline)
+            return;
+        session.ConnectionStatePublishedOnline = state == ConnectionState.Online;
         ConnectionChanged?.Invoke(this, new MachineConnectionEventArgs(session.Configuration.MachineNumber, state, message));
+    }
+
+    private static void UpdateGlobalDiagnostics(Session session) =>
+        GlobalDiagnostics[session.Configuration.MachineNumber] = BuildDiagnostics(session);
+
+    private static MachineCommunicationDiagnostics BuildDiagnostics(Session session)
+    {
+        var snapshot = session.LastSnapshot;
+        return new MachineCommunicationDiagnostics(
+            session.Configuration.MachineNumber,
+            true,
+            session.PollingEnabled,
+            session.LastState,
+            session.Heartbeat,
+            session.CommandSequence,
+            session.CommandSequenceSynchronized,
+            snapshot?.AcknowledgedCommandSequence ?? 0,
+            snapshot?.LogoHeartbeat ?? 0,
+            snapshot?.StatusWord ?? 0,
+            snapshot?.ErrorCode ?? 0,
+            snapshot?.CompletionSequence ?? 0,
+            snapshot?.ActiveCavitiesEcho ?? 0,
+            snapshot?.CurrentParts ?? 0,
+            snapshot?.TotalCycles ?? 0,
+            snapshot?.CurrentVeNumber ?? 0,
+            snapshot?.CompletedVes ?? 0,
+            snapshot?.ReadAtUtc,
+            session.LastMessage);
     }
 
     public async ValueTask DisposeAsync() => await StopAsync();
@@ -334,6 +359,7 @@ public sealed class MachineFleetService : IAsyncDisposable
         public SemaphoreSlim Gate { get; } = new(1, 1);
         public bool PollingEnabled { get; set; } = true;
         public ConnectionState LastState { get; set; } = ConnectionState.Offline;
+        public bool ConnectionStatePublishedOnline { get; set; }
         public LogoSnapshot? LastSnapshot { get; set; }
         public string? LastMessage { get; set; }
         public bool CommandSequenceSynchronized => _commandSequenceSynchronized;
