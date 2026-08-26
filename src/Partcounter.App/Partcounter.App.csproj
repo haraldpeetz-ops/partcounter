@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.6</Version>
-    <FileVersion>0.1.6.0</FileVersion>
-    <InformationalVersion>0.1.6-r001.6-als-context-manual</InformationalVersion>
+    <Version>0.1.7</Version>
+    <FileVersion>0.1.7.0</FileVersion>
+    <InformationalVersion>0.1.7-r001.7-logo-v001-sequence-hardening</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
