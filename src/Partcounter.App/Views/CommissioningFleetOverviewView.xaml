@@ -1,0 +1,48 @@
+<UserControl x:Class="Partcounter.Views.CommissioningFleetOverviewView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Rolloutstatus · 30 Maschinen" FontSize="20" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding SummaryText}" Foreground="#566473" Margin="0,3,0,0"/>
+                </StackPanel>
+                <WrapPanel Grid.Column="1" VerticalAlignment="Center">
+                    <Button Content="Status neu laden" Command="{Binding RefreshCommand}" Padding="12,7"/>
+                    <Button Content="Übersicht als CSV exportieren" Command="{Binding ExportCommand}" Padding="12,7"/>
+                </WrapPanel>
+            </Grid>
+        </Border>
+
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
+                  CanUserAddRows="False" IsReadOnly="True" HeadersVisibility="Column">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="M" Binding="{Binding MachineNumber, StringFormat={}{0:00}}" Width="45"/>
+                <DataGridTextColumn Header="Maschine" Binding="{Binding Name}" Width="190"/>
+                <DataGridTextColumn Header="Endpunkt" Binding="{Binding Endpoint}" Width="175"/>
+                <DataGridTextColumn Header="Live" Binding="{Binding ConnectionText}" Width="100"/>
+                <DataGridTextColumn Header="Antwort" Binding="{Binding LastResponseText}" Width="85"/>
+                <DataGridTextColumn Header="Freigabe" Binding="{Binding ReleaseStateText}" Width="145"/>
+                <DataGridTextColumn Header="Prüfstatus" Binding="{Binding ChecklistText}" Width="175"/>
+                <DataGridTextColumn Header="Hardwareprofil" Binding="{Binding HardwareText}" Width="*"/>
+                <DataGridTextColumn Header="Error" Binding="{Binding ErrorText}" Width="90"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <StackPanel Grid.Row="2" Margin="0,8,0,0">
+            <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding LastExportPath}" Foreground="#657180" TextWrapping="Wrap"/>
+        </StackPanel>
+    </Grid>
+</UserControl>
