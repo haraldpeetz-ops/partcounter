@@ -1,0 +1,64 @@
+Network;Source;Destination;Signal;Notes
+1;I1;B001.IN1;CycleRaw24V;Positive machine cycle signal
+1;B001.Q;B002.IN1;CycleEdge;One LOGO scan pulse
+1;AutomaticEnabled;B002.IN2;AutoEnable;CommandWord bit 0 / persistent level
+1;PauseCounting_NOT;B002.IN3;CountAllowed;Inverted CommandWord bit 4
+1;VeChangeActive_NOT;B002.IN4;NoChangeRunning;Inhibit during valve pulse
+1;B002.Q;B003.Cnt;CountPulse;Current VE cycles
+1;B002.Q;B004.Cnt;CountPulse;Total cycles
+2;VD18;B003.OnThreshold;TargetCyclesPerVE;Parameter VM mapping HR10/HR11
+2;B003.Q;B005.IN1;VeTargetReached;Positive edge creates auto completion pulse
+2;B005.Q;B008.IN1;AutoCompletionPulse;Automatic VE completion
+3;B003.CounterValue;B006.Ax;CurrentVECycles;Detect value greater than zero
+3;B024.Q;B007.IN1;NewCommand;CommandSequence differs from AckSequence
+3;ManualVEChangeBit;B007.IN2;ManualCommand;CommandWord bit 2
+3;B006.Q;B007.IN3;CurrentVeNonZero;Ignore manual empty VE
+3;B007.Q;B008.IN2;ManualCompletionPulse;Manual VE completion
+4;B008.Q;B009.En;CompletionPulse;Sample current VE cycle count
+4;B003.CounterValue;B009.Ax;CurrentVECycles;Stored as Aen
+4;B009.Aen;VW56;LastCompletedVECyclesLow;HR29
+4;CONST_0;VW54;LastCompletedVECyclesHigh;HR28 stays zero in V2
+4;B008.Q;B018.En;CompletionPulse;Sample completion reason
+4;B017.AQ;B018.Ax;CompletionReasonCandidate;1 automatic / 2 manual
+4;B018.Aen;VW70;LastCompletionReason;HR36
+4;B008.Q;B019.En;CompletionPulse;Sample active cavities
+4;ActiveCavities;B019.Ax;CavitiesAtCompletion;Value 1..64
+4;B019.Aen;VW72;LastCompletedCavities;HR37
+4;B008.Q;B012.Cnt;CompletionPulse;Completed VE counter increment
+4;B012.CounterValue;VW52;CompletedVEs;HR27
+4;B012.CounterValue;VW62;LastCompletedVENumber;HR32
+4;B012.CounterValue;VW64;CompletionSequence;HR33
+4;B012.CounterValuePlus1;VW50;CurrentVENumber;HR26
+5;B008.Q;B011.Trg;CompletionPulse;Start valve pulse
+5;VW12;B011.TimeParameter;ValvePulse10Ms;Fixed time base 10 ms
+5;B011.Q;Q1;ValveRelayCommand;Drives interface relay
+5;B011.Q;VeChangeActive;VeChangeActive;CountGate inhibited while active
+5;B008.Q;B010.Trg;CompletionPulse;Start delayed current VE reset
+5;B010.Q;B003.R;ResetCurrentVE;Delay shorter than 50 ms valve minimum
+6;B024.Q;ResetJobGate.IN1;NewCommand;One shot guard
+6;ResetJobBit;ResetJobGate.IN2;ResetJob;CommandWord bit 1
+6;ResetJobGate.Q;B003.R;ResetCurrentVE;New job
+6;ResetJobGate.Q;B004.R;ResetTotalCycles;New job only
+6;ResetJobGate.Q;B012.R;ResetCompletedVEs;New job only
+7;CommandSequence;B022.Ax;CommandSequence;VW2 / HR2
+7;AckSequence;B022.Ay;AckSequence;VW58 / HR30
+7;AckSequence;B023.Ax;AckSequence;VW58 / HR30
+7;CommandSequence;B023.Ay;CommandSequence;VW2 / HR2
+7;B022.Q;B024.IN1;CmdGreaterAck;First inequality direction
+7;B023.Q;B024.IN2;AckGreaterCmd;Second inequality direction
+7;B024.Q;B021.En;NewCommand;Store new sequence after processing
+7;CommandSequence;B021.Ax;CommandSequence;Stored as AckSequence
+7;B021.Aen;VW58;AckSequence;HR30
+8;ActiveCavities;VW60;ActiveCavitiesEcho;HR31
+8;B003.CounterValue;VD42;CurrentVECycles;HR22/HR23 parameter VM mapping
+8;B004.CounterValue;VD46;TotalCycles;HR24/HR25 parameter VM mapping
+9;B025.Q;B026.Cnt;HeartbeatPulse;LOGO heartbeat counter
+9;B026.CounterValue;VW66;LogoHeartbeat;HR34
+10;PcHeartbeatDiagnostic;StatusBit5;PcHeartbeatStale;Diagnostic only no production stop
+11;ProtocolVersionConst;VW38;ProtocolVersion;HR20 = 2
+11;ReadyLogic;StatusBit0;Ready;HR21 bit 0
+11;AutomaticEnabled;StatusBit1;AutomaticActive;HR21 bit 1
+11;VeChangeActive;StatusBit2;VEChangeActive;HR21 bit 2
+11;AlarmLatched;StatusBit3;Alarm;HR21 bit 3
+11;I1;StatusBit4;CycleInputActive;HR21 bit 4
+11;PcHeartbeatStale;StatusBit5;PcHeartbeatStale;HR21 bit 5
