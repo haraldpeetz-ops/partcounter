@@ -10,7 +10,7 @@
 
 Dieses Dokument ist die verbindliche Engineering-Vorgabe für das erste reale LOGO!-Programm von Partcounter. Alle Maschinen verwenden dieselbe Grundlogik. Maschinenbezogen werden nur Netzwerkparameter, reale I/O-Verdrahtung und optional die Endlagenüberwachung angepasst.
 
-Zentrale Regel: Die LOGO! zählt Maschinenzyklen und löst den VE-Wechsel lokal aus. Ein Ausfall von PC, LAN oder WLAN darf weder Zyklen verlieren noch einen fälligen Verpackungswechsel verhindern.
+Die LOGO! zählt Maschinenzyklen und löst den VE-Wechsel lokal aus. Ein Ausfall von PC, LAN oder WLAN darf weder Zyklen verlieren noch einen fälligen Verpackungswechsel verhindern.
 
 ## 2. Hardwaregerechte Zählstrategie
 
@@ -19,13 +19,13 @@ Die LOGO!-Vor-/Rückwärtszähler unterstützen Zählerstände und Schwellwerte 
 Daraus folgt für Partcounter V2:
 
 - `TotalCycles` wird nativ in einem LOGO!-Zähler geführt und als DWord übertragen.
-- `CurrentVECycles` wird ebenfalls nativ gezählt.
+- `CurrentVECycles` wird nativ gezählt.
 - die LOGO! multipliziert **nicht** `Zyklen × Kavitäten`; das macht der PC.
-- eine einzelne VE wird bewusst auf **maximal 32767 Zyklen** begrenzt.
-- der letzte abgeschlossene VE-Zykluswert kann dadurch innerhalb der LOGO! mit einem Analog-Watchdog sicher als 16-Bit-Snapshot gespeichert werden.
-- CommandSequence, CompletionSequence und Heartbeats bleiben ebenfalls im Bereich 1…32767.
+- eine einzelne VE ist auf maximal **32767 Zyklen** begrenzt.
+- der Zyklusstand der abgeschlossenen VE wird vor dem Reset mit einem Analog-Watchdog gespeichert.
+- CommandSequence, CompletionSequence und Heartbeats bleiben im Bereich 1…32767.
 
-Diese Begrenzung reduziert LOGO!-Sonderlogik und ist für reale Verpackungseinheiten ausreichend. Der Gesamtzykluszähler bleibt davon unabhängig und kann bis zum nativen LOGO!-Grenzwert 999999 zählen.
+Der Gesamtzykluszähler bleibt davon unabhängig und kann bis zum nativen LOGO!-Grenzwert 999999 zählen.
 
 ## 3. Standard-I/O
 
@@ -56,9 +56,9 @@ Safety-Signale wie Not-Halt, Schutztür oder Maschinenfreigabe werden nicht durc
 | HR10/HR11 | VD18 | TargetCyclesPerVE, 1…32767 |
 | HR12 | VW22 | PC Heartbeat 1…32767 |
 
-`VD18` wird per Parameter-VM-Mapping direkt dem `On Threshold` des VE-Zählers zugeordnet. Der PC schreibt den DWord-Wert High Word vor Low Word; in V2 ist wegen der 32767-Grenze das High Word immer 0.
+`VD18` wird per Parameter-VM-Mapping direkt dem `On Threshold` des VE-Zählers zugeordnet. Der PC schreibt den DWord-Wert High Word vor Low Word; durch die 32767-Grenze ist das High Word im V2-Betrieb immer 0.
 
-Der Ventilwert wird in 10-ms-Einheiten übertragen. Beispiel: 750 ms → HR7 = 75. Der Zeitbaustein wird fest auf die Zeitbasis 10 ms eingestellt und sein Zeitparameter auf VW12 gemappt.
+Der Ventilwert wird in 10-ms-Einheiten übertragen. Beispiel: 750 ms → HR7 = 75. Der Zeitbaustein verwendet fest die Zeitbasis 10 ms und sein Zeitparameter wird auf VW12 gemappt.
 
 ### LOGO! → PC
 
@@ -81,15 +81,21 @@ Der Ventilwert wird in 10-ms-Einheiten übertragen. Beispiel: 750 ms → HR7 = 7
 | HR36 | VW70 | LastCompletionReason |
 | HR37 | VW72 | LastCompletedCavities |
 
-Parameter-VM-Mapping:
+Verbindliches Parameter-/VM-Mapping:
 
 - `CurrentVECycles.Counter` → VD42
 - `TotalCycles.Counter` → VD46
-- `LastCompletedVECycles` wird über den gespeicherten Vergleichswert `Aen` eines Analog-Watchdog auf VW56 ausgegeben.
+- `CurrentVECycles.On Threshold` ← VD18
+- `LastCompletedCycles.Aen` → VW56
+- `AckSequenceStore.Aen` → VW58
+- `LastCompletionReasonStore.Aen` → VW70
+- `LastCompletedCavitiesStore.Aen` → VW72
 
-## 5. CommandWord
+HR28/VW54 bleibt in V2 auf 0, da `LastCompletedVECycles` maximal 32767 beträgt. Die DWord-Struktur bleibt trotzdem erhalten, damit die PC-Struktur einheitlich und erweiterbar bleibt.
 
-Die unteren Bits des Modbus-Wortes liegen aufgrund der VM-Byteordnung im Low Byte `VB5`. In der LOGO!-Schaltung werden daher lokale VM-Bits verwendet:
+## 5. CommandWord und StatusWord
+
+Die unteren Bits des Modbus-Wortes HR3/VW4 liegen aufgrund der VM-Byteordnung im Low Byte `VB5`. In der LOGO!-Schaltung werden daher lokale VM-Bits verwendet:
 
 | Funktion | CommandWord-Bit | lokales VM-Bit |
 |---|---:|---|
@@ -99,50 +105,54 @@ Die unteren Bits des Modbus-Wortes liegen aufgrund der VM-Byteordnung im Low Byt
 | Alarm quittieren | 3 | V5.3 |
 | Zählung pausieren | 4 | V5.4 |
 
-StatusWord HR21 liegt in VW40; die unteren Statusbits werden entsprechend auf V41.0…V41.5 ausgegeben.
+StatusWord HR21 liegt in VW40; die unteren Statusbits werden auf V41.0…V41.5 ausgegeben.
 
 ## 6. Funktionsblockplan V001
 
-Die folgenden Blocknummern sind die Zielnummerierung für den ersten Aufbau in LOGO! Soft Comfort. Falls LSC beim Einfügen automatisch andere Nummern vergibt, werden die Nummern nach Fertigstellung einmalig im Dokument nachgezogen und danach eingefroren.
+Die folgende Nummerierung ist die Zielnummerierung für den ersten Aufbau in LOGO! Soft Comfort. Falls LSC beim Einfügen andere Nummern vergibt, werden die realen Nummern nach Fertigstellung einmalig nachgezogen und danach eingefroren.
 
 | Block | Typ | Name / Aufgabe | Kernparameter |
 |---|---|---|---|
-| B001 | AND mit Flankenauswertung | `CycleEdge` | I1 an Eingang 1; übrige Eingänge unbenutzt |
-| B002 | AND | `CountGate` | CycleEdge AND Automatic AND NOT Pause AND NOT VeChangeActive |
+| B001 | AND mit Flankenauswertung | `CycleEdge` | I1 an Eingang 1; reale positive Maschinenflanke |
+| B002 | AND | `CountGate` | B001 AND Automatic AND NOT Pause AND NOT VeChangeActive |
 | B003 | Vor-/Rückwärtszähler | `CurrentVECycles` | Cnt=B002, Dir=0, R=ResetCurrentVE, On=VD18, Off=0, retentiv |
 | B004 | Vor-/Rückwärtszähler | `TotalCycles` | Cnt=B002, Dir=0, R=ResetJob, retentiv |
-| B005 | AND mit Flankenauswertung | `AutoCompletionPulse` | Flanke von B003.Q |
-| B006 | Analog-Schwellwertschalter | `CurrentVeNonZero` | Ax=B003.Cnt, On=0, Off=0 |
+| B005 | AND mit Flankenauswertung | `AutoCompletionPulse` | positive Flanke von B003.Q |
+| B006 | Analog-Schwellwertschalter | `CurrentVeNonZero` | Ax=B003.Cnt, Q=1 bei Wert > 0 |
 | B007 | AND | `ManualCompletionPulse` | NewCommand AND V5.2 AND B006.Q |
 | B008 | OR | `CompletionPulse` | B005 OR B007 |
-| B009 | Analog-Watchdog | `LastCompletedCycles` | En=B008, Ax=B003.Cnt; gespeichertes Aen → VW56 |
-| B010 | Impuls-/Wischrelais | `ResetCurrentVeDelay` | Trigger=B008; kurzer verzögerter Resetimpuls |
-| B011 | Impuls-/Wischrelais | `ValvePulse` | Trigger=B008; Zeitbasis 10 ms; Zeitwert via VW12 |
-| B012 | Vor-/Rückwärtszähler | `CompletedVEs` | Cnt=B008, R=ResetJob; max. 32767 |
-| B013 | Analogverstärker | `CompletedVEs_VM` | Referenz B012.Cnt → VW52 |
+| B009 | Analog-Watchdog | `LastCompletedCycles` | En=B008, Ax=B003.Cnt; Aen → VW56 |
+| B010 | Impuls-/Wischrelais | `ResetCurrentVeDelay` | Trigger=B008; Reset erst nach Snapshot |
+| B011 | Impuls-/Wischrelais | `ValvePulse` | Trigger=B008; feste Zeitbasis 10 ms; Zeitwert via VW12 |
+| B012 | Vor-/Rückwärtszähler | `CompletedVEs` | Cnt=B008, R=ResetJob; 0…32767 |
+| B013 | Analogverstärker | `CompletedVEs_VM` | B012.Cnt → VW52 |
 | B014 | Analogberechnung | `CurrentVENumber` | B012.Cnt + 1 → VW50 |
-| B015 | Analogverstärker | `CompletionSequence_VM` | Referenz B012.Cnt → VW64 |
-| B016 | Analog-MUX | `CompletionReason` | 1=automatisch, 2=manuell → VW70 |
-| B017 | Analog-Watchdog | `AckSequenceStore` | En=NewCommand, Ax=CommandSequence → VW58 |
-| B018 | Analogkomparator | `CmdGreaterAck` | CommandSequence - AckSequence > 0 |
-| B019 | Analogkomparator | `AckGreaterCmd` | AckSequence - CommandSequence > 0 |
-| B020 | OR | `NewCommand` | B018 OR B019 |
-| B021 | Impulsgeber / Takt | `LogoHeartbeatClock` | Diagnose-Takt |
-| B022 | Vor-/Rückwärtszähler | `LogoHeartbeatCounter` | 1…32767, danach Reset/Wrap |
-| B023 | Heartbeat-Überwachung | `PcHeartbeatWatch` | Änderung von VW22 überwachen |
-| B024 | Alarm-/Freigabelogik | `ConfigAndFaultLogic` | Parameter-/Endlagenfehler |
+| B015 | Analogverstärker | `LastCompletedVENumber_VM` | B012.Cnt → VW62 |
+| B016 | Analogverstärker | `CompletionSequence_VM` | B012.Cnt → VW64 |
+| B017 | Analog-MUX | `CompletionReasonCandidate` | automatisch=1, manuell=2; Auswahl durch B007 |
+| B018 | Analog-Watchdog | `LastCompletionReasonStore` | En=B008, Ax=B017; Aen → VW70 |
+| B019 | Analog-Watchdog | `LastCompletedCavitiesStore` | En=B008, Ax=ActiveCavities; Aen → VW72 |
+| B020 | Analogverstärker | `ActiveCavitiesEcho` | ActiveCavities aus VW6 → VW60 |
+| B021 | Analog-Watchdog | `AckSequenceStore` | En=NewCommand, Ax=CommandSequence; Aen → VW58 |
+| B022 | Analogkomparator | `CmdGreaterAck` | CommandSequence - AckSequence > 0 |
+| B023 | Analogkomparator | `AckGreaterCmd` | AckSequence - CommandSequence > 0 |
+| B024 | OR | `NewCommand` | B022 OR B023 |
+| B025 | Impulsgeber / Takt | `LogoHeartbeatClock` | Diagnose-Takt |
+| B026 | Vor-/Rückwärtszähler | `LogoHeartbeatCounter` | 1…32767; kontrollierter Wrap auf 1 |
+| B027 | Heartbeat-Überwachung | `PcHeartbeatWatch` | Änderung von VW22 überwachen |
+| B028 | Alarm-/Freigabelogik | `ConfigAndFaultLogic` | Parameter-/Endlagenfehler |
 
-Zusätzliche Network-/Analog-Network-Inputs lesen die relevanten VW-/V-Bereiche. Die endgültige LSC-Blockliste wird beim Aufbau des realen Projekts exportiert und mit dieser Tabelle abgeglichen.
+Zusätzliche Network-/Analog-Network-Inputs lesen die relevanten VW-/V-Bereiche. Die endgültige LSC-Blockliste wird beim Aufbau des realen Projekts exportiert und gegen diese Tabelle geprüft.
 
-## 7. Warum B001 vor dem CountGate liegt
+## 7. Zyklusflanke vor CountGate
 
 Der Zyklusimpuls wird **vor** Auto/Pause/Wechsel-Freigaben auf eine echte positive Flanke reduziert. Würde zuerst ein normales AND aus I1 und der Freigabe gebildet, könnte das Aufheben einer Pause bei noch anstehendem I1-Pegel eine künstliche 0→1-Flanke und damit einen falschen Zählimpuls erzeugen.
 
-Das LOGO!-`AND mit Flankenauswertung` liefert dagegen nur für einen Programmzyklus ein Signal, wenn seine Eingangskombination neu von 0 nach 1 wechselt. B001 isoliert damit die reale Maschinenflanke; B002 darf diesen bereits erzeugten Ein-Zyklus-Puls anschließend nur noch freigeben oder sperren.
+B001 isoliert deshalb die reale Maschinenflanke. B002 darf diesen bereits erzeugten Ein-Zyklus-Puls anschließend nur noch freigeben oder sperren.
 
 ## 8. Snapshot der abgeschlossenen VE
 
-Der Analog-Watchdog B009 wird als Sample-and-Hold verwendet. Bei einer positiven Flanke an `En` speichert dieser Block seinen analogen Eingang als Vergleichswert `Aen`. Als Eingang wird der aktuelle Wert des VE-Zählers B003 referenziert.
+Der Analog-Watchdog B009 wird als Sample-and-Hold verwendet. Bei einer positiven Flanke an `En` speichert er den aktuellen analogen Eingang als Vergleichswert `Aen`.
 
 Ablauf:
 
@@ -150,20 +160,34 @@ Ablauf:
 B003 erreicht Soll / manueller Wechsel
         ↓
 CompletionPulse B008
-        ├─> B009 speichert CurrentVECycles als Aen
-        ├─> CompletedVEs +1
-        ├─> LastCompletionReason setzen
-        ├─> B011 Ventilimpuls starten
-        └─> B010 erzeugt erst danach ResetCurrentVE
+        ├─> B009 speichert CurrentVECycles
+        ├─> B018 speichert CompletionReason
+        ├─> B019 speichert ActiveCavities
+        ├─> B012 zählt CompletedVEs hoch
+        ├─> B011 startet Ventilimpuls
+        └─> B010 setzt B003 erst danach zurück
 ```
 
-Damit ist `LastCompletedVECycles` stabil im Status verfügbar, obwohl B003 für die nächste VE zurückgesetzt wurde.
+Damit bleiben `LastCompletedVECycles`, `LastCompletionReason` und `LastCompletedCavities` bis zum nächsten Abschluss stabil im Status verfügbar.
 
-## 9. Befehlssequenz ohne 16-Bit-Überlauf
+`LastCompletedVENumber` entspricht nach einem Abschluss dem aktualisierten Zähler `CompletedVEs` und wird deshalb über B015 aus B012.Cnt ausgegeben. `CurrentVENumber` ist `CompletedVEs + 1`.
+
+## 9. Abschlussgrund dauerhaft speichern
+
+B017 erzeugt für den aktuellen Abschluss einen Kandidatenwert:
+
+```text
+automatischer Abschluss → 1
+manueller Abschluss     → 2
+```
+
+B018 speichert diesen Kandidaten nur auf der positiven Flanke von `CompletionPulse`. Dadurch fällt HR36 nach dem kurzzeitigen Manual-Signal nicht wieder auf 1 zurück, sondern behält den tatsächlichen Grund der zuletzt abgeschlossenen VE.
+
+## 10. Befehlssequenz ohne 16-Bit-Überlauf
 
 `CommandSequence` und `AckSequence` liegen zwischen 1 und 32767. Nach 32767 folgt wieder 1.
 
-Da ein einzelner Analogkomparator nur `Ax - Ay` bewertet, wird Ungleichheit symmetrisch mit zwei Komparatoren erkannt:
+Ungleichheit wird mit zwei Komparatoren erkannt:
 
 ```text
 CmdGreaterAck = CommandSequence - AckSequence > 0
@@ -171,14 +195,19 @@ AckGreaterCmd = AckSequence - CommandSequence > 0
 NewCommand    = CmdGreaterAck OR AckGreaterCmd
 ```
 
-Beim Wrap 32767 → 1 erkennt der zweite Zweig die Änderung. B017 übernimmt den neuen Wert anschließend als AckSequence.
+Damit wird auch der Wrap 32767 → 1 erkannt. B021 übernimmt den neuen Wert auf `NewCommand` als AckSequence.
 
-## 10. Zähl- und VE-Ablauf
+Beim PC-Neustart liest Partcounter zunächst HR30 und synchronisiert den lokalen Sequenzstand mit diesem Wert. Der nächste Befehl verwendet den darauffolgenden Wert.
 
-Zählen nur wenn:
+## 11. Zähl- und VE-Ablauf
+
+Zählen nur bei:
 
 ```text
-CycleEdge AND AutomaticEnabled AND NOT PauseCounting AND NOT VeChangeActive
+CycleEdge
+AND AutomaticEnabled
+AND NOT PauseCounting
+AND NOT VeChangeActive
 ```
 
 Automatischer Abschluss:
@@ -193,11 +222,21 @@ Manueller Abschluss:
 NewCommand AND ManualVeChangeBit AND CurrentVECycles > 0
 ```
 
-Der aktuelle VE-Zähler wird erst nach dem Snapshot zurückgesetzt. Q1 wird monostabil für die konfigurierte Zeit eingeschaltet. Während Q1 aktiv ist, ist der CountGate gesperrt.
+Der aktuelle VE-Zähler wird erst nach allen Abschluss-Snapshots zurückgesetzt. Q1 wird monostabil für die konfigurierte Zeit eingeschaltet. Während Q1 aktiv ist, ist `CountGate` gesperrt.
 
-## 11. Parameterprüfung
+## 12. Dynamischer Zielwert
 
-PC-seitig wird vor jedem Auftrag geprüft:
+Der Ein-Schwellwert von B003 wird direkt aus VD18 gespeist. Deshalb gilt als verbindliche Systemregel:
+
+- Partcounter ist der einzige schreibende Modbus-Client.
+- `TargetCyclesPerVE` wird nur bei neuem Auftrag oder unmittelbar nach einem VE-Abschluss geändert.
+- Ein Parameterupdate während `CurrentVECycles > 0` ist unzulässig.
+
+Für die letzte Teil-VE eines Auftrags schreibt der PC den kleineren Zielwert erst nach dem vorherigen Completion-Ereignis.
+
+## 13. Parameterprüfung
+
+PC-seitig wird vor jedem Auftrags-Telegramm geprüft:
 
 - ActiveCavities = 1…64
 - TargetPartsPerVE > 0
@@ -205,9 +244,33 @@ PC-seitig wird vor jedem Auftrag geprüft:
 - ValvePulseMs = 50…5000
 - ValvePulseMs muss durch 10 teilbar sein
 
-LOGO!-seitig werden Protokoll, Kavitäten, zulässige Steuerbits und die plausiblen Zeit-/Zielwerte soweit mit einfachen 16-Bit-Vergleichen abgesichert. Der PC ist der einzige freigegebene schreibende Modbus-Client.
+LOGO!-seitig werden mindestens Protokollversion, Kavitätenbereich, Zielzyklen, Zeitwert und zulässige Steuerbits plausibilisiert. Ein ungültiger Befehl darf Q1 nicht aktivieren.
 
-## 12. Fehlercodes
+## 14. Ventilzeit
+
+Partcounter überträgt HR7 in Einheiten von 10 ms:
+
+```text
+ValvePulse10Ms = ValvePulseMs / 10
+```
+
+Beispiele:
+
+```text
+50 ms   → 5
+750 ms  → 75
+5000 ms → 500
+```
+
+B011 ist fest auf die Zeitbasis 10 ms eingestellt. Der Zeitparameter wird auf VW12 gemappt.
+
+## 15. Heartbeats
+
+PC und LOGO! verwenden Werte 1…32767 und springen danach wieder auf 1. Entscheidend ist die Änderung des jeweiligen Wertes innerhalb des Diagnosefensters.
+
+Ein stehender PC-Heartbeat setzt lediglich den Kommunikationsstatus. Die lokale Zählung und ein fälliger automatischer VE-Wechsel laufen weiter.
+
+## 16. Fehlercodes
 
 | Code | Bedeutung | Verhalten |
 |---:|---|---|
@@ -220,26 +283,34 @@ LOGO!-seitig werden Protokoll, Kavitäten, zulässige Steuerbits und die plausib
 | 10 | optionale Wechsler-Endlage nicht rechtzeitig erreicht | Alarm, weitere automatische Wechsel sperren |
 | 30 | interner ungültiger Ablaufzustand | Q1 aus, Alarm |
 
-## 13. Heartbeats
+## 17. Optionaler Endlagentest
 
-PC und LOGO! verwenden Werte 1…32767 und springen danach wieder auf 1. Entscheidend ist nicht die numerische Differenz, sondern dass sich der jeweilige Wert innerhalb des Diagnosefensters ändert.
+Falls I2 vorhanden und aktiviert ist, wird nach dem Ventilimpuls die erwartete Endlage innerhalb eines definierten Fensters geprüft. Bei Timeout:
 
-Ein stehender PC-Heartbeat setzt nur den Kommunikationsstatus. Die lokale Zählung und ein fälliger automatischer VE-Wechsel laufen weiter.
+```text
+ErrorCode = 10
+Alarm = 1
+Q1 = 0
+weitere automatische Wechsel sperren
+```
 
-## 14. Neustartverhalten
+Diese Funktion wird erst nach realer Prüfung der Mechanik freigegeben.
+
+## 18. Neustartverhalten
 
 ### PC-Neustart
 
-Die LOGO! läuft mit den zuletzt gültigen Parametern weiter. Partcounter liest `AckSequence`, synchronisiert seine lokale Sequenz und sendet erst danach einen neuen Befehl.
+Die LOGO! läuft mit den zuletzt gültigen Parametern weiter. Partcounter liest AckSequence und sendet danach mit der nächsten Sequenz weiter.
 
 ### LOGO!-Neustart
 
 - Q1 muss beim Start AUS sein.
-- kein selbsttätiger Ventilimpuls allein aufgrund eines alten Ausgangszustands.
+- kein selbsttätiger Ventilimpuls allein aus einem alten Ausgangszustand.
 - Zählerretentivität wird an der Testmaschine bewusst geprüft.
-- nach realem LOGO!-Spannungswiederkehrtest ist das Wiederanlaufkonzept freizugeben; ein LOGO!-Power-Cycle ist nicht mit einem reinen WLAN-/PC-Ausfall gleichzusetzen.
+- ein LOGO!-Power-Cycle ist nicht mit einem reinen WLAN-/PC-Ausfall gleichzusetzen.
+- das Wiederanlaufkonzept wird erst nach realem Power-Cycle-Test freigegeben.
 
-## 15. Betriebsgrenzen V2
+## 19. Betriebsgrenzen V2
 
 - 1…64 Kavitäten
 - 1…32767 Zyklen pro VE
@@ -249,9 +320,9 @@ Die LOGO! läuft mit den zuletzt gültigen Parametern weiter. Partcounter liest 
 
 Größere Produktionslose werden in mehrere LOGO!-Aufträge segmentiert, solange kein erweitertes Zählkonzept freigegeben ist.
 
-## 16. Noch offen für die reale Testmaschine
+## 20. Noch offen für die reale Testmaschine
 
-Vor Erstellung der finalen LOGO!-Datei müssen nur noch die realen elektrischen Randbedingungen festgelegt werden:
+Vor Erstellung der finalen LOGO!-Datei müssen die realen elektrischen Randbedingungen festgelegt werden:
 
 - exakter LOGO!-Typ / Firmware / Versorgungsspannung,
 - Signalart und Pegel des Zyklusimpulses,
