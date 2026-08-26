@@ -51,7 +51,7 @@ Verbindliche Auswertung:
 
 ## 4. Pneumatikventil Q1
 
-Die Ventilspule arbeitet mit **24 V DC**.
+Die Ventilspule arbeitet mit **24 V DC**. Es handelt sich um ein handelsübliches kleines Festo-Pneumatikventil. Exakte Spulenleistung, Spulenstrom und vorhandene Entstörbeschaltung sind derzeit nicht bekannt und werden bewusst erst bei der realen Inbetriebnahme erfasst.
 
 ### Standardbeschaltung
 
@@ -75,14 +75,9 @@ Bei einer DC-Magnetspule ist eine geeignete **Freilauf-/Entstörbeschaltung dire
 
 Die LOGO! besitzt Relaisausgänge. Laut technischem Datenblatt liegt die maximale Kontaktbelastung bei 3 A für induktive Last. Das bedeutet jedoch nicht automatisch, dass jede 24-V-Ventilspule ohne weitere Prüfung direkt geschaltet werden soll.
 
-Für die Freigabe werden noch erfasst:
+**Bevorzugter Industriestandard für Partcounter:** Q1 steuert ein 24-V-DC-Koppel-/Interface-Relais an, das wiederum die Ventilspule schaltet. Das reduziert die elektrische und mechanische Belastung des fest eingebauten LOGO!-Relaiskontakts und vereinfacht Wartung und Austausch.
 
-- Nennstrom oder Nennleistung der Ventilspule bei 24 V DC,
-- Einschalt-/Anzugsstrom, sofern angegeben,
-- integrierte Schutzbeschaltung ja/nein,
-- erwartete Schalthäufigkeit und gewünschte Lebensdauer.
-
-**Bevorzugter Industriestandard für Partcounter:** Q1 steuert ein 24-V-DC-Koppel-/Interface-Relais an, das wiederum die Ventilspule schaltet. Das reduziert die elektrische und mechanische Belastung des fest eingebauten LOGO!-Relaiskontakts und vereinfacht Wartung und Austausch. Eine direkte Ventilansteuerung bleibt zulässig, wenn die realen Spulendaten, Schutzbeschaltung und Schalthäufigkeit dies eindeutig erlauben.
+Eine direkte Ventilansteuerung kann bei der Inbetriebnahme alternativ freigegeben werden, wenn Typenschild/Datenblatt und reale Beschaltung dies eindeutig zulassen.
 
 ## 5. Ventilimpuls
 
@@ -151,8 +146,6 @@ Es gibt ohne I2 **keine physische Bestätigung**, dass die Mechanik tatsächlich
 
 ## 8. Parametrierbarer Maschinenstandard
 
-Folgende Parameter sollen künftig pro Maschine im Partcounter-Maschinenstamm gespeichert werden:
-
 | Parameter | Station 01 |
 |---|---|
 | LOGO!-Typ | 6ED1052-2MD08-0BA2 |
@@ -160,23 +153,39 @@ Folgende Parameter sollen künftig pro Maschine im Partcounter-Maschinenstamm ge
 | Versorgung | 24 V DC |
 | Zykluseingang | I1 / 24 V DC |
 | Ventilausgang | Q1 / Relais |
-| Ventilspule | 24 V DC |
+| Ventilspule | 24 V DC, kleines Festo-Pneumatikventil |
+| Spulenleistung / Spulenstrom | offen – bei Inbetriebnahme erfassen |
+| Entstörbeschaltung Ventil/Stecker | offen – bei Inbetriebnahme prüfen |
 | Ventilimpuls | 50…5000 ms, 10-ms-Raster |
 | Standardimpuls | 750 ms |
 | Endlagenüberwachung | Nein |
 | Endlageneingang | I2 optional |
 | Endlagentimeout | nur bei aktivierter Überwachung |
 
-## 9. Noch offener Hardwarewert
+## 9. Offene Angaben – kein Entwicklungsblocker
 
-Für die endgültige Freigabe der Q1-Beschaltung fehlt nur noch:
+Die folgenden Angaben bleiben bewusst offen:
 
-**Stromaufnahme bzw. Leistung der 24-V-Ventilspule.**
+- Nennstrom der 24-V-Ventilspule,
+- Nennleistung der Ventilspule,
+- gegebenenfalls Anzugs-/Einschaltstrom,
+- vorhandene Freilaufdiode, LED, Varistor oder sonstige Entstörbeschaltung im Ventilstecker.
 
-Beispiel: Bei einer Ventilspule mit 4,8 W bei 24 V DC beträgt der Nennstrom 0,2 A. Dieser Wert ist aber für das tatsächlich verwendete Ventil anhand Typenschild oder Datenblatt festzustellen und darf nicht angenommen werden.
+Diese Werte werden **nicht für die weitere Software- oder LOGO!-Programmentwicklung benötigt**. Sie werden erst bei der elektrischen Inbetriebnahme anhand von Typenschild, Ventilstecker oder Festo-Datenblatt ergänzt.
+
+Bis dahin gilt als konservativer Hardwarestandard:
+
+```text
+LOGO! Q1
+   -> extern abgesicherter Steuerstromkreis
+   -> 24-V-DC-Koppel-/Interface-Relais
+   -> 24-V-DC-Festo-Magnetventil
+```
+
+Damit kann `Partcounter_LOGO_V001` vollständig weiterentwickelt werden, ohne die unbekannten Spulendaten anzunehmen.
 
 ## 10. Freigabestatus
 
-Mit den jetzt bekannten Daten ist die elektrische Grundarchitektur von Referenzmaschine 01 festgelegt. Offen bleiben nur die reale Spulenstromaufnahme und anschließend die praktische Verdrahtungs-/Funktionsprüfung.
+Die elektrische Grundarchitektur von Referenzmaschine 01 ist für die weitere Partcounter-Entwicklung ausreichend festgelegt. Spulenstrom, Spulenleistung und vorhandene Entstörung sind **Inbetriebnahme-Prüfpunkte**, keine offenen Entwicklungsanforderungen.
 
 Partcounter und die Siemens LOGO! sind keine Sicherheitssteuerung. Not-Halt, Schutztüren, Maschinenfreigaben und andere Safety-Funktionen verbleiben vollständig in den vorhandenen sicheren Maschinenkreisen.
