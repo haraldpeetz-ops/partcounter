@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.9</Version>
-    <FileVersion>0.1.9.0</FileVersion>
-    <InformationalVersion>0.1.9-r001.9-commissioning-diagnostics</InformationalVersion>
+    <Version>0.1.10</Version>
+    <FileVersion>0.1.10.0</FileVersion>
+    <InformationalVersion>0.1.10-r001.10-label-designer</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
