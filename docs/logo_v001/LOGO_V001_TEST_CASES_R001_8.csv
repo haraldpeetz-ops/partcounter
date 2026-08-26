@@ -1,0 +1,25 @@
+TestId;Description;Cavities;TargetPartsPerVE;TargetCyclesPerVE;ValvePulseMs;CyclesToApply;Command;Expected
+T01;Basic 1-cavity VE;1;5;5;750;5;AUTO;One completion, 5 parts, Q1 750 ms
+T02;4-cavity exact VE;4;20;5;750;5;AUTO;One completion, 20 parts, no overfill
+T03;64-cavity rounded VE;64;1000;16;750;16;AUTO;One completion, 1024 parts, overfill 24
+T04;Manual change after 3 cycles;8;1000;125;750;3;MANUAL;One completion, reason 2, quantity 24
+T05;Pause blocks counting;4;100;25;750;3;PAUSE;No additional count while paused
+T06;Resume with I1 still high;4;100;25;750;0;RESUME;No artificial cycle until next real low-high edge
+T07;Minimum valve pulse;4;20;5;50;5;AUTO;Q1 pulse 50 ms, HR7 value 5
+T08;Default valve pulse;4;20;5;750;5;AUTO;Q1 pulse 750 ms, HR7 value 75
+T09;Maximum valve pulse;4;20;5;5000;5;AUTO;Q1 pulse 5000 ms, HR7 value 500
+T10;Invalid valve low;4;20;5;40;0;START_JOB;PC rejects before Modbus write
+T11;Invalid valve raster;4;20;5;755;0;START_JOB;PC rejects before Modbus write
+T12;Invalid valve high;4;20;5;5010;0;START_JOB;PC rejects before Modbus write
+T13;Invalid cavities zero;0;20;0;750;0;START_JOB;PC rejects
+T14;Invalid cavities high;65;20;1;750;0;START_JOB;PC rejects
+T15;Max VE cycles;1;32767;32767;750;0;START_JOB;Accepted
+T16;VE cycles above limit;1;32768;32768;750;0;START_JOB;PC rejects
+T17;PC restart sequence sync;4;20;5;750;0;RECONNECT;Next command sequence follows LOGO AckSequence
+T18;Command wrap;4;20;5;750;0;COMMAND_32767_TO_1;New command still recognized once
+T19;PC heartbeat loss;4;20;5;750;5;DISCONNECT_PC;Local count and automatic VE change continue
+T20;WLAN loss during VE;4;20;5;750;5;DISCONNECT_WLAN;Local count and automatic VE change continue
+T21;End-position absent Station01;4;20;5;750;5;AUTO;No ErrorCode 10 because monitoring disabled
+T22;Last completion data stability;4;20;5;750;5;AUTO;HR29 HR36 HR37 remain stable until next completion
+T23;Two consecutive VEs;4;20;5;750;10;AUTO;Two completions, CurrentVENumber 3, CompletedVEs 2
+T24;Twenty consecutive VEs;4;20;5;750;100;AUTO;20 completions without duplicate Q1 pulse
