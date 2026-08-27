@@ -1,0 +1,150 @@
+using System.Reflection;
+
+namespace Partcounter.Services;
+
+public sealed record HelpTopic(
+    string Id,
+    string Title,
+    string Category,
+    string Body,
+    IReadOnlyList<string> DependsOn,
+    IReadOnlyList<string> UsedBy,
+    IReadOnlyList<string> Keywords)
+{
+    public string SearchText => string.Join(' ', new[] { Id, Title, Category, Body }
+        .Concat(Keywords)
+        .Concat(DependsOn)
+        .Concat(UsedBy));
+}
+
+public sealed class PartcounterHelpService
+{
+    private const string ResourceSuffix = "PARTCOUNTER_HILFE_R001_14.md";
+    private IReadOnlyList<HelpTopic>? _topics;
+
+    public IReadOnlyList<HelpTopic> Topics => _topics ??= LoadTopics();
+
+    public HelpTopic? Find(string id) => Topics.FirstOrDefault(t =>
+        string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    public IReadOnlyList<HelpTopic> Filter(string? query, string? category)
+    {
+        IEnumerable<HelpTopic> source = Topics;
+        if (!string.IsNullOrWhiteSpace(category) && !string.Equals(category, "Alle", StringComparison.OrdinalIgnoreCase))
+            source = source.Where(t => string.Equals(t.Category, category, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            source = source.Where(t => terms.All(term =>
+                t.SearchText.Contains(term, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return source.OrderBy(t => t.Category, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(t => t.Title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public IReadOnlyList<string> Categories => new[] { "Alle" }
+        .Concat(Topics.Select(t => t.Category)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        .ToList();
+
+    private static IReadOnlyList<HelpTopic> LoadTopics()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var resource = assembly.GetManifestResourceNames()
+            .FirstOrDefault(name => name.EndsWith(ResourceSuffix, StringComparison.OrdinalIgnoreCase));
+        if (resource is null)
+            return Array.Empty<HelpTopic>();
+
+        using var stream = assembly.GetManifestResourceStream(resource);
+        if (stream is null)
+            return Array.Empty<HelpTopic>();
+        using var reader = new StreamReader(stream);
+        var text = reader.ReadToEnd().Replace("\r\n", "\n");
+        var lines = text.Split('\n');
+        var result = new List<HelpTopic>();
+
+        string? id = null;
+        string? title = null;
+        string category = "Sonstiges";
+        var depends = new List<string>();
+        var usedBy = new List<string>();
+        var keywords = new List<string>();
+        var body = new List<string>();
+        var inBody = false;
+
+        void Flush()
+        {
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title))
+                return;
+            var bodyText = string.Join(Environment.NewLine, body).Trim();
+            result.Add(new HelpTopic(id, title, category, bodyText, depends.ToList(), usedBy.ToList(), keywords.ToList()));
+        }
+
+        foreach (var raw in lines)
+        {
+            var line = raw.TrimEnd();
+            if (line.StartsWith("## [", StringComparison.Ordinal))
+            {
+                Flush();
+                var close = line.IndexOf(']');
+                id = close > 4 ? line[4..close].Trim() : Guid.NewGuid().ToString("N");
+                title = close >= 0 ? line[(close + 1)..].Trim() : line.TrimStart('#', ' ');
+                category = "Sonstiges";
+                depends = new List<string>();
+                usedBy = new List<string>();
+                keywords = new List<string>();
+                body = new List<string>();
+                inBody = false;
+                continue;
+            }
+
+            if (id is null)
+                continue;
+
+            if (!inBody)
+            {
+                if (line == "---")
+                {
+                    inBody = true;
+                    continue;
+                }
+                if (line.StartsWith("Kategorie:", StringComparison.OrdinalIgnoreCase))
+                {
+                    category = line["Kategorie:".Length..].Trim();
+                    continue;
+                }
+                if (line.StartsWith("Abhängigkeiten:", StringComparison.OrdinalIgnoreCase))
+                {
+                    depends = ParseList(line["Abhängigkeiten:".Length..]);
+                    continue;
+                }
+                if (line.StartsWith("Folgewirkungen:", StringComparison.OrdinalIgnoreCase))
+                {
+                    usedBy = ParseList(line["Folgewirkungen:".Length..]);
+                    continue;
+                }
+                if (line.StartsWith("Schlagwörter:", StringComparison.OrdinalIgnoreCase))
+                {
+                    keywords = ParseList(line["Schlagwörter:".Length..]);
+                    continue;
+                }
+            }
+            else
+            {
+                body.Add(line);
+            }
+        }
+
+        Flush();
+        return result;
+    }
+
+    private static List<string> ParseList(string source) => source
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(x => x != "-")
+        .ToList();
+}

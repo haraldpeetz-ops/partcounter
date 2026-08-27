@@ -1,10 +1,10 @@
-name: Build Partcounter R001.13
+name: Build Partcounter R001.14
 
 on:
   push:
-    branches: [ r001.13-company-logo ]
+    branches: [ r001.14-about-update-help ]
   pull_request:
-    branches: [ r001.12-admin-protection ]
+    branches: [ r001.13-company-logo ]
   workflow_dispatch:
 
 jobs:
@@ -27,17 +27,17 @@ jobs:
         run: dotnet build Partcounter.sln -c Release --no-restore
 
       - name: Publish portable folder win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_13_Portable_Folder_win-x64
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_14_Portable_Folder_win-x64
 
       - name: Publish single-file win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_13_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_14_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
 
       - name: Add engineering and documentation package
         shell: pwsh
         run: |
           $targets = @(
-            'artifacts/Partcounter_R001_13_Portable_Folder_win-x64',
-            'artifacts/Partcounter_R001_13_SingleFile_win-x64'
+            'artifacts/Partcounter_R001_14_Portable_Folder_win-x64',
+            'artifacts/Partcounter_R001_14_SingleFile_win-x64'
           )
           foreach ($target in $targets) {
             New-Item -ItemType Directory -Force -Path "$target/Engineering" | Out-Null
@@ -52,68 +52,112 @@ jobs:
             Copy-Item docs/LABEL_DESIGNER_R001_11.md "$target/Engineering/"
             Copy-Item docs/ADMIN_ACCESS_R001_12.md "$target/Engineering/"
             Copy-Item docs/COMPANY_BRANDING_R001_13.md "$target/Engineering/"
+            Copy-Item docs/ABOUT_UPDATE_HELP_R001_14.md "$target/Engineering/"
+            Copy-Item src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_14.md "$target/Engineering/"
           }
 
-          New-Item -ItemType Directory -Force -Path 'artifacts/Engineering_R001_13' | Out-Null
-          Copy-Item docs/REFERENCE_MACHINE_01_HARDWARE.md 'artifacts/Engineering_R001_13/'
-          Copy-Item docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md 'artifacts/Engineering_R001_13/'
-          Copy-Item docs/COMMISSIONING_CENTER_R001_9.md 'artifacts/Engineering_R001_13/'
-          Copy-Item docs/PROJECT_STATUS_R001_9_CHECKPOINT.md 'artifacts/Engineering_R001_13/'
-          Copy-Item docs/MODBUS_REGISTER_MAP.md 'artifacts/Engineering_R001_13/'
-          Copy-Item docs/LOGO_CONTROL_LOGIC.md 'artifacts/Engineering_R001_13/'
-          Copy-Item docs/LABEL_DESIGNER_R001_10.md 'artifacts/Engineering_R001_13/'
-          Copy-Item docs/LABEL_DESIGNER_R001_11.md 'artifacts/Engineering_R001_13/'
-          Copy-Item docs/ADMIN_ACCESS_R001_12.md 'artifacts/Engineering_R001_13/'
-          Copy-Item docs/COMPANY_BRANDING_R001_13.md 'artifacts/Engineering_R001_13/'
-          Copy-Item docs/logo_v001 'artifacts/Engineering_R001_13/LOGO_V001' -Recurse
+          New-Item -ItemType Directory -Force -Path 'artifacts/Engineering_R001_14' | Out-Null
+          Copy-Item docs/REFERENCE_MACHINE_01_HARDWARE.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/COMMISSIONING_CENTER_R001_9.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/PROJECT_STATUS_R001_9_CHECKPOINT.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/MODBUS_REGISTER_MAP.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/LOGO_CONTROL_LOGIC.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/LABEL_DESIGNER_R001_10.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/LABEL_DESIGNER_R001_11.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/ADMIN_ACCESS_R001_12.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/COMPANY_BRANDING_R001_13.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/ABOUT_UPDATE_HELP_R001_14.md 'artifacts/Engineering_R001_14/'
+          Copy-Item src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_14.md 'artifacts/Engineering_R001_14/'
+          Copy-Item docs/logo_v001 'artifacts/Engineering_R001_14/LOGO_V001' -Recurse
 
       - name: Add start instructions
         shell: pwsh
         run: |
           @'
-          PARTCOUNTER R001.13
+          PARTCOUNTER R001.14
           ===================
 
-          New in R001.13 - configurable company logo:
-          - company logo in the upper Partcounter header / Leitstand
-          - configuration in the Admin-protected Einstellungen / Druck area
-          - select, replace and remove logo without changing the application build
-          - PNG, JPG/JPEG, BMP, GIF and TIFF support
-          - logo is copied into %LOCALAPPDATA%\Partcounter\Branding
-          - original file may later be moved or deleted without losing the configured logo
-          - proportional scaling in the dark header
-          - no-logo fallback keeps the previous Partcounter header unchanged
+          New in R001.14:
+          - freely accessible About function with programmer, version, license note and system info
+          - freely accessible integrated help; F1 opens the help center
+          - detailed function descriptions with explicit dependencies and downstream effects
+          - admin-protected software update center
+          - update source via network/UNC folder, USB or local ZIP file
+          - standardized update manifest and SHA-256 payload verification
+          - staging and backup before in-place update
+          - automatic restart after successful update
+          - GitHub build now creates a standardized Partcounter update package
 
-          R001.12 operator/admin separation is retained.
-          R001.11 label-image support is retained.
-          Hardware, Modbus Protocol V2 and Partcounter_LOGO_V001 are unchanged.
+          Retained:
+          - R001.13 configurable company logo
+          - R001.12 operator/admin separation
+          - R001.11 label image/logo support
+          - Modbus Protocol V2 and Partcounter_LOGO_V001 unchanged
 
-          If startup fails, Partcounter writes:
-          %LOCALAPPDATA%\Partcounter\Partcounter_startup.log
-          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_13_SingleFile_win-x64/START_HINWEIS.txt
+          Help: press F1.
+          Update work area: %LOCALAPPDATA%\Partcounter\Updates
+          Startup log: %LOCALAPPDATA%\Partcounter\Partcounter_startup.log
+          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_14_SingleFile_win-x64/START_HINWEIS.txt
 
-          Copy-Item artifacts/Partcounter_R001_13_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_13_Portable_Folder_win-x64/START_HINWEIS.txt
+          Copy-Item artifacts/Partcounter_R001_14_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_14_Portable_Folder_win-x64/START_HINWEIS.txt
+
+      - name: Create standardized update package
+        shell: pwsh
+        run: |
+          $package = 'artifacts/UpdatePackage_R001_14'
+          $payload = "$package/payload"
+          New-Item -ItemType Directory -Force -Path $payload | Out-Null
+          Copy-Item 'artifacts/Partcounter_R001_14_SingleFile_win-x64/*' $payload -Recurse -Force
+
+          $payloadRoot = (Resolve-Path $payload).Path
+          $hashLines = Get-ChildItem -LiteralPath $payload -Recurse -File | Sort-Object FullName | ForEach-Object {
+            $relative = [System.IO.Path]::GetRelativePath($payloadRoot, $_.FullName).Replace('\','/')
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $relative"
+          }
+          $hashLines | Set-Content -LiteralPath "$package/payload-sha256.txt" -Encoding ASCII
+
+          $manifest = [ordered]@{
+            schemaVersion = 1
+            product = 'Partcounter'
+            version = '0.1.14'
+            revision = 'R001.14'
+            architecture = 'win-x64'
+            payloadRoot = 'payload/'
+            createdAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+            releaseNotes = 'R001.14: Über-Funktion, integrierte Detailhilfe mit Abhängigkeiten sowie Update-Center für Netzwerk, USB und lokale Updatepakete.'
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$package/partcounter-update.json" -Encoding UTF8
 
       - name: Upload portable folder artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_13_Portable_Folder_win-x64
-          path: artifacts/Partcounter_R001_13_Portable_Folder_win-x64
+          name: Partcounter_R001_14_Portable_Folder_win-x64
+          path: artifacts/Partcounter_R001_14_Portable_Folder_win-x64
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload single-file artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_13_SingleFile_win-x64
-          path: artifacts/Partcounter_R001_13_SingleFile_win-x64
+          name: Partcounter_R001_14_SingleFile_win-x64
+          path: artifacts/Partcounter_R001_14_SingleFile_win-x64
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload engineering artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_13_Engineering
-          path: artifacts/Engineering_R001_13
+          name: Partcounter_R001_14_Engineering
+          path: artifacts/Engineering_R001_14
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload update package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Partcounter_R001_14_UpdatePackage
+          path: artifacts/UpdatePackage_R001_14
           if-no-files-found: error
           retention-days: 30
