@@ -166,7 +166,8 @@ public sealed class PartcounterUpdateService
             CreateNoWindow = true,
             WorkingDirectory = installDirectory
         };
-        Process.Start(psi) ?? throw new InvalidOperationException("Der Update-Installationsprozess konnte nicht gestartet werden.");
+        if (Process.Start(psi) is null)
+            throw new InvalidOperationException("Der Update-Installationsprozess konnte nicht gestartet werden.");
         return backup;
     }
 
