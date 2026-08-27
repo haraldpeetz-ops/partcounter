@@ -1,10 +1,10 @@
-name: Build Partcounter R001.10
+name: Build Partcounter R001.11
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, r001.11-label-images ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, r001.10-label-editor ]
   workflow_dispatch:
 
 jobs:
@@ -27,17 +27,17 @@ jobs:
         run: dotnet build Partcounter.sln -c Release --no-restore
 
       - name: Publish portable folder win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_10_Portable_Folder_win-x64
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_11_Portable_Folder_win-x64
 
       - name: Publish single-file win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_10_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_11_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
 
       - name: Add engineering and documentation package
         shell: pwsh
         run: |
           $targets = @(
-            'artifacts/Partcounter_R001_10_Portable_Folder_win-x64',
-            'artifacts/Partcounter_R001_10_SingleFile_win-x64'
+            'artifacts/Partcounter_R001_11_Portable_Folder_win-x64',
+            'artifacts/Partcounter_R001_11_SingleFile_win-x64'
           )
           foreach ($target in $targets) {
             New-Item -ItemType Directory -Force -Path "$target/Engineering" | Out-Null
@@ -49,41 +49,38 @@ jobs:
             Copy-Item docs/COMMISSIONING_CENTER_R001_9.md "$target/Engineering/"
             Copy-Item docs/PROJECT_STATUS_R001_9_CHECKPOINT.md "$target/Engineering/"
             Copy-Item docs/LABEL_DESIGNER_R001_10.md "$target/Engineering/"
+            Copy-Item docs/LABEL_DESIGNER_R001_11.md "$target/Engineering/"
           }
 
-          New-Item -ItemType Directory -Force -Path 'artifacts/Engineering_R001_10' | Out-Null
-          Copy-Item docs/REFERENCE_MACHINE_01_HARDWARE.md 'artifacts/Engineering_R001_10/'
-          Copy-Item docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md 'artifacts/Engineering_R001_10/'
-          Copy-Item docs/COMMISSIONING_CENTER_R001_9.md 'artifacts/Engineering_R001_10/'
-          Copy-Item docs/PROJECT_STATUS_R001_9_CHECKPOINT.md 'artifacts/Engineering_R001_10/'
-          Copy-Item docs/MODBUS_REGISTER_MAP.md 'artifacts/Engineering_R001_10/'
-          Copy-Item docs/LOGO_CONTROL_LOGIC.md 'artifacts/Engineering_R001_10/'
-          Copy-Item docs/LABEL_DESIGNER_R001_10.md 'artifacts/Engineering_R001_10/'
-          Copy-Item docs/logo_v001 'artifacts/Engineering_R001_10/LOGO_V001' -Recurse
+          New-Item -ItemType Directory -Force -Path 'artifacts/Engineering_R001_11' | Out-Null
+          Copy-Item docs/REFERENCE_MACHINE_01_HARDWARE.md 'artifacts/Engineering_R001_11/'
+          Copy-Item docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md 'artifacts/Engineering_R001_11/'
+          Copy-Item docs/COMMISSIONING_CENTER_R001_9.md 'artifacts/Engineering_R001_11/'
+          Copy-Item docs/PROJECT_STATUS_R001_9_CHECKPOINT.md 'artifacts/Engineering_R001_11/'
+          Copy-Item docs/MODBUS_REGISTER_MAP.md 'artifacts/Engineering_R001_11/'
+          Copy-Item docs/LOGO_CONTROL_LOGIC.md 'artifacts/Engineering_R001_11/'
+          Copy-Item docs/LABEL_DESIGNER_R001_10.md 'artifacts/Engineering_R001_11/'
+          Copy-Item docs/LABEL_DESIGNER_R001_11.md 'artifacts/Engineering_R001_11/'
+          Copy-Item docs/logo_v001 'artifacts/Engineering_R001_11/LOGO_V001' -Recurse
 
       - name: Add start instructions
         shell: pwsh
         run: |
           @'
-          PARTCOUNTER R001.10
+          PARTCOUNTER R001.11
           ===================
 
-          New in R001.10 - Label Designer:
-          - WYSIWYG label editor with drag positioning
-          - exact X/Y/width/height dimensions in millimeters
-          - free label sizes plus A5/A6 and industrial presets
-          - static text and dynamic data text
-          - QR Code and Code128 elements
-          - rectangles and lines
-          - font family, font size, bold, italic, underline and alignment
-          - label templates stored in SQLite
-          - optional article-specific template assignment
-          - global default template fallback
-          - existing Partcounter label recreated automatically as standard template
-          - editor test print using current unsaved layout
-          - automatic VE print now uses the same template renderer as the editor
+          New in R001.11 - Label images and logos:
+          - image/logo element in the WYSIWYG label editor
+          - PNG, JPG/JPEG, BMP, GIF and TIFF import
+          - image data embedded directly in the label template
+          - exact X/Y/width/height positioning in millimeters
+          - preserve-aspect-ratio option
+          - identical image rendering in preview, test print and automatic VE printing
+          - R001.10 label templates remain compatible
 
-          Hardware and commissioning features from R001.9 are retained.
+          All Partcounter R001.10 Label Designer features are retained.
+          Hardware, Modbus Protocol V2 and commissioning features are unchanged.
 
           IMPORTANT:
           The Station 01 LOGO hardware configuration remains frozen for the pilot test.
@@ -91,30 +88,30 @@ jobs:
 
           If startup fails, Partcounter writes:
           %LOCALAPPDATA%\Partcounter\Partcounter_startup.log
-          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_10_SingleFile_win-x64/START_HINWEIS.txt
+          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_11_SingleFile_win-x64/START_HINWEIS.txt
 
-          Copy-Item artifacts/Partcounter_R001_10_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_10_Portable_Folder_win-x64/START_HINWEIS.txt
+          Copy-Item artifacts/Partcounter_R001_11_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_11_Portable_Folder_win-x64/START_HINWEIS.txt
 
       - name: Upload portable folder artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_10_Portable_Folder_win-x64
-          path: artifacts/Partcounter_R001_10_Portable_Folder_win-x64
+          name: Partcounter_R001_11_Portable_Folder_win-x64
+          path: artifacts/Partcounter_R001_11_Portable_Folder_win-x64
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload single-file artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_10_SingleFile_win-x64
-          path: artifacts/Partcounter_R001_10_SingleFile_win-x64
+          name: Partcounter_R001_11_SingleFile_win-x64
+          path: artifacts/Partcounter_R001_11_SingleFile_win-x64
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload engineering artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_10_Engineering
-          path: artifacts/Engineering_R001_10
+          name: Partcounter_R001_11_Engineering
+          path: artifacts/Engineering_R001_11
           if-no-files-found: error
           retention-days: 30
