@@ -10,7 +10,8 @@ public enum LabelElementType
     QrCode = 2,
     Code128 = 3,
     Rectangle = 4,
-    Line = 5
+    Line = 5,
+    Image = 6
 }
 
 public enum LabelTextAlignment
@@ -71,6 +72,13 @@ public sealed class LabelElementDefinition
     public double BorderThickness { get; set; } = 1;
     public int ZIndex { get; set; }
 
+    // R001.11: Bilder/Logos werden direkt in der Vorlagendefinition eingebettet.
+    // Dadurch bleibt eine Vorlage portabel, auch wenn die ursprüngliche Bilddatei verschoben wird.
+    public string ImageFileName { get; set; } = string.Empty;
+    public string ImageMimeType { get; set; } = string.Empty;
+    public string ImageDataBase64 { get; set; } = string.Empty;
+    public bool PreserveAspectRatio { get; set; } = true;
+
     public LabelElementDefinition DeepClone() => new()
     {
         Id = Guid.NewGuid().ToString("N"),
@@ -87,7 +95,11 @@ public sealed class LabelElementDefinition
         Underline = Underline,
         Alignment = Alignment,
         BorderThickness = BorderThickness,
-        ZIndex = ZIndex
+        ZIndex = ZIndex,
+        ImageFileName = ImageFileName,
+        ImageMimeType = ImageMimeType,
+        ImageDataBase64 = ImageDataBase64,
+        PreserveAspectRatio = PreserveAspectRatio
     };
 }
 
@@ -132,6 +144,30 @@ public sealed class LabelElementEditorRow : INotifyPropertyChanged
     public double BorderThickness { get => _model.BorderThickness; set => SetDouble(_model.BorderThickness, Math.Clamp(value, 0, 10), v => _model.BorderThickness = v); }
     public int ZIndex { get => _model.ZIndex; set { if (_model.ZIndex == value) return; _model.ZIndex = value; Raise(); } }
 
+    public string ImageFileName
+    {
+        get => _model.ImageFileName;
+        set { value ??= string.Empty; if (_model.ImageFileName == value) return; _model.ImageFileName = value; Raise(); Raise(nameof(DisplayName)); }
+    }
+
+    public string ImageMimeType
+    {
+        get => _model.ImageMimeType;
+        set { value ??= string.Empty; if (_model.ImageMimeType == value) return; _model.ImageMimeType = value; Raise(); }
+    }
+
+    public string ImageDataBase64
+    {
+        get => _model.ImageDataBase64;
+        set { value ??= string.Empty; if (_model.ImageDataBase64 == value) return; _model.ImageDataBase64 = value; Raise(); }
+    }
+
+    public bool PreserveAspectRatio
+    {
+        get => _model.PreserveAspectRatio;
+        set { if (_model.PreserveAspectRatio == value) return; _model.PreserveAspectRatio = value; Raise(); }
+    }
+
     public string DisplayName
     {
         get
@@ -144,8 +180,13 @@ public sealed class LabelElementEditorRow : INotifyPropertyChanged
                 LabelElementType.Code128 => "Code128",
                 LabelElementType.Rectangle => "Rahmen",
                 LabelElementType.Line => "Linie",
+                LabelElementType.Image => "Bild",
                 _ => Type.ToString()
             };
+
+            if (Type == LabelElementType.Image)
+                return string.IsNullOrWhiteSpace(ImageFileName) ? prefix : $"{prefix}: {ImageFileName}";
+
             var content = (Content ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
             if (content.Length > 28) content = content[..28] + "…";
             return string.IsNullOrWhiteSpace(content) ? prefix : $"{prefix}: {content}";
