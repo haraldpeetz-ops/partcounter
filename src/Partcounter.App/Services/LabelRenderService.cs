@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -63,6 +64,7 @@ public sealed class LabelRenderService
             LabelElementType.Text or LabelElementType.DataText => CreateText(definition, content, width, height),
             LabelElementType.QrCode => CreateBarcode(content, BarcodeFormat.QR_CODE, width, height),
             LabelElementType.Code128 => CreateBarcode(content, BarcodeFormat.CODE_128, width, height),
+            LabelElementType.Image => CreateImage(definition, width, height),
             LabelElementType.Rectangle => new Border
             {
                 Width = width,
@@ -122,6 +124,62 @@ public sealed class LabelRenderService
             block.TextDecorations = TextDecorations.Underline;
 
         return block;
+    }
+
+    private static FrameworkElement CreateImage(LabelElementDefinition definition, double width, double height)
+    {
+        if (string.IsNullOrWhiteSpace(definition.ImageDataBase64))
+            return CreateImagePlaceholder(width, height, "Bild auswählen");
+
+        try
+        {
+            var bytes = Convert.FromBase64String(definition.ImageDataBase64);
+            using var stream = new MemoryStream(bytes, writable: false);
+
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.CreateOptions = BitmapCreateOptions.PreservePixelFormat;
+            bitmap.StreamSource = stream;
+            bitmap.EndInit();
+            bitmap.Freeze();
+
+            return new Image
+            {
+                Source = bitmap,
+                Width = width,
+                Height = height,
+                Stretch = definition.PreserveAspectRatio ? Stretch.Uniform : Stretch.Fill,
+                SnapsToDevicePixels = true
+            };
+        }
+        catch
+        {
+            return CreateImagePlaceholder(width, height, "Bild ungültig", Brushes.Red);
+        }
+    }
+
+    private static FrameworkElement CreateImagePlaceholder(double width, double height, string text, Brush? brush = null)
+    {
+        brush ??= Brushes.Gray;
+        return new Border
+        {
+            Width = width,
+            Height = height,
+            BorderBrush = brush,
+            BorderThickness = new Thickness(1),
+            Background = Brushes.Transparent,
+            Child = new TextBlock
+            {
+                Text = text,
+                Foreground = brush,
+                FontSize = 10,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
     }
 
     private static FrameworkElement CreateBarcode(string content, BarcodeFormat format, double width, double height)
