@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using Microsoft.Win32;
 using Partcounter.Models;
 using Partcounter.Services;
 
@@ -9,6 +11,8 @@ namespace Partcounter.ViewModels;
 
 public sealed class LabelDesignerViewModel : INotifyPropertyChanged
 {
+    private const int MaxEmbeddedImageBytes = 10 * 1024 * 1024;
+
     private readonly MainViewModel _main;
     private readonly LabelTemplateService _templates = new();
     private readonly LabelPrintService _printer = new();
@@ -36,6 +40,7 @@ public sealed class LabelDesignerViewModel : INotifyPropertyChanged
         AddElementCommand = new RelayCommand(AddElement);
         DeleteElementCommand = new RelayCommand(_ => DeleteSelectedElement(), _ => SelectedElement is not null);
         InsertTokenCommand = new RelayCommand(_ => InsertSelectedToken(), _ => SelectedElement is not null && SelectedToken is not null);
+        BrowseImageCommand = new RelayCommand(BrowseImage);
         ApplySizePresetCommand = new RelayCommand(ApplySizePreset);
         TestPrintCommand = new AsyncRelayCommand(_ => TestPrintAsync());
         RefreshPreviewCommand = new RelayCommand(_ => RaiseDesignerChanged());
@@ -56,6 +61,7 @@ public sealed class LabelDesignerViewModel : INotifyPropertyChanged
     public ICommand AddElementCommand { get; }
     public ICommand DeleteElementCommand { get; }
     public ICommand InsertTokenCommand { get; }
+    public ICommand BrowseImageCommand { get; }
     public ICommand ApplySizePresetCommand { get; }
     public ICommand TestPrintCommand { get; }
     public ICommand RefreshPreviewCommand { get; }
@@ -337,6 +343,11 @@ public sealed class LabelDesignerViewModel : INotifyPropertyChanged
                 Type = type, Xmm = 8, Ymm = 45, WidthMm = 80, HeightMm = 0.5,
                 BorderThickness = 1, ZIndex = z
             },
+            LabelElementType.Image => new LabelElementDefinition
+            {
+                Type = type, Xmm = 8, Ymm = 8, WidthMm = 40, HeightMm = 25,
+                PreserveAspectRatio = true, ZIndex = z
+            },
             _ => new LabelElementDefinition { Type = type, Xmm = 8, Ymm = 8, ZIndex = z }
         };
 
@@ -348,9 +359,59 @@ public sealed class LabelDesignerViewModel : INotifyPropertyChanged
         Elements.Add(row);
         SelectedElement = row;
         if (updateStatus)
-            StatusText = $"Element '{type}' hinzugefügt.";
+            StatusText = type == LabelElementType.Image
+                ? "Bild-Element hinzugefügt. Jetzt Bild/Logo auswählen."
+                : $"Element '{type}' hinzugefügt.";
         RaiseDesignerChanged();
     }
+
+    private void BrowseImage(object? parameter)
+    {
+        var row = parameter as LabelElementEditorRow ?? SelectedElement;
+        if (row is null || row.Type != LabelElementType.Image)
+            return;
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Bild oder Logo für das Etikett auswählen",
+            Filter = "Bilddateien (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff)|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|Alle Dateien (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        try
+        {
+            var info = new FileInfo(dialog.FileName);
+            if (info.Length <= 0)
+                throw new InvalidOperationException("Die gewählte Bilddatei ist leer.");
+            if (info.Length > MaxEmbeddedImageBytes)
+                throw new InvalidOperationException("Bilddateien dürfen maximal 10 MB groß sein.");
+
+            var bytes = File.ReadAllBytes(dialog.FileName);
+            row.ImageFileName = Path.GetFileName(dialog.FileName);
+            row.ImageMimeType = MimeTypeFromExtension(Path.GetExtension(dialog.FileName));
+            row.ImageDataBase64 = Convert.ToBase64String(bytes);
+            StatusText = $"Bild '{row.ImageFileName}' eingebettet ({bytes.Length / 1024.0:0.#} KB).";
+            RaiseDesignerChanged();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Bild konnte nicht geladen werden: {ex.Message}";
+        }
+    }
+
+    private static string MimeTypeFromExtension(string? extension) => extension?.ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".bmp" => "image/bmp",
+        ".gif" => "image/gif",
+        ".tif" or ".tiff" => "image/tiff",
+        _ => "application/octet-stream"
+    };
 
     private void DeleteSelectedElement()
     {
