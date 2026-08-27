@@ -2,6 +2,7 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Threading;
+using Partcounter.Services;
 
 namespace Partcounter;
 
@@ -28,6 +29,7 @@ public partial class App : Application
             WriteLog("START", $"Partcounter startup. OS={Environment.OSVersion}; Runtime={Environment.Version}; Base={AppContext.BaseDirectory}");
 
             var window = new MainWindow();
+            CompanyBrandingBootstrap.Attach(window);
             MainWindow = window;
             window.Show();
 
