@@ -64,6 +64,7 @@
                             <Button Content="Code128" Command="{Binding AddElementCommand}" CommandParameter="Code128" Margin="2"/>
                             <Button Content="Rahmen" Command="{Binding AddElementCommand}" CommandParameter="Rectangle" Margin="2"/>
                             <Button Content="Linie" Command="{Binding AddElementCommand}" CommandParameter="Line" Margin="2"/>
+                            <Button Content="Bild / Logo" Command="{Binding AddElementCommand}" CommandParameter="Image" Margin="2" ToolTip="PNG, JPG, BMP, GIF oder TIFF einfügen"/>
                         </UniformGrid>
                     </StackPanel>
 
@@ -142,49 +143,88 @@
                             </StackPanel>
                         </Grid>
 
-                        <TextBlock Text="Inhalt / Datenformat" FontWeight="SemiBold"/>
-                        <TextBox Text="{Binding SelectedElement.Content, UpdateSourceTrigger=PropertyChanged}"
-                                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" VerticalScrollBarVisibility="Auto" Margin="0,2,0,8"/>
+                        <Border Background="#F4F8FB" BorderBrush="#C8D7E5" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,10">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedElement.Type}" Value="{x:Static models:LabelElementType.Image}">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel>
+                                <TextBlock Text="Bild / Logo" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                                <Button Content="Bilddatei auswählen …"
+                                        Command="{Binding BrowseImageCommand}"
+                                        CommandParameter="{Binding SelectedElement}"
+                                        Padding="8,5" HorizontalAlignment="Left"/>
+                                <TextBlock Text="{Binding SelectedElement.ImageFileName, TargetNullValue=Noch kein Bild ausgewählt}"
+                                           Foreground="#52606D" FontSize="11" Margin="0,5,0,4" TextWrapping="Wrap"/>
+                                <CheckBox Content="Seitenverhältnis beibehalten"
+                                          IsChecked="{Binding SelectedElement.PreserveAspectRatio}"/>
+                                <TextBlock Text="Das Bild wird direkt in der Etikettenvorlage gespeichert. Empfohlen für Logos: PNG mit transparentem Hintergrund. Maximal 10 MB je Bild."
+                                           Foreground="#66717E" FontSize="10.5" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                            </StackPanel>
+                        </Border>
 
-                        <TextBlock Text="Datenplatzhalter einfügen" FontWeight="SemiBold"/>
-                        <Grid Margin="0,2,0,8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <ComboBox Grid.Column="0" ItemsSource="{Binding Tokens}" SelectedItem="{Binding SelectedToken}"
-                                      DisplayMemberPath="Token"/>
-                            <Button Grid.Column="1" Content="Einfügen" Command="{Binding InsertTokenCommand}" Margin="6,0,0,0"/>
-                        </Grid>
+                        <StackPanel>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedElement.Type}" Value="{x:Static models:LabelElementType.Image}">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
 
-                        <Expander Header="Verfügbare Datenfelder" IsExpanded="False" Margin="0,0,0,8">
-                            <ItemsControl ItemsSource="{Binding Tokens}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Margin="0,2">
-                                            <TextBlock Text="{Binding Token}" FontFamily="Consolas" FontWeight="SemiBold"/>
-                                            <TextBlock Text="{Binding Description}" Foreground="#66717E" FontSize="11" TextWrapping="Wrap"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Expander>
+                            <TextBlock Text="Inhalt / Datenformat" FontWeight="SemiBold"/>
+                            <TextBox Text="{Binding SelectedElement.Content, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" VerticalScrollBarVisibility="Auto" Margin="0,2,0,8"/>
 
-                        <Separator Margin="0,4,0,8"/>
-                        <TextBlock Text="Schrift" FontWeight="SemiBold"/>
-                        <Grid Margin="0,2,0,6">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" Text="{Binding SelectedElement.FontFamily, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,5,0"/>
-                            <TextBox Grid.Column="1" Text="{Binding SelectedElement.FontSizePt, UpdateSourceTrigger=PropertyChanged}" Margin="5,0,0,0" ToolTip="Punktgröße"/>
-                        </Grid>
-                        <WrapPanel Margin="0,0,0,6">
-                            <CheckBox Content="Fett" IsChecked="{Binding SelectedElement.Bold}" Margin="0,0,10,0"/>
-                            <CheckBox Content="Kursiv" IsChecked="{Binding SelectedElement.Italic}" Margin="0,0,10,0"/>
-                            <CheckBox Content="Unterstrichen" IsChecked="{Binding SelectedElement.Underline}"/>
-                        </WrapPanel>
+                            <TextBlock Text="Datenplatzhalter einfügen" FontWeight="SemiBold"/>
+                            <Grid Margin="0,2,0,8">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <ComboBox Grid.Column="0" ItemsSource="{Binding Tokens}" SelectedItem="{Binding SelectedToken}"
+                                          DisplayMemberPath="Token"/>
+                                <Button Grid.Column="1" Content="Einfügen" Command="{Binding InsertTokenCommand}" Margin="6,0,0,0"/>
+                            </Grid>
 
-                        <TextBlock Text="Ausrichtung"/>
-                        <ComboBox ItemsSource="{Binding Alignments}" SelectedItem="{Binding SelectedElement.Alignment}" Margin="0,2,0,6"/>
+                            <Expander Header="Verfügbare Datenfelder" IsExpanded="False" Margin="0,0,0,8">
+                                <ItemsControl ItemsSource="{Binding Tokens}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2">
+                                                <TextBlock Text="{Binding Token}" FontFamily="Consolas" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Description}" Foreground="#66717E" FontSize="11" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
 
-                        <TextBlock Text="Linien-/Rahmenstärke"/>
-                        <TextBox Text="{Binding SelectedElement.BorderThickness, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,8"/>
+                            <Separator Margin="0,4,0,8"/>
+                            <TextBlock Text="Schrift" FontWeight="SemiBold"/>
+                            <Grid Margin="0,2,0,6">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding SelectedElement.FontFamily, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,5,0"/>
+                                <TextBox Grid.Column="1" Text="{Binding SelectedElement.FontSizePt, UpdateSourceTrigger=PropertyChanged}" Margin="5,0,0,0" ToolTip="Punktgröße"/>
+                            </Grid>
+                            <WrapPanel Margin="0,0,0,6">
+                                <CheckBox Content="Fett" IsChecked="{Binding SelectedElement.Bold}" Margin="0,0,10,0"/>
+                                <CheckBox Content="Kursiv" IsChecked="{Binding SelectedElement.Italic}" Margin="0,0,10,0"/>
+                                <CheckBox Content="Unterstrichen" IsChecked="{Binding SelectedElement.Underline}"/>
+                            </WrapPanel>
+
+                            <TextBlock Text="Ausrichtung"/>
+                            <ComboBox ItemsSource="{Binding Alignments}" SelectedItem="{Binding SelectedElement.Alignment}" Margin="0,2,0,6"/>
+
+                            <TextBlock Text="Linien-/Rahmenstärke"/>
+                            <TextBox Text="{Binding SelectedElement.BorderThickness, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,8"/>
+                        </StackPanel>
 
                         <Border Background="#EFF4F8" CornerRadius="4" Padding="8" Margin="0,5,0,0">
                             <TextBlock Text="Elemente können in der Vorschau mit der Maus frei verschoben werden. Für maßgenaue Positionierung X/Y sowie Breite/Höhe direkt in Millimetern eingeben."
