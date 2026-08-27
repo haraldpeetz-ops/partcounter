@@ -269,60 +269,61 @@ public sealed class PartcounterUpdateService
         string revision)
     {
         static string Q(string value) => "'" + value.Replace("'", "''") + "'";
-        return $"""
-$ErrorActionPreference = 'Stop'
-$pidToWait = {processId}
-$staging = {Q(staging)}
-$install = {Q(install)}
-$backup = {Q(backup)}
-$exeName = {Q(exeName)}
-$log = {Q(logPath)}
-$revision = {Q(revision)}
 
-function Log([string]$text) {{
-    $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') $text"
-    Add-Content -LiteralPath $log -Value $line -Encoding UTF8
-}}
-
-try {{
-    Log "Update $revision vorbereitet. Warte auf Prozess $pidToWait."
-    Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 800
-    New-Item -ItemType Directory -Force -Path $backup | Out-Null
-
-    Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object {{
-        $relative = $_.FullName.Substring($staging.Length).TrimStart('\\')
-        $destination = Join-Path $install $relative
-        $destinationDir = Split-Path -Parent $destination
-        New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
-        if (Test-Path -LiteralPath $destination) {{
-            $backupFile = Join-Path $backup $relative
-            $backupDir = Split-Path -Parent $backupFile
-            New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-            Copy-Item -LiteralPath $destination -Destination $backupFile -Force
-        }}
-        Copy-Item -LiteralPath $_.FullName -Destination $destination -Force
-    }}
-
-    Log "Update $revision installiert. Backup: $backup"
-    $exe = Join-Path $install $exeName
-    Start-Process -FilePath $exe -WorkingDirectory $install
-}}
-catch {{
-    Log "UPDATEFEHLER: $($_.Exception.ToString())"
-    try {{
-        if (Test-Path -LiteralPath $backup) {{
-            Get-ChildItem -LiteralPath $backup -Recurse -File | ForEach-Object {{
-                $relative = $_.FullName.Substring($backup.Length).TrimStart('\\')
-                $destination = Join-Path $install $relative
-                $destinationDir = Split-Path -Parent $destination
-                New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
-                Copy-Item -LiteralPath $_.FullName -Destination $destination -Force
-            }}
-            Log "Backup nach Updatefehler bestmöglich zurückgespielt."
-        }}
-    }} catch {{ Log "ROLLBACKFEHLER: $($_.Exception.ToString())" }}
-}}
-""";
+        var sb = new StringBuilder();
+        sb.AppendLine("$ErrorActionPreference = 'Stop'");
+        sb.AppendLine($"$pidToWait = {processId}");
+        sb.AppendLine($"$staging = {Q(staging)}");
+        sb.AppendLine($"$install = {Q(install)}");
+        sb.AppendLine($"$backup = {Q(backup)}");
+        sb.AppendLine($"$exeName = {Q(exeName)}");
+        sb.AppendLine($"$log = {Q(logPath)}");
+        sb.AppendLine($"$revision = {Q(revision)}");
+        sb.AppendLine();
+        sb.AppendLine("function Log([string]$text) {");
+        sb.AppendLine("    $line = \"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') $text\"");
+        sb.AppendLine("    Add-Content -LiteralPath $log -Value $line -Encoding UTF8");
+        sb.AppendLine("}");
+        sb.AppendLine();
+        sb.AppendLine("try {");
+        sb.AppendLine("    Log \"Update $revision vorbereitet. Warte auf Prozess $pidToWait.\"");
+        sb.AppendLine("    Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue");
+        sb.AppendLine("    Start-Sleep -Milliseconds 800");
+        sb.AppendLine("    New-Item -ItemType Directory -Force -Path $backup | Out-Null");
+        sb.AppendLine();
+        sb.AppendLine("    Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object {");
+        sb.AppendLine("        $relative = $_.FullName.Substring($staging.Length).TrimStart('\\')");
+        sb.AppendLine("        $destination = Join-Path $install $relative");
+        sb.AppendLine("        $destinationDir = Split-Path -Parent $destination");
+        sb.AppendLine("        New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null");
+        sb.AppendLine("        if (Test-Path -LiteralPath $destination) {");
+        sb.AppendLine("            $backupFile = Join-Path $backup $relative");
+        sb.AppendLine("            $backupDir = Split-Path -Parent $backupFile");
+        sb.AppendLine("            New-Item -ItemType Directory -Force -Path $backupDir | Out-Null");
+        sb.AppendLine("            Copy-Item -LiteralPath $destination -Destination $backupFile -Force");
+        sb.AppendLine("        }");
+        sb.AppendLine("        Copy-Item -LiteralPath $_.FullName -Destination $destination -Force");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    Log \"Update $revision installiert. Backup: $backup\"");
+        sb.AppendLine("    $exe = Join-Path $install $exeName");
+        sb.AppendLine("    Start-Process -FilePath $exe -WorkingDirectory $install");
+        sb.AppendLine("}");
+        sb.AppendLine("catch {");
+        sb.AppendLine("    Log \"UPDATEFEHLER: $($_.Exception.ToString())\"");
+        sb.AppendLine("    try {");
+        sb.AppendLine("        if (Test-Path -LiteralPath $backup) {");
+        sb.AppendLine("            Get-ChildItem -LiteralPath $backup -Recurse -File | ForEach-Object {");
+        sb.AppendLine("                $relative = $_.FullName.Substring($backup.Length).TrimStart('\\')");
+        sb.AppendLine("                $destination = Join-Path $install $relative");
+        sb.AppendLine("                $destinationDir = Split-Path -Parent $destination");
+        sb.AppendLine("                New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null");
+        sb.AppendLine("                Copy-Item -LiteralPath $_.FullName -Destination $destination -Force");
+        sb.AppendLine("            }");
+        sb.AppendLine("            Log \"Backup nach Updatefehler bestmöglich zurückgespielt.\"");
+        sb.AppendLine("        }");
+        sb.AppendLine("    } catch { Log \"ROLLBACKFEHLER: $($_.Exception.ToString())\" }");
+        sb.AppendLine("}");
+        return sb.ToString();
     }
 }
