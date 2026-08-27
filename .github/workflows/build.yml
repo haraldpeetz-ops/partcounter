@@ -1,10 +1,10 @@
-name: Build Partcounter R001.11
+name: Build Partcounter R001.12
 
 on:
   push:
-    branches: [ main, r001.11-label-images ]
+    branches: [ r001.12-admin-protection ]
   pull_request:
-    branches: [ main, r001.10-label-editor ]
+    branches: [ r001.11-label-images ]
   workflow_dispatch:
 
 jobs:
@@ -27,17 +27,17 @@ jobs:
         run: dotnet build Partcounter.sln -c Release --no-restore
 
       - name: Publish portable folder win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_11_Portable_Folder_win-x64
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_12_Portable_Folder_win-x64
 
       - name: Publish single-file win-x64
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_11_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_12_SingleFile_win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
 
       - name: Add engineering and documentation package
         shell: pwsh
         run: |
           $targets = @(
-            'artifacts/Partcounter_R001_11_Portable_Folder_win-x64',
-            'artifacts/Partcounter_R001_11_SingleFile_win-x64'
+            'artifacts/Partcounter_R001_12_Portable_Folder_win-x64',
+            'artifacts/Partcounter_R001_12_SingleFile_win-x64'
           )
           foreach ($target in $targets) {
             New-Item -ItemType Directory -Force -Path "$target/Engineering" | Out-Null
@@ -50,68 +50,72 @@ jobs:
             Copy-Item docs/PROJECT_STATUS_R001_9_CHECKPOINT.md "$target/Engineering/"
             Copy-Item docs/LABEL_DESIGNER_R001_10.md "$target/Engineering/"
             Copy-Item docs/LABEL_DESIGNER_R001_11.md "$target/Engineering/"
+            Copy-Item docs/ADMIN_ACCESS_R001_12.md "$target/Engineering/"
           }
 
-          New-Item -ItemType Directory -Force -Path 'artifacts/Engineering_R001_11' | Out-Null
-          Copy-Item docs/REFERENCE_MACHINE_01_HARDWARE.md 'artifacts/Engineering_R001_11/'
-          Copy-Item docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md 'artifacts/Engineering_R001_11/'
-          Copy-Item docs/COMMISSIONING_CENTER_R001_9.md 'artifacts/Engineering_R001_11/'
-          Copy-Item docs/PROJECT_STATUS_R001_9_CHECKPOINT.md 'artifacts/Engineering_R001_11/'
-          Copy-Item docs/MODBUS_REGISTER_MAP.md 'artifacts/Engineering_R001_11/'
-          Copy-Item docs/LOGO_CONTROL_LOGIC.md 'artifacts/Engineering_R001_11/'
-          Copy-Item docs/LABEL_DESIGNER_R001_10.md 'artifacts/Engineering_R001_11/'
-          Copy-Item docs/LABEL_DESIGNER_R001_11.md 'artifacts/Engineering_R001_11/'
-          Copy-Item docs/logo_v001 'artifacts/Engineering_R001_11/LOGO_V001' -Recurse
+          New-Item -ItemType Directory -Force -Path 'artifacts/Engineering_R001_12' | Out-Null
+          Copy-Item docs/REFERENCE_MACHINE_01_HARDWARE.md 'artifacts/Engineering_R001_12/'
+          Copy-Item docs/COMMISSIONING_TEST_PROTOCOL_R001_7.md 'artifacts/Engineering_R001_12/'
+          Copy-Item docs/COMMISSIONING_CENTER_R001_9.md 'artifacts/Engineering_R001_12/'
+          Copy-Item docs/PROJECT_STATUS_R001_9_CHECKPOINT.md 'artifacts/Engineering_R001_12/'
+          Copy-Item docs/MODBUS_REGISTER_MAP.md 'artifacts/Engineering_R001_12/'
+          Copy-Item docs/LOGO_CONTROL_LOGIC.md 'artifacts/Engineering_R001_12/'
+          Copy-Item docs/LABEL_DESIGNER_R001_10.md 'artifacts/Engineering_R001_12/'
+          Copy-Item docs/LABEL_DESIGNER_R001_11.md 'artifacts/Engineering_R001_12/'
+          Copy-Item docs/ADMIN_ACCESS_R001_12.md 'artifacts/Engineering_R001_12/'
+          Copy-Item docs/logo_v001 'artifacts/Engineering_R001_12/LOGO_V001' -Recurse
 
       - name: Add start instructions
         shell: pwsh
         run: |
           @'
-          PARTCOUNTER R001.11
+          PARTCOUNTER R001.12
           ===================
 
-          New in R001.11 - Label images and logos:
-          - image/logo element in the WYSIWYG label editor
-          - PNG, JPG/JPEG, BMP, GIF and TIFF import
-          - image data embedded directly in the label template
-          - exact X/Y/width/height positioning in millimeters
-          - preserve-aspect-ratio option
-          - identical image rendering in preview, test print and automatic VE printing
-          - R001.10 label templates remain compatible
+          New in R001.12 - Operator/Admin separation:
+          - Leitstand, Artikelstamm and VE history remain freely accessible
+          - no login is required for normal production operation
+          - Maschinen/Modbus, label editor, commissioning/diagnostics, rollout status,
+            ARBURG ALS and printer/settings areas require administrator unlock
+          - switching Simulation <-> Echtbetrieb is administrator protected
+          - first protected access creates the local administrator password
+          - password stored only as PBKDF2-SHA256 hash with random salt
+          - manual Admin lock/unlock button in the main window
+          - administrator password can be changed from the Admin button context menu
+          - administration starts locked after every application restart
 
-          All Partcounter R001.10 Label Designer features are retained.
-          Hardware, Modbus Protocol V2 and commissioning features are unchanged.
+          R001.11 label-image/logo support is retained.
+          Hardware, Modbus Protocol V2 and Partcounter_LOGO_V001 are unchanged.
 
-          IMPORTANT:
-          The Station 01 LOGO hardware configuration remains frozen for the pilot test.
-          Label editing affects only PC-side label rendering and printing.
+          Admin credential:
+          %LOCALAPPDATA%\Partcounter\admin_access.json
 
           If startup fails, Partcounter writes:
           %LOCALAPPDATA%\Partcounter\Partcounter_startup.log
-          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_11_SingleFile_win-x64/START_HINWEIS.txt
+          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_12_SingleFile_win-x64/START_HINWEIS.txt
 
-          Copy-Item artifacts/Partcounter_R001_11_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_11_Portable_Folder_win-x64/START_HINWEIS.txt
+          Copy-Item artifacts/Partcounter_R001_12_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_12_Portable_Folder_win-x64/START_HINWEIS.txt
 
       - name: Upload portable folder artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_11_Portable_Folder_win-x64
-          path: artifacts/Partcounter_R001_11_Portable_Folder_win-x64
+          name: Partcounter_R001_12_Portable_Folder_win-x64
+          path: artifacts/Partcounter_R001_12_Portable_Folder_win-x64
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload single-file artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_11_SingleFile_win-x64
-          path: artifacts/Partcounter_R001_11_SingleFile_win-x64
+          name: Partcounter_R001_12_SingleFile_win-x64
+          path: artifacts/Partcounter_R001_12_SingleFile_win-x64
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload engineering artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Partcounter_R001_11_Engineering
-          path: artifacts/Engineering_R001_11
+          name: Partcounter_R001_12_Engineering
+          path: artifacts/Engineering_R001_12
           if-no-files-found: error
           retention-days: 30
