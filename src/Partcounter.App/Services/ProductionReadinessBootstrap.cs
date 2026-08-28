@@ -17,6 +17,7 @@ public sealed class ProductionReadinessBootstrap
     private TextBlock? _statusText;
     private TextBlock? _lastBackupText;
     private INotifyPropertyChanged? _viewModelNotifier;
+    private DispatcherTimer? _settingsScrollTimer;
 
     private ProductionReadinessBootstrap(MainWindow window) => _window = window;
 
@@ -50,8 +51,10 @@ public sealed class ProductionReadinessBootstrap
             _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
             {
                 AttachProductionReadinessPanel();
+                NormalizeRevisionLabels();
                 UpdateVersionBadge();
                 RefreshLastBackupText();
+                StartSettingsScrollGuard();
             }));
 
             await Task.Delay(400);
@@ -81,6 +84,11 @@ public sealed class ProductionReadinessBootstrap
     {
         if (_viewModelNotifier is not null)
             _viewModelNotifier.PropertyChanged -= OnViewModelPropertyChanged;
+        if (_settingsScrollTimer is not null)
+        {
+            _settingsScrollTimer.Stop();
+            _settingsScrollTimer = null;
+        }
         _window.Loaded -= OnLoaded;
         _window.Closed -= OnClosed;
         Instances.Remove(_window);
@@ -89,7 +97,13 @@ public sealed class ProductionReadinessBootstrap
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
-            _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(UpdateVersionBadge));
+        {
+            _window.Dispatcher.BeginInvoke(DispatcherPriority.SystemIdle, new Action(() =>
+            {
+                NormalizeRevisionLabels();
+                UpdateVersionBadge();
+            }));
+        }
     }
 
     private void AttachProductionReadinessPanel()
@@ -97,7 +111,8 @@ public sealed class ProductionReadinessBootstrap
         var tabControl = FindDescendant<TabControl>(_window, _ => true);
         var settingsTab = tabControl?.Items.OfType<TabItem>().FirstOrDefault(tab =>
             tab.Header?.ToString()?.Contains("Einstellungen / Druck", StringComparison.OrdinalIgnoreCase) == true);
-        if (settingsTab?.Content is not StackPanel settingsStack)
+        var settingsStack = GetSettingsStack(settingsTab);
+        if (settingsStack is null)
             return;
         if (settingsStack.Children.OfType<FrameworkElement>().Any(x => Equals(x.Tag, "PartcounterR00115ProductionReadiness")))
             return;
@@ -204,6 +219,69 @@ public sealed class ProductionReadinessBootstrap
         };
 
         settingsStack.Children.Insert(Math.Min(2, settingsStack.Children.Count), panel);
+    }
+
+    private void StartSettingsScrollGuard()
+    {
+        if (TryEnableSettingsScrolling())
+            return;
+
+        _settingsScrollTimer ??= new DispatcherTimer(
+            TimeSpan.FromMilliseconds(250),
+            DispatcherPriority.ApplicationIdle,
+            (_, _) =>
+            {
+                NormalizeRevisionLabels();
+                if (TryEnableSettingsScrolling() && _settingsScrollTimer is not null)
+                {
+                    _settingsScrollTimer.Stop();
+                    _settingsScrollTimer = null;
+                }
+            },
+            _window.Dispatcher);
+        _settingsScrollTimer.Start();
+    }
+
+    private bool TryEnableSettingsScrolling()
+    {
+        var tabControl = FindDescendant<TabControl>(_window, _ => true);
+        var settingsTab = tabControl?.Items.OfType<TabItem>().FirstOrDefault(tab =>
+            tab.Header?.ToString()?.Contains("Einstellungen / Druck", StringComparison.OrdinalIgnoreCase) == true);
+        if (settingsTab is null)
+            return false;
+        if (settingsTab.Content is ScrollViewer)
+            return true;
+        if (settingsTab.Content is not StackPanel settingsStack)
+            return false;
+
+        var hasBranding = settingsStack.Children.OfType<FrameworkElement>()
+            .Any(x => Equals(x.Tag, "PartcounterCompanyBrandingSettings"));
+        var hasUpdate = settingsStack.Children.OfType<FrameworkElement>()
+            .Any(x => Equals(x.Tag, "PartcounterR00114UpdateCenter"));
+        var hasProductionReadiness = settingsStack.Children.OfType<FrameworkElement>()
+            .Any(x => Equals(x.Tag, "PartcounterR00115ProductionReadiness"));
+
+        if (!hasBranding || !hasUpdate || !hasProductionReadiness)
+            return false;
+
+        settingsTab.Content = null;
+        var scrollViewer = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = settingsStack
+        };
+        settingsTab.Content = scrollViewer;
+        return true;
+    }
+
+    private void NormalizeRevisionLabels()
+    {
+        foreach (var text in FindDescendants<TextBlock>(_window))
+        {
+            if (text.Text?.StartsWith("Installiert: R001.14 /", StringComparison.Ordinal) == true)
+                text.Text = text.Text.Replace("Installiert: R001.14 /", "Installiert: R001.15 /", StringComparison.Ordinal);
+        }
     }
 
     private async Task CheckDatabaseAsync()
@@ -316,6 +394,26 @@ public sealed class ProductionReadinessBootstrap
         status.Text = simulation
             ? "R001.15 · SIMULATION"
             : "R001.15 · ECHTBETRIEB MODBUS TCP";
+    }
+
+    private static StackPanel? GetSettingsStack(TabItem? tab) => tab?.Content switch
+    {
+        StackPanel stack => stack,
+        ScrollViewer { Content: StackPanel stack } => stack,
+        _ => null
+    };
+
+    private static IEnumerable<T> FindDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                yield return match;
+
+            foreach (var nested in FindDescendants<T>(child))
+                yield return nested;
+        }
     }
 
     private static T? FindDescendant<T>(DependencyObject root, Predicate<T> predicate) where T : DependencyObject
