@@ -37,7 +37,7 @@ public sealed class PartcounterUpdateService
     };
 
     public Version CurrentVersion => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0, 0);
-    public string CurrentRevision => "R001.14";
+    public string CurrentRevision => "R001.15";
     public string UpdateRoot { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Partcounter", "Updates");
