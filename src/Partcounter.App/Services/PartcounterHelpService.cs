@@ -9,17 +9,24 @@ public sealed record HelpTopic(
     string Body,
     IReadOnlyList<string> DependsOn,
     IReadOnlyList<string> UsedBy,
-    IReadOnlyList<string> Keywords)
+    IReadOnlyList<string> Keywords,
+    string ScreenshotFileName,
+    string ScreenshotInstruction)
 {
-    public string SearchText => string.Join(' ', new[] { Id, Title, Category, Body }
+    public string SearchText => string.Join(' ', new[]
+        {
+            Id, Title, Category, Body, ScreenshotFileName, ScreenshotInstruction
+        }
         .Concat(Keywords)
         .Concat(DependsOn)
         .Concat(UsedBy));
+
+    public bool HasScreenshotSlot => !string.IsNullOrWhiteSpace(ScreenshotFileName);
 }
 
 public sealed class PartcounterHelpService
 {
-    private const string ResourceSuffix = "PARTCOUNTER_HILFE_R001_14.md";
+    private const string ResourceSuffix = "PARTCOUNTER_HILFE_R001_19.md";
     private IReadOnlyList<HelpTopic>? _topics;
 
     public IReadOnlyList<HelpTopic> Topics => _topics ??= LoadTopics();
@@ -74,6 +81,8 @@ public sealed class PartcounterHelpService
         var usedBy = new List<string>();
         var keywords = new List<string>();
         var body = new List<string>();
+        var screenshotFileName = string.Empty;
+        var screenshotInstruction = string.Empty;
         var inBody = false;
 
         void Flush()
@@ -81,7 +90,16 @@ public sealed class PartcounterHelpService
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title))
                 return;
             var bodyText = string.Join(Environment.NewLine, body).Trim();
-            result.Add(new HelpTopic(id, title, category, bodyText, depends.ToList(), usedBy.ToList(), keywords.ToList()));
+            result.Add(new HelpTopic(
+                id,
+                title,
+                category,
+                bodyText,
+                depends.ToList(),
+                usedBy.ToList(),
+                keywords.ToList(),
+                screenshotFileName,
+                screenshotInstruction));
         }
 
         foreach (var raw in lines)
@@ -98,6 +116,8 @@ public sealed class PartcounterHelpService
                 usedBy = new List<string>();
                 keywords = new List<string>();
                 body = new List<string>();
+                screenshotFileName = string.Empty;
+                screenshotInstruction = string.Empty;
                 inBody = false;
                 continue;
             }
@@ -130,6 +150,16 @@ public sealed class PartcounterHelpService
                 if (line.StartsWith("Schlagwörter:", StringComparison.OrdinalIgnoreCase))
                 {
                     keywords = ParseList(line["Schlagwörter:".Length..]);
+                    continue;
+                }
+                if (line.StartsWith("Screenshot:", StringComparison.OrdinalIgnoreCase))
+                {
+                    screenshotFileName = line["Screenshot:".Length..].Trim();
+                    continue;
+                }
+                if (line.StartsWith("Screenshot-Hinweis:", StringComparison.OrdinalIgnoreCase))
+                {
+                    screenshotInstruction = line["Screenshot-Hinweis:".Length..].Trim();
                     continue;
                 }
             }
