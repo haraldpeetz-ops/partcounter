@@ -139,8 +139,8 @@ public sealed class InfoUpdateHelpBootstrap
             tab.Header?.ToString()?.Contains("Einstellungen / Druck", StringComparison.OrdinalIgnoreCase) == true);
         var settingsStack = settingsTab?.Content switch
         {
-            StackPanel stack => stack,
-            ScrollViewer { Content: StackPanel stack } => stack,
+            StackPanel directStack => directStack,
+            ScrollViewer { Content: StackPanel scrollStack } => scrollStack,
             _ => null
         };
         if (settingsStack is null)
@@ -190,22 +190,22 @@ public sealed class InfoUpdateHelpBootstrap
         row2.Children.Add(local);
         row2.Children.Add(_installButton);
 
-        var stack = new StackPanel();
-        stack.Children.Add(new TextBlock { Text = "Software-Update", FontSize = 20, FontWeight = FontWeights.Bold });
-        stack.Children.Add(new TextBlock
+        var updatePanelStack = new StackPanel();
+        updatePanelStack.Children.Add(new TextBlock { Text = "Software-Update", FontSize = 20, FontWeight = FontWeights.Bold });
+        updatePanelStack.Children.Add(new TextBlock
         {
             Text = "Updates können aus einem Netzwerkordner, von USB oder aus einer lokalen ZIP-Datei eingespielt werden. Partcounter prüft Manifest, Version und SHA-256-Dateiprüfsummen vor der Installation.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromRgb(0x65, 0x71, 0x80)),
             Margin = new Thickness(0, 5, 0, 10)
         });
-        stack.Children.Add(new TextBlock { Text = "Netzwerk-Updatepfad", FontWeight = FontWeights.SemiBold });
-        stack.Children.Add(_networkPathBox);
-        stack.Children.Add(row1);
-        stack.Children.Add(row2);
-        stack.Children.Add(_updateStatus);
-        stack.Children.Add(_releaseNotes);
-        stack.Children.Add(new TextBlock
+        updatePanelStack.Children.Add(new TextBlock { Text = "Netzwerk-Updatepfad", FontWeight = FontWeights.SemiBold });
+        updatePanelStack.Children.Add(_networkPathBox);
+        updatePanelStack.Children.Add(row1);
+        updatePanelStack.Children.Add(row2);
+        updatePanelStack.Children.Add(_updateStatus);
+        updatePanelStack.Children.Add(_releaseNotes);
+        updatePanelStack.Children.Add(new TextBlock
         {
             Text = $"Update-Arbeitsbereich: {_updateService.UpdateRoot}",
             TextWrapping = TextWrapping.Wrap,
@@ -223,7 +223,7 @@ public sealed class InfoUpdateHelpBootstrap
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(14),
             Margin = new Thickness(0, 0, 0, 16),
-            Child = stack
+            Child = updatePanelStack
         };
 
         var insertIndex = Math.Min(1, settingsStack.Children.Count);
