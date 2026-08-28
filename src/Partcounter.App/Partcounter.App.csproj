@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.18</Version>
-    <FileVersion>0.1.18.0</FileVersion>
-    <InformationalVersion>0.1.18-r001.18-label-snapshot-als-hotfix</InformationalVersion>
+    <Version>0.1.19</Version>
+    <FileVersion>0.1.19.0</FileVersion>
+    <InformationalVersion>0.1.19-r001.19-help-professional</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +22,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Help\PARTCOUNTER_HILFE_R001_14.md" />
+    <EmbeddedResource Include="Help\PARTCOUNTER_HILFE_R001_19.md" />
+    <Resource Include="Help\Screenshots\*.png" />
+    <Resource Include="Help\Screenshots\*.jpg" />
+    <Resource Include="Help\Screenshots\*.jpeg" />
   </ItemGroup>
 </Project>
