@@ -37,7 +37,7 @@ public sealed class InfoUpdateHelpBootstrap
 
     private void Hook()
     {
-        _window.Title = "Partcounter R001.14";
+        _window.Title = "Partcounter R001.19";
         _window.Loaded += OnLoaded;
         _window.Closed += OnClosed;
         _window.PreviewKeyDown += OnPreviewKeyDown;
@@ -94,16 +94,26 @@ public sealed class InfoUpdateHelpBootstrap
         });
         if (modeButton?.Parent is not StackPanel rightStack)
             return;
-        if (rightStack.Children.OfType<FrameworkElement>().Any(x => Equals(x.Tag, "PartcounterR00114HelpButton")))
+        if (rightStack.Children.OfType<FrameworkElement>().Any(x => Equals(x.Tag, "PartcounterR00119HelpButton")))
             return;
+
+        var areaHelp = new Button
+        {
+            Content = "Bereichshilfe (F1)",
+            Tag = "PartcounterR00119ContextHelpButton",
+            Margin = new Thickness(8, 0, 0, 0),
+            Padding = new Thickness(10, 5, 10, 5),
+            ToolTip = "Direkt die Hilfe zum aktuell geöffneten Partcounter-Bereich anzeigen"
+        };
+        areaHelp.Click += (_, _) => OpenHelp(GetContextTopicId());
 
         var help = new Button
         {
-            Content = "Hilfe (F1)",
-            Tag = "PartcounterR00114HelpButton",
+            Content = "Hilfe",
+            Tag = "PartcounterR00119HelpButton",
             Margin = new Thickness(8, 0, 0, 0),
             Padding = new Thickness(10, 5, 10, 5),
-            ToolTip = "Ausführliche Partcounter-Hilfe mit Funktionsabhängigkeiten öffnen"
+            ToolTip = "Komplettes Partcounter-Hilfezentrum öffnen"
         };
         help.Click += (_, _) => OpenHelp();
 
@@ -117,16 +127,23 @@ public sealed class InfoUpdateHelpBootstrap
         };
         about.Click += (_, _) => new AboutWindow { Owner = _window }.ShowDialog();
 
+        rightStack.Children.Add(areaHelp);
         rightStack.Children.Add(help);
         rightStack.Children.Add(about);
     }
 
     private async Task AttachUpdatePanelAsync()
     {
-        var tabControl = FindDescendant<TabControl>(_window, _ => true);
+        var tabControl = FindMainTabControl();
         var settingsTab = tabControl?.Items.OfType<TabItem>().FirstOrDefault(tab =>
             tab.Header?.ToString()?.Contains("Einstellungen / Druck", StringComparison.OrdinalIgnoreCase) == true);
-        if (settingsTab?.Content is not StackPanel settingsStack)
+        var settingsStack = settingsTab?.Content switch
+        {
+            StackPanel stack => stack,
+            ScrollViewer { Content: StackPanel stack } => stack,
+            _ => null
+        };
+        if (settingsStack is null)
             return;
         if (settingsStack.Children.OfType<FrameworkElement>().Any(x => Equals(x.Tag, "PartcounterR00114UpdateCenter")))
             return;
@@ -139,7 +156,7 @@ public sealed class InfoUpdateHelpBootstrap
         };
         _updateStatus = new TextBlock
         {
-            Text = $"Installiert: R001.14 / {_updateService.CurrentVersion}",
+            Text = $"Installiert: R001.19 / {_updateService.CurrentVersion}",
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromRgb(0x42, 0x54, 0x66)),
             Margin = new Thickness(0, 8, 0, 0)
@@ -342,14 +359,55 @@ public sealed class InfoUpdateHelpBootstrap
     {
         if (e.Key == Key.F1)
         {
-            OpenHelp();
+            OpenHelp(GetContextTopicId());
             e.Handled = true;
         }
     }
 
+    private string GetContextTopicId()
+    {
+        var mainTabs = FindMainTabControl();
+        if (mainTabs?.SelectedItem is not TabItem selected)
+            return "START-01";
+
+        var header = selected.Header?.ToString() ?? string.Empty;
+        if (string.Equals(header, "Leitstand", StringComparison.OrdinalIgnoreCase)) return "DASH-01";
+        if (string.Equals(header, "Artikelstamm", StringComparison.OrdinalIgnoreCase)) return "ARTICLE-01";
+        if (string.Equals(header, "VE-Historie", StringComparison.OrdinalIgnoreCase)) return "HISTORY-01";
+        if (header.Contains("Maschinen / Modbus", StringComparison.OrdinalIgnoreCase)) return "MACHINE-01";
+        if (header.Contains("Etiketteneditor", StringComparison.OrdinalIgnoreCase)) return "LABEL-01";
+        if (header.Contains("Rolloutstatus", StringComparison.OrdinalIgnoreCase)) return "ROLLOUT-01";
+        if (header.Contains("Einstellungen / Druck", StringComparison.OrdinalIgnoreCase)) return "SETTINGS-01";
+
+        if (header.Contains("ARBURG ALS", StringComparison.OrdinalIgnoreCase))
+        {
+            var nested = FindDescendant<TabControl>(selected, tabs => tabs.Items.OfType<TabItem>()
+                .Any(tab => string.Equals(tab.Header?.ToString(), "ALS-Aufträge", StringComparison.OrdinalIgnoreCase)));
+            var nestedHeader = (nested?.SelectedItem as TabItem)?.Header?.ToString() ?? string.Empty;
+            if (nestedHeader.Contains("Verbindung / Quelle", StringComparison.OrdinalIgnoreCase)) return "ALS-02";
+            if (nestedHeader.Contains("Feldmapping", StringComparison.OrdinalIgnoreCase)) return "ALS-03";
+            return "ALS-01";
+        }
+
+        if (header.Contains("Inbetriebnahme / Diagnose", StringComparison.OrdinalIgnoreCase))
+        {
+            var nested = FindDescendant<TabControl>(selected, tabs => tabs.Items.OfType<TabItem>()
+                .Any(tab => string.Equals(tab.Header?.ToString(), "Live-Diagnose", StringComparison.OrdinalIgnoreCase)));
+            var nestedHeader = (nested?.SelectedItem as TabItem)?.Header?.ToString() ?? string.Empty;
+            if (nestedHeader.Contains("Live-Abnahme", StringComparison.OrdinalIgnoreCase)) return "COMMISSION-02";
+            if (nestedHeader.Contains("Live-Diagnose", StringComparison.OrdinalIgnoreCase)) return "MODBUS-02";
+            return "COMMISSION-01";
+        }
+
+        return "HELP-01";
+    }
+
+    private TabControl? FindMainTabControl() => FindDescendant<TabControl>(_window, tabs =>
+        tabs.Items.OfType<TabItem>().Any(tab => string.Equals(tab.Header?.ToString(), "Leitstand", StringComparison.OrdinalIgnoreCase)));
+
     private void UpdateVersionBadge()
     {
-        _window.Title = "Partcounter R001.14";
+        _window.Title = "Partcounter R001.19";
         var status = FindDescendant<TextBlock>(_window, text =>
         {
             var expression = BindingOperations.GetBindingExpression(text, TextBlock.TextProperty);
@@ -360,7 +418,7 @@ public sealed class InfoUpdateHelpBootstrap
         if (status is null) return;
         BindingOperations.ClearBinding(status, TextBlock.TextProperty);
         var simulation = _window.DataContext is MainViewModel vm && vm.IsSimulationMode;
-        status.Text = simulation ? "R001.14 · SIMULATION" : "R001.14 · ECHTBETRIEB MODBUS TCP";
+        status.Text = simulation ? "R001.19 · SIMULATION" : "R001.19 · ECHTBETRIEB MODBUS TCP";
     }
 
     private static T? FindDescendant<T>(DependencyObject root, Predicate<T> predicate) where T : DependencyObject
