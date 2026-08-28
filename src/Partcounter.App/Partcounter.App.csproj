@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.19</Version>
-    <FileVersion>0.1.19.0</FileVersion>
-    <InformationalVersion>0.1.19-r001.19-help-professional</InformationalVersion>
+    <Version>0.1.20</Version>
+    <FileVersion>0.1.20.0</FileVersion>
+    <InformationalVersion>0.1.20-r001.20-auto-doc-capture</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
