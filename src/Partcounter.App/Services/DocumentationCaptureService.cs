@@ -21,9 +21,18 @@ public sealed record DocumentationCaptureResult(
 /// R001.20: Erstellt Original-Screenshots direkt aus der laufenden WPF-Anwendung.
 /// Es werden keine echten Fehler provoziert, keine Modbus-Schreibbefehle gesendet und keine
 /// geschützten Bereiche automatisch entsperrt. Sichtbare/verfügbare Oberflächen werden gerendert.
+/// Sensible gebundene Werte werden ausschließlich für den Renderzeitpunkt ausgeblendet.
 /// </summary>
 public sealed class DocumentationCaptureService
 {
+    private static readonly string[] SensitiveBindingTerms =
+    [
+        "OrderNumber", "ArticleNumber", "ArticleDescription", "ToolNumber", "MachineName",
+        "IpAddress", "FilePath", "ArchiveFolder", "ErrorFolder", "RestUrl", "Username",
+        "Password", "BearerToken", "ApiKeyValue", "ClientCertificatePath", "ClientCertificatePassword",
+        "AdditionalHeaders", "RequestBody", "LabelPrinterName", "MachineAliasMap", "DisplayName"
+    ];
+
     public static string ScreenshotDirectory { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Partcounter",
@@ -88,13 +97,13 @@ public sealed class DocumentationCaptureService
             await CaptureMainTabAsync(window, tabs, "Rolloutstatus", "62_rollout_30.png", progress);
 
             await CaptureMainTabAsync(window, tabs, "ARBURG ALS", "70_als_auftraege.png", progress);
-            await CaptureNestedTabAsync(window, tabs, "ARBURG ALS", "Verbindung / Quelle", "71_als_verbindung.png", progress);
+            await CaptureNestedTabAsync(window, tabs, "ARBURG ALS", "Verbindung / Quelle", "71_als_verbindung.png", progress, strictRedaction: true);
             await CaptureNestedTabAsync(window, tabs, "ARBURG ALS", "Feldmapping", "72_als_feldmapping.png", progress);
             await CaptureAlsDiagnosticAsync(window, tabs, progress);
 
-            await CaptureMainTabAsync(window, tabs, "Einstellungen / Druck", "80_druckeinstellungen.png", progress);
-            await CaptureMainTabAsync(window, tabs, "Einstellungen / Druck", "82_updatecenter.png", progress);
-            await CaptureMainTabAsync(window, tabs, "Einstellungen / Druck", "83_backup_diagnose.png", progress);
+            await CaptureMainTabAsync(window, tabs, "Einstellungen / Druck", "80_druckeinstellungen.png", progress, strictRedaction: true);
+            await CaptureMainTabAsync(window, tabs, "Einstellungen / Druck", "82_updatecenter.png", progress, strictRedaction: true);
+            await CaptureMainTabAsync(window, tabs, "Einstellungen / Druck", "83_backup_diagnose.png", progress, strictRedaction: true);
 
             if (SelectMainTab(tabs, "VE-Historie"))
             {
@@ -135,7 +144,8 @@ public sealed class DocumentationCaptureService
         TabControl tabs,
         string headerContains,
         string fileName,
-        Action<string>? progress)
+        Action<string>? progress,
+        bool strictRedaction = false)
     {
         progress?.Invoke($"{fileName} wird erstellt …");
         if (!SelectMainTab(tabs, headerContains))
@@ -145,7 +155,7 @@ public sealed class DocumentationCaptureService
         }
 
         await StabilizeAsync(window);
-        CaptureElement(window, fileName);
+        CaptureElement(window, fileName, strictRedaction);
     }
 
     private async Task CaptureNestedTabAsync(
@@ -154,7 +164,8 @@ public sealed class DocumentationCaptureService
         string mainHeader,
         string nestedHeader,
         string fileName,
-        Action<string>? progress)
+        Action<string>? progress,
+        bool strictRedaction = false)
     {
         progress?.Invoke($"{fileName} wird erstellt …");
         if (!SelectMainTab(mainTabs, mainHeader))
@@ -185,7 +196,7 @@ public sealed class DocumentationCaptureService
 
         nested.SelectedItem = target;
         await StabilizeAsync(window);
-        CaptureElement(window, fileName);
+        CaptureElement(window, fileName, strictRedaction);
     }
 
     private async Task CaptureReprintDialogAsync(MainWindow window, Action<string>? progress)
@@ -264,7 +275,7 @@ public sealed class DocumentationCaptureService
             statusText.Text = "Dokumentationstest: ALS-Quelle nicht erreichbar – Datei/Verzeichnis nicht gefunden. Bitte Pfad und Berechtigungen prüfen.";
             statusText.Foreground = new SolidColorBrush(Color.FromRgb(0xA1, 0x4A, 0x00));
             await StabilizeAsync(window);
-            CaptureElement(window, "74_als_fehlerdiagnose.png");
+            CaptureElement(window, "74_als_fehlerdiagnose.png", strictRedaction: true);
         }
         finally
         {
@@ -287,20 +298,62 @@ public sealed class DocumentationCaptureService
     private static bool HeaderContains(TabItem tab, string value) =>
         tab.Header?.ToString()?.Contains(value, StringComparison.OrdinalIgnoreCase) == true;
 
-    private void CaptureElement(FrameworkElement element, string fileName)
+    private void CaptureElement(FrameworkElement element, string fileName, bool strictRedaction = false)
     {
-        element.UpdateLayout();
-        var width = Math.Max(1, (int)Math.Ceiling(element.ActualWidth));
-        var height = Math.Max(1, (int)Math.Ceiling(element.ActualHeight));
-        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-        bitmap.Render(element);
+        var redacted = ApplyRedactions(element, strictRedaction);
+        try
+        {
+            element.UpdateLayout();
+            var width = Math.Max(1, (int)Math.Ceiling(element.ActualWidth));
+            var height = Math.Max(1, (int)Math.Ceiling(element.ActualHeight));
+            var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(element);
 
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        var path = Path.Combine(ScreenshotDirectory, fileName);
-        using var stream = File.Create(path);
-        encoder.Save(stream);
-        _captured.Add(fileName);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            var path = Path.Combine(ScreenshotDirectory, fileName);
+            using var stream = File.Create(path);
+            encoder.Save(stream);
+            _captured.Add(fileName);
+        }
+        finally
+        {
+            foreach (var item in redacted)
+                item.Element.Opacity = item.OriginalOpacity;
+        }
+    }
+
+    private static List<RedactedElement> ApplyRedactions(FrameworkElement root, bool strictRedaction)
+    {
+        var result = new List<RedactedElement>();
+        foreach (var element in FindDescendants<FrameworkElement>(root))
+        {
+            var hide = element switch
+            {
+                TextBox textBox => strictRedaction || IsSensitiveBinding(textBox, TextBox.TextProperty),
+                PasswordBox => true,
+                ComboBox combo => strictRedaction || IsSensitiveBinding(combo, ComboBox.SelectedItemProperty) || IsSensitiveBinding(combo, ComboBox.TextProperty),
+                TextBlock text => IsSensitiveBinding(text, TextBlock.TextProperty),
+                _ => false
+            };
+
+            if (!hide || element.Opacity <= 0)
+                continue;
+
+            result.Add(new RedactedElement(element, element.Opacity));
+            element.Opacity = 0;
+        }
+        return result;
+    }
+
+    private static bool IsSensitiveBinding(DependencyObject element, DependencyProperty property)
+    {
+        var expression = BindingOperations.GetBindingExpression(element, property);
+        var path = expression?.ParentBinding.Path?.Path;
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        return SensitiveBindingTerms.Any(term => path.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string BuildZipPath() => Path.Combine(
@@ -331,6 +384,7 @@ public sealed class DocumentationCaptureService
         lines.Add("AUSGELASSEN / NICHT VERFÜGBAR:");
         lines.AddRange(_skipped.Count == 0 ? new[] { "- keine" } : _skipped.Select(x => $"- {x}"));
         lines.Add(string.Empty);
+        lines.Add("DATENSCHUTZ: Sensible gebundene Werte wie Auftrags-/Artikelnummern, IP-Adressen, ALS-Zugangsdaten, Pfade und Druckernamen werden während des Renderns automatisch ausgeblendet. Die Datenquellen werden nicht verändert.");
         lines.Add("SICHERHEIT: Die Automatik entsperrt keine geschützten Reiter, provoziert keine realen ALS-/Netzwerkfehler und sendet keine Modbus-Schreibbefehle. Der ALS-Fehler-Screenshot verwendet ausschließlich einen temporären UI-Dokumentationshinweis.");
         File.WriteAllLines(path, lines);
     }
@@ -341,6 +395,19 @@ public sealed class DocumentationCaptureService
         await element.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
         await Task.Delay(120);
         element.UpdateLayout();
+    }
+
+    private static IEnumerable<T> FindDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                yield return match;
+
+            foreach (var nested in FindDescendants<T>(child))
+                yield return nested;
+        }
     }
 
     private static T? FindDescendant<T>(DependencyObject root, Predicate<T> predicate) where T : DependencyObject
@@ -358,4 +425,6 @@ public sealed class DocumentationCaptureService
 
         return null;
     }
+
+    private sealed record RedactedElement(FrameworkElement Element, double OriginalOpacity);
 }
