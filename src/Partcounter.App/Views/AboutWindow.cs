@@ -53,7 +53,7 @@ public sealed class AboutWindow : Window
         stack.Children.Add(Section("Produkt"));
         stack.Children.Add(InfoGrid(new[]
         {
-            ("Aktuelle Revision", "R001.15"),
+            ("Aktuelle Revision", "R001.19"),
             ("Assembly-Version", version),
             ("Build-Information", informational),
             ("Programmierer", "Harald Peetz"),
@@ -155,7 +155,7 @@ public sealed class AboutWindow : Window
     private static string BuildSystemInfo(string version, string informational, string dataDirectory, string dbPath)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Partcounter R001.15");
+        sb.AppendLine("Partcounter R001.19");
         sb.AppendLine($"Assembly: {version}");
         sb.AppendLine($"Build: {informational}");
         sb.AppendLine("Programmierer: Harald Peetz");
