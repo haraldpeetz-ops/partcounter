@@ -8,7 +8,8 @@ public sealed record LabelReprintJournalEntry(
     string PrinterName,
     string Reason,
     bool Successful,
-    string ErrorMessage)
+    string ErrorMessage,
+    string LayoutSource)
 {
     public string PrintedAtLocalText => PrintedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
     public string ResultText => Successful ? "ERFOLGREICH" : "FEHLER";
@@ -20,4 +21,6 @@ public sealed record LabelReprintResult(
     string PrinterName,
     string Reason,
     string ErrorMessage,
-    DateTime AttemptedAtUtc);
+    DateTime AttemptedAtUtc,
+    string LayoutSource,
+    bool HistoricalSnapshotUsed);
