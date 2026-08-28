@@ -53,13 +53,14 @@ public sealed class AboutWindow : Window
         stack.Children.Add(Section("Produkt"));
         stack.Children.Add(InfoGrid(new[]
         {
-            ("Aktuelle Revision", "R001.19"),
+            ("Aktuelle Revision", "R001.20"),
             ("Assembly-Version", version),
             ("Build-Information", informational),
             ("Programmierer", "Harald Peetz"),
             ("Technologie", "C# · .NET 8 · WPF · SQLite · NModbus"),
             ("Modbus-Protokoll", $"Partcounter Protocol V{ModbusRegisterMap.ProtocolVersion}"),
             ("LOGO!-Programm", "Partcounter_LOGO_V001"),
+            ("Dokumentation", "F1-Kontexthilfe · automatische Original-Screenshot-Erfassung"),
             ("Produktionsschutz", "Tägliche SQLite-Sicherung · Integritätsprüfung · Diagnosepaket")
         }));
 
@@ -74,7 +75,8 @@ public sealed class AboutWindow : Window
             ("Computer", Environment.MachineName),
             ("Programmordner", AppContext.BaseDirectory),
             ("Partcounter-Daten", dataDirectory),
-            ("SQLite-Datenbank", dbPath)
+            ("SQLite-Datenbank", dbPath),
+            ("Hilfe-Screenshots", DocumentationCaptureService.ScreenshotDirectory)
         }));
 
         stack.Children.Add(Section("Lizenzhinweis"));
@@ -155,11 +157,12 @@ public sealed class AboutWindow : Window
     private static string BuildSystemInfo(string version, string informational, string dataDirectory, string dbPath)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Partcounter R001.19");
+        sb.AppendLine("Partcounter R001.20");
         sb.AppendLine($"Assembly: {version}");
         sb.AppendLine($"Build: {informational}");
         sb.AppendLine("Programmierer: Harald Peetz");
         sb.AppendLine($"Modbus Protocol: V{ModbusRegisterMap.ProtocolVersion}");
+        sb.AppendLine("Dokumentation: F1-Kontexthilfe + automatische Original-Screenshot-Erfassung");
         sb.AppendLine("Produktionsschutz: tägliche SQLite-Sicherung, Integritätsprüfung, Diagnosepaket");
         sb.AppendLine($"OS: {RuntimeInformation.OSDescription}");
         sb.AppendLine($".NET: {RuntimeInformation.FrameworkDescription}");
@@ -169,6 +172,7 @@ public sealed class AboutWindow : Window
         sb.AppendLine($"App: {AppContext.BaseDirectory}");
         sb.AppendLine($"Data: {dataDirectory}");
         sb.AppendLine($"DB: {dbPath}");
+        sb.AppendLine($"Help screenshots: {DocumentationCaptureService.ScreenshotDirectory}");
         return sb.ToString();
     }
 }
