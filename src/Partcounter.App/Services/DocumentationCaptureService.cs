@@ -96,8 +96,6 @@ public sealed class DocumentationCaptureService
             await CaptureMainTabAsync(window, tabs, "Einstellungen / Druck", "82_updatecenter.png", progress);
             await CaptureMainTabAsync(window, tabs, "Einstellungen / Druck", "83_backup_diagnose.png", progress);
 
-            // Der Snapshotstatus hängt von real vorhandenen historischen VE-Daten ab. Wenn eine VE-Historie
-            // vorhanden ist, dokumentieren wir die Ansicht; ansonsten wird der Slot bewusst als ausgelassen gemeldet.
             if (SelectMainTab(tabs, "VE-Historie"))
             {
                 await StabilizeAsync(window);
@@ -109,8 +107,9 @@ public sealed class DocumentationCaptureService
             }
 
             progress?.Invoke("Screenshot-Paket wird erstellt …");
-            var zipPath = CreateZipPackage();
+            var zipPath = BuildZipPath();
             WriteManifest(zipPath);
+            CreateZipPackage(zipPath);
 
             return new DocumentationCaptureResult(
                 ScreenshotDirectory,
@@ -258,6 +257,7 @@ public sealed class DocumentationCaptureService
         }
 
         var binding = BindingOperations.GetBindingBase(statusText, TextBlock.TextProperty);
+        var originalForeground = statusText.Foreground;
         try
         {
             BindingOperations.ClearBinding(statusText, TextBlock.TextProperty);
@@ -268,6 +268,7 @@ public sealed class DocumentationCaptureService
         }
         finally
         {
+            statusText.Foreground = originalForeground;
             if (binding is not null)
                 BindingOperations.SetBinding(statusText, TextBlock.TextProperty, binding);
         }
@@ -302,16 +303,15 @@ public sealed class DocumentationCaptureService
         _captured.Add(fileName);
     }
 
-    private string CreateZipPackage()
+    private static string BuildZipPath() => Path.Combine(
+        PackageDirectory,
+        $"Partcounter_R00120_HelpScreenshots_{DateTime.Now:yyyyMMdd_HHmmss}.zip");
+
+    private static void CreateZipPackage(string path)
     {
-        var path = Path.Combine(
-            PackageDirectory,
-            $"Partcounter_R00120_HelpScreenshots_{DateTime.Now:yyyyMMdd_HHmmss}.zip");
         if (File.Exists(path))
             File.Delete(path);
-
         ZipFile.CreateFromDirectory(ScreenshotDirectory, path, CompressionLevel.Optimal, includeBaseDirectory: false);
-        return path;
     }
 
     private void WriteManifest(string zipPath)
