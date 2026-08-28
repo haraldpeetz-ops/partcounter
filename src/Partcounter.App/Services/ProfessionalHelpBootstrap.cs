@@ -47,12 +47,14 @@ public sealed class ProfessionalHelpBootstrap
 
     private void UpdateRevisionUi()
     {
-        _window.Title = "Partcounter R001.19";
+        _window.Title = "Partcounter R001.20";
 
         foreach (var text in FindDescendants<TextBlock>(_window))
         {
             var expression = BindingOperations.GetBindingExpression(text, TextBlock.TextProperty);
             if (expression?.ParentBinding.Path?.Path == "SystemStatusText" ||
+                text.Text?.StartsWith("R001.19 · SIMULATION", StringComparison.Ordinal) == true ||
+                text.Text?.StartsWith("R001.19 · ECHTBETRIEB", StringComparison.Ordinal) == true ||
                 text.Text?.StartsWith("R001.18 · SIMULATION", StringComparison.Ordinal) == true ||
                 text.Text?.StartsWith("R001.18 · ECHTBETRIEB", StringComparison.Ordinal) == true ||
                 text.Text?.StartsWith("R001.17 · SIMULATION", StringComparison.Ordinal) == true ||
@@ -63,19 +65,21 @@ public sealed class ProfessionalHelpBootstrap
                 BindingOperations.ClearBinding(text, TextBlock.TextProperty);
                 var simulation = _window.DataContext is MainViewModel vm && vm.IsSimulationMode;
                 text.Text = simulation
-                    ? "R001.19 · SIMULATION"
-                    : "R001.19 · ECHTBETRIEB MODBUS TCP";
+                    ? "R001.20 · SIMULATION"
+                    : "R001.20 · ECHTBETRIEB MODBUS TCP";
                 continue;
             }
 
-            if (text.Text?.StartsWith("Installiert: R001.18 /", StringComparison.Ordinal) == true)
-                text.Text = text.Text.Replace("Installiert: R001.18 /", "Installiert: R001.19 /", StringComparison.Ordinal);
+            if (text.Text?.StartsWith("Installiert: R001.19 /", StringComparison.Ordinal) == true)
+                text.Text = text.Text.Replace("Installiert: R001.19 /", "Installiert: R001.20 /", StringComparison.Ordinal);
+            else if (text.Text?.StartsWith("Installiert: R001.18 /", StringComparison.Ordinal) == true)
+                text.Text = text.Text.Replace("Installiert: R001.18 /", "Installiert: R001.20 /", StringComparison.Ordinal);
             else if (text.Text?.StartsWith("Installiert: R001.17 /", StringComparison.Ordinal) == true)
-                text.Text = text.Text.Replace("Installiert: R001.17 /", "Installiert: R001.19 /", StringComparison.Ordinal);
+                text.Text = text.Text.Replace("Installiert: R001.17 /", "Installiert: R001.20 /", StringComparison.Ordinal);
             else if (text.Text?.StartsWith("Installiert: R001.16 /", StringComparison.Ordinal) == true)
-                text.Text = text.Text.Replace("Installiert: R001.16 /", "Installiert: R001.19 /", StringComparison.Ordinal);
+                text.Text = text.Text.Replace("Installiert: R001.16 /", "Installiert: R001.20 /", StringComparison.Ordinal);
             else if (text.Text?.StartsWith("Installiert: R001.14 /", StringComparison.Ordinal) == true)
-                text.Text = text.Text.Replace("Installiert: R001.14 /", "Installiert: R001.19 /", StringComparison.Ordinal);
+                text.Text = text.Text.Replace("Installiert: R001.14 /", "Installiert: R001.20 /", StringComparison.Ordinal);
         }
     }
 
