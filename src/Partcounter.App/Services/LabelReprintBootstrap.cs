@@ -62,8 +62,8 @@ public sealed class LabelReprintBootstrap
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"Die Etiketten-Nachdruckfunktion konnte nicht initialisiert werden.\n\n{ex.Message}",
-                "Partcounter R001.17",
+                $"Die Etiketten-Nachdruck-/Snapshotfunktion konnte nicht initialisiert werden.\n\n{ex.Message}",
+                "Partcounter R001.18",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -78,7 +78,8 @@ public sealed class LabelReprintBootstrap
         if (historyTab is null)
             return;
 
-        if (historyTab.Content is Grid existingGrid && Equals(existingGrid.Tag, "PartcounterR00117LabelReprint"))
+        if (historyTab.Content is Grid existingGrid &&
+            (Equals(existingGrid.Tag, "PartcounterR00118LabelReprint") || Equals(existingGrid.Tag, "PartcounterR00117LabelReprint")))
             return;
         if (historyTab.Content is not DataGrid dataGrid)
             return;
@@ -86,7 +87,7 @@ public sealed class LabelReprintBootstrap
         _historyGrid = dataGrid;
         historyTab.Content = null;
 
-        var root = new Grid { Tag = "PartcounterR00117LabelReprint", Margin = new Thickness(10) };
+        var root = new Grid { Tag = "PartcounterR00118LabelReprint", Margin = new Thickness(10) };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
@@ -121,7 +122,7 @@ public sealed class LabelReprintBootstrap
         };
         _statusText = new TextBlock
         {
-            Text = "Nachdruck verwendet den ursprünglichen VE-Datensatz und verändert die Produktionshistorie nicht.",
+            Text = "R001.18 archiviert beim regulären VE-Druck das verwendete Etikettenlayout als unveränderlichen Snapshot mit SHA-256-Prüfung.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromRgb(0x56, 0x64, 0x73)),
             FontSize = 11,
@@ -134,7 +135,7 @@ public sealed class LabelReprintBootstrap
             Padding = new Thickness(13, 7, 13, 7),
             MinWidth = 155,
             IsEnabled = false,
-            ToolTip = "Ausgewähltes bereits gedrucktes VE-Etikett mit identischen VE-Daten erneut drucken"
+            ToolTip = "Ausgewähltes bereits gedrucktes VE-Etikett mit historischen VE-Daten und – falls vorhanden – Original-Layout-Snapshot erneut drucken"
         };
         _reprintButton.Click += async (_, _) => await ReprintSelectedAsync();
 
@@ -144,7 +145,7 @@ public sealed class LabelReprintBootstrap
             Padding = new Thickness(13, 7, 13, 7),
             MinWidth = 145,
             IsEnabled = false,
-            ToolTip = "Protokollierte Nachdruckversuche der ausgewählten VE anzeigen"
+            ToolTip = "Protokollierte Nachdruckversuche einschließlich verwendeter Layoutquelle anzeigen"
         };
         _journalButton.Click += async (_, _) => await ShowJournalAsync();
 
@@ -162,7 +163,7 @@ public sealed class LabelReprintBootstrap
         });
         heading.Children.Add(new TextBlock
         {
-            Text = "R001.17 · Reprint & Druckjournal",
+            Text = "R001.18 · Reprint · Layout-Snapshot · Druckjournal",
             Foreground = new SolidColorBrush(Color.FromRgb(0x65, 0x71, 0x80)),
             FontSize = 11
         });
@@ -200,7 +201,7 @@ public sealed class LabelReprintBootstrap
     private void AttachContextMenu(DataGrid dataGrid)
     {
         var menu = dataGrid.ContextMenu ?? new ContextMenu();
-        if (menu.Items.OfType<MenuItem>().Any(i => Equals(i.Tag, "PartcounterR00117Reprint")))
+        if (menu.Items.OfType<MenuItem>().Any(i => Equals(i.Tag, "PartcounterR00117Reprint") || Equals(i.Tag, "PartcounterR00118Reprint")))
             return;
 
         if (menu.Items.Count > 0)
@@ -209,13 +210,13 @@ public sealed class LabelReprintBootstrap
         var reprint = new MenuItem
         {
             Header = "Etikett nachdrucken…",
-            Tag = "PartcounterR00117Reprint"
+            Tag = "PartcounterR00118Reprint"
         };
         reprint.Click += async (_, _) => await ReprintSelectedAsync();
         var journal = new MenuItem
         {
             Header = "Nachdruckjournal anzeigen",
-            Tag = "PartcounterR00117Journal"
+            Tag = "PartcounterR00118Journal"
         };
         journal.Click += async (_, _) => await ShowJournalAsync();
         menu.Items.Add(reprint);
@@ -249,6 +250,16 @@ public sealed class LabelReprintBootstrap
 
         var printed = IsMarkedPrinted(record);
         var reprintCount = await _service.GetSuccessfulReprintCountAsync(record.Id);
+        LabelPrintSnapshot? snapshot = null;
+        try
+        {
+            snapshot = await _service.LoadPrintSnapshotAsync(record.Id);
+        }
+        catch (Exception ex)
+        {
+            if (_statusText is not null)
+                _statusText.Text = $"WARNUNG: Vorhandener Layout-Snapshot kann nicht verifiziert werden: {ex.Message}";
+        }
 
         if (_selectionText is not null)
         {
@@ -256,12 +267,26 @@ public sealed class LabelReprintBootstrap
                 $"M{record.MachineNumber:00} · VE {record.VeNumber} · Auftrag {record.OrderNumber} · Artikel {record.ArticleNumber} · {record.ActualQuantity:N0} Teile · Etikett: {record.LabelStatus}";
         }
         if (_journalText is not null)
-            _journalText.Text = $"Erfolgreiche Nachdrucke: {reprintCount:N0} · Originaldruck: {(record.PrintedAtUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "nicht protokolliert")}";
+        {
+            var snapshotText = snapshot is null
+                ? "Layout-Snapshot: nicht vorhanden"
+                : $"Layout-Snapshot: {snapshot.TemplateName} · SHA256 {snapshot.ShortHash}…";
+            _journalText.Text = $"Erfolgreiche Nachdrucke: {reprintCount:N0} · Originaldruck: {(record.PrintedAtUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "nicht protokolliert")} · {snapshotText}";
+        }
         if (_statusText is not null)
         {
-            _statusText.Text = printed
-                ? "Bereit zum Nachdruck. VE-ID und Originaldaten bleiben unverändert; der Nachdruck wird separat protokolliert."
-                : "Dieser Datensatz ist nicht als bereits gedruckt markiert. Die Reprint-Funktion ist deshalb gesperrt.";
+            if (!printed)
+            {
+                _statusText.Text = "Dieser Datensatz ist nicht als bereits gedruckt markiert. Die Reprint-Funktion ist deshalb gesperrt.";
+            }
+            else if (snapshot is not null)
+            {
+                _statusText.Text = $"Original-Layout-Snapshot vorhanden: {snapshot.DisplayText}. Nachdruck verwendet exakt diese archivierte Vorlagendefinition und die historischen VE-Daten.";
+            }
+            else
+            {
+                _statusText.Text = "Ältere VE ohne Layout-Snapshot: Der Nachdruck verwendet die historischen VE-Daten, aber das aktuell aufgelöste Etikettenlayout. Diese Fallback-Verwendung wird im Druckjournal protokolliert.";
+            }
         }
 
         SetButtons(printed, true);
@@ -308,19 +333,19 @@ public sealed class LabelReprintBootstrap
             if (result.Successful)
             {
                 if (_statusText is not null)
-                    _statusText.Text = $"Nachdruck #{result.ReprintNumber} erfolgreich an '{result.PrinterName}' übergeben. Grund: {result.Reason}";
+                    _statusText.Text = $"Nachdruck #{result.ReprintNumber} erfolgreich · {result.LayoutSource}";
                 MessageBox.Show(
-                    $"Etikett für M{record.MachineNumber:00} / VE {record.VeNumber} wurde als Nachdruck #{result.ReprintNumber} an den Drucker übergeben.\n\nVE-ID: {record.Id}\nGrund: {result.Reason}",
-                    "Etikett nachgedruckt",
+                    $"Etikett für M{record.MachineNumber:00} / VE {record.VeNumber} wurde als Nachdruck #{result.ReprintNumber} an den Drucker übergeben.\n\nVE-ID: {record.Id}\nGrund: {result.Reason}\nLayout: {result.LayoutSource}",
+                    result.HistoricalSnapshotUsed ? "Etikett aus Original-Snapshot nachgedruckt" : "Etikett nachgedruckt – Layout-Fallback",
                     MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                    result.HistoricalSnapshotUsed ? MessageBoxImage.Information : MessageBoxImage.Warning);
             }
             else
             {
                 if (_statusText is not null)
-                    _statusText.Text = $"Nachdruck #{result.ReprintNumber} fehlgeschlagen: {result.ErrorMessage}";
+                    _statusText.Text = $"Nachdruck #{result.ReprintNumber} fehlgeschlagen: {result.ErrorMessage} · {result.LayoutSource}";
                 MessageBox.Show(
-                    result.ErrorMessage,
+                    $"{result.ErrorMessage}\n\nLayout: {result.LayoutSource}",
                     "Etikett-Nachdruck fehlgeschlagen",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
@@ -374,25 +399,29 @@ public sealed class LabelReprintBootstrap
 
     private void UpdateRevisionUi()
     {
-        _window.Title = "Partcounter R001.17";
+        _window.Title = "Partcounter R001.18";
 
         foreach (var text in FindDescendants<TextBlock>(_window))
         {
             var expression = BindingOperations.GetBindingExpression(text, TextBlock.TextProperty);
             if (expression?.ParentBinding.Path?.Path == "SystemStatusText" ||
+                text.Text?.StartsWith("R001.17 · SIMULATION", StringComparison.Ordinal) == true ||
+                text.Text?.StartsWith("R001.17 · ECHTBETRIEB", StringComparison.Ordinal) == true ||
                 text.Text?.StartsWith("R001.16 · SIMULATION", StringComparison.Ordinal) == true ||
                 text.Text?.StartsWith("R001.16 · ECHTBETRIEB", StringComparison.Ordinal) == true)
             {
                 BindingOperations.ClearBinding(text, TextBlock.TextProperty);
                 var simulation = _main?.IsSimulationMode ?? true;
                 text.Text = simulation
-                    ? "R001.17 · SIMULATION"
-                    : "R001.17 · ECHTBETRIEB MODBUS TCP";
+                    ? "R001.18 · SIMULATION"
+                    : "R001.18 · ECHTBETRIEB MODBUS TCP";
                 continue;
             }
 
-            if (text.Text?.StartsWith("Installiert: R001.16 /", StringComparison.Ordinal) == true)
-                text.Text = text.Text.Replace("Installiert: R001.16 /", "Installiert: R001.17 /", StringComparison.Ordinal);
+            if (text.Text?.StartsWith("Installiert: R001.17 /", StringComparison.Ordinal) == true)
+                text.Text = text.Text.Replace("Installiert: R001.17 /", "Installiert: R001.18 /", StringComparison.Ordinal);
+            else if (text.Text?.StartsWith("Installiert: R001.16 /", StringComparison.Ordinal) == true)
+                text.Text = text.Text.Replace("Installiert: R001.16 /", "Installiert: R001.18 /", StringComparison.Ordinal);
         }
     }
 
