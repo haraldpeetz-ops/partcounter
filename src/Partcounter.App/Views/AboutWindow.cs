@@ -53,13 +53,14 @@ public sealed class AboutWindow : Window
         stack.Children.Add(Section("Produkt"));
         stack.Children.Add(InfoGrid(new[]
         {
-            ("Aktuelle Revision", "R001.14"),
+            ("Aktuelle Revision", "R001.15"),
             ("Assembly-Version", version),
             ("Build-Information", informational),
             ("Programmierer", "Harald Peetz"),
             ("Technologie", "C# · .NET 8 · WPF · SQLite · NModbus"),
             ("Modbus-Protokoll", $"Partcounter Protocol V{ModbusRegisterMap.ProtocolVersion}"),
-            ("LOGO!-Programm", "Partcounter_LOGO_V001")
+            ("LOGO!-Programm", "Partcounter_LOGO_V001"),
+            ("Produktionsschutz", "Tägliche SQLite-Sicherung · Integritätsprüfung · Diagnosepaket")
         }));
 
         stack.Children.Add(Section("Systeminformationen"));
@@ -154,11 +155,12 @@ public sealed class AboutWindow : Window
     private static string BuildSystemInfo(string version, string informational, string dataDirectory, string dbPath)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Partcounter R001.14");
+        sb.AppendLine("Partcounter R001.15");
         sb.AppendLine($"Assembly: {version}");
         sb.AppendLine($"Build: {informational}");
         sb.AppendLine("Programmierer: Harald Peetz");
         sb.AppendLine($"Modbus Protocol: V{ModbusRegisterMap.ProtocolVersion}");
+        sb.AppendLine("Produktionsschutz: tägliche SQLite-Sicherung, Integritätsprüfung, Diagnosepaket");
         sb.AppendLine($"OS: {RuntimeInformation.OSDescription}");
         sb.AppendLine($".NET: {RuntimeInformation.FrameworkDescription}");
         sb.AppendLine($"Process: {RuntimeInformation.ProcessArchitecture}");
