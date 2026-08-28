@@ -1,0 +1,125 @@
+<UserControl x:Class="Partcounter.Views.LiveCommissioningView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="950" MinHeight="620">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Background="#EAF4FB" BorderBrush="#9CBFD6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="R001.16 · Reale Live-Abnahmemessung" FontSize="19" FontWeight="Bold" Foreground="#18212B"/>
+                    <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Foreground="#425466"
+                               Text="Die Messung beobachtet ausschließlich die bereits vorhandene Fleet-/Modbus-V2-Diagnose. Sie schreibt keine Modbus-Register, schaltet Q1 nicht direkt und verändert weder Auftrag noch Zähler. Physische Ventilbewegung, Signalpegel und Safety-Funktionen bleiben Vor-Ort-Prüfungen."/>
+                </StackPanel>
+                <Border Grid.Column="1" Background="#FFFFFF" BorderBrush="#9CBFD6" BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="12,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="READ ONLY" FontWeight="Bold" Foreground="#176B87"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="270"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Referenzmaschine" FontWeight="SemiBold"/>
+                    <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding SelectedMachine}"
+                              DisplayMemberPath="DisplayName" MinHeight="30" IsEnabled="{Binding CanSelectMachine}"/>
+                    <TextBlock Text="{Binding EndpointText}" Foreground="#657180" Margin="0,3,0,0"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Margin="16,0">
+                    <TextBlock Text="{Binding OperatingModeText}" FontWeight="Bold" Foreground="#34495E"/>
+                    <TextBlock Text="{Binding PreflightText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    <TextBlock Text="{Binding CurrentLiveText}" TextWrapping="Wrap" Foreground="#657180" Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <WrapPanel Grid.Column="2" VerticalAlignment="Center">
+                    <Button Content="Live prüfen" Command="{Binding RefreshCommand}" Padding="11,7"/>
+                    <Button Content="Messung starten" Command="{Binding StartRecordingCommand}" Padding="11,7"/>
+                    <Button Content="Messung stoppen" Command="{Binding StopRecordingCommand}" IsEnabled="{Binding IsRecording}" Padding="11,7"/>
+                </WrapPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="11" Margin="0,0,8,0">
+                <StackPanel>
+                    <TextBlock Text="Messstatus" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding RecordingStateText}" FontSize="17" FontWeight="Bold" Margin="0,4,0,0"/>
+                    <TextBlock Text="{Binding SampleCountText}" Foreground="#657180"/>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="11" Margin="0,0,8,0">
+                <StackPanel>
+                    <TextBlock Text="Messserie" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding SessionMachineText, StringFormat=Maschine: {0}}" Margin="0,4,0,0"/>
+                    <TextBlock Text="{Binding SessionStartedText, StringFormat=Start: {0}}" Foreground="#657180"/>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="11">
+                <StackPanel>
+                    <TextBlock Text="Automatische Auswertung" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding SummaryText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <DataGrid Grid.Row="3" ItemsSource="{Binding Samples}" AutoGenerateColumns="False"
+                  IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
+                  EnableRowVirtualization="True" EnableColumnVirtualization="True">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Zeit" Binding="{Binding TimestampText}" Width="100"/>
+                <DataGridTextColumn Header="Verbindung" Binding="{Binding ConnectionText}" Width="135"/>
+                <DataGridTextColumn Header="PC-HB" Binding="{Binding PcHeartbeat}" Width="70"/>
+                <DataGridTextColumn Header="LOGO-HB" Binding="{Binding LogoHeartbeat}" Width="80"/>
+                <DataGridTextColumn Header="Cmd / ACK" Binding="{Binding SequenceText}" Width="90"/>
+                <DataGridTextColumn Header="Zähler" Binding="{Binding CounterText}" Width="165"/>
+                <DataGridTextColumn Header="VE" Binding="{Binding VeText}" Width="185"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="190"/>
+                <DataGridTextColumn Header="Error" Binding="{Binding ErrorText}" Width="60"/>
+                <DataGridTextColumn Header="Meldung" Binding="{Binding Message}" Width="*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <Border Grid.Row="4" Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,8,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding LastExportPath}" TextWrapping="Wrap" Foreground="#657180" FontSize="11"/>
+                </StackPanel>
+                <WrapPanel Grid.Column="1" VerticalAlignment="Center">
+                    <Button Content="CSV exportieren" Command="{Binding ExportCommand}" IsEnabled="{Binding HasSession}" Padding="11,7"/>
+                    <Button Content="Messdaten in Prüfnotizen" Command="{Binding WriteEvidenceCommand}" IsEnabled="{Binding HasSession}" Padding="11,7"/>
+                    <Button Content="Messserie leeren" Command="{Binding ClearCommand}" Padding="11,7"/>
+                </WrapPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
