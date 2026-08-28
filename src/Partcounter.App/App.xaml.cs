@@ -34,6 +34,7 @@ public partial class App : Application
             ProductionReadinessBootstrap.Attach(window);
             LiveCommissioningBootstrap.Attach(window);
             LabelReprintBootstrap.Attach(window);
+            ProfessionalHelpBootstrap.Attach(window);
             MainWindow = window;
             window.Show();
 
