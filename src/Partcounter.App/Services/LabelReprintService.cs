@@ -7,12 +7,15 @@ public sealed class LabelReprintService
 {
     private readonly DatabaseService _database = new();
     private readonly LabelPrintService _printer = new();
+    private readonly LabelTemplateService _templates = new();
+    private readonly LabelPrintSnapshotService _snapshots = new();
 
     private string ConnectionString => $"Data Source={_database.DatabasePath};Cache=Shared";
 
     public async Task InitializeAsync()
     {
         await _database.InitializeAsync();
+        await _snapshots.InitializeAsync();
         await using var connection = new SqliteConnection(ConnectionString);
         await connection.OpenAsync();
 
@@ -29,6 +32,7 @@ public sealed class LabelReprintService
                 Reason TEXT NOT NULL,
                 Successful INTEGER NOT NULL,
                 ErrorMessage TEXT NOT NULL DEFAULT '',
+                LayoutSource TEXT NOT NULL DEFAULT '',
                 FOREIGN KEY(PackagingUnitId) REFERENCES PackagingUnits(Id)
             );
 
@@ -36,6 +40,7 @@ public sealed class LabelReprintService
                 ON LabelReprintJournal(PackagingUnitId, Id DESC);
             """;
         await command.ExecuteNonQueryAsync();
+        await EnsureColumnAsync(connection, "LabelReprintJournal", "LayoutSource", "TEXT NOT NULL DEFAULT ''");
     }
 
     public async Task<LabelReprintResult> ReprintAsync(
@@ -51,6 +56,22 @@ public sealed class LabelReprintService
         var reprintNumber = await GetNextReprintNumberAsync(record.Id);
         var attemptedAtUtc = DateTime.UtcNow;
 
+        var snapshot = await _snapshots.LoadSnapshotAsync(record.Id);
+        LabelTemplateDefinition template;
+        string layoutSource;
+        var historicalSnapshotUsed = snapshot is not null;
+
+        if (snapshot is not null)
+        {
+            template = snapshot.Template;
+            layoutSource = $"Original-Snapshot: {snapshot.TemplateName} · {snapshot.TemplateId} · SHA256 {snapshot.ShortHash}…";
+        }
+        else
+        {
+            template = await _templates.ResolveTemplateAsync(record);
+            layoutSource = $"Fallback aktuelles Layout: {template.Name} · {template.Id} · kein historischer Snapshot verfügbar";
+        }
+
         bool successful;
         string errorMessage;
 
@@ -61,7 +82,7 @@ public sealed class LabelReprintService
         }
         else
         {
-            successful = await _printer.PrintAsync(record, normalizedPrinter);
+            successful = await _printer.PrintTemplateAsync(record, template, normalizedPrinter);
             errorMessage = successful
                 ? string.Empty
                 : "Der Druckauftrag konnte nicht an die Windows-Druckerwarteschlange übergeben werden. Druckername, Queue und Treiber prüfen.";
@@ -75,11 +96,12 @@ public sealed class LabelReprintService
             normalizedPrinter,
             normalizedReason,
             successful,
-            errorMessage));
+            errorMessage,
+            layoutSource));
 
         var eventMessage = successful
-            ? $"Nachdruck #{reprintNumber} für VE-ID {record.Id}; VE {record.VeNumber}; Auftrag {record.OrderNumber}; Artikel {record.ArticleNumber}; Drucker {normalizedPrinter}; Grund: {normalizedReason}."
-            : $"Nachdruck #{reprintNumber} FEHLER für VE-ID {record.Id}; Drucker {normalizedPrinter}; Grund: {normalizedReason}; Fehler: {errorMessage}";
+            ? $"Nachdruck #{reprintNumber} für VE-ID {record.Id}; VE {record.VeNumber}; Auftrag {record.OrderNumber}; Artikel {record.ArticleNumber}; Drucker {normalizedPrinter}; Grund: {normalizedReason}; Layout: {layoutSource}."
+            : $"Nachdruck #{reprintNumber} FEHLER für VE-ID {record.Id}; Drucker {normalizedPrinter}; Grund: {normalizedReason}; Layout: {layoutSource}; Fehler: {errorMessage}";
 
         await _database.AddEventAsync(
             record.MachineNumber,
@@ -92,7 +114,9 @@ public sealed class LabelReprintService
             normalizedPrinter,
             normalizedReason,
             errorMessage,
-            attemptedAtUtc);
+            attemptedAtUtc,
+            layoutSource,
+            historicalSnapshotUsed);
     }
 
     public async Task<IReadOnlyList<LabelReprintJournalEntry>> LoadJournalAsync(
@@ -106,7 +130,8 @@ public sealed class LabelReprintService
         await connection.OpenAsync();
         var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, PackagingUnitId, ReprintNumber, PrintedAtUtc, PrinterName, Reason, Successful, ErrorMessage
+            SELECT Id, PackagingUnitId, ReprintNumber, PrintedAtUtc, PrinterName, Reason,
+                   Successful, ErrorMessage, LayoutSource
             FROM LabelReprintJournal
             WHERE PackagingUnitId=$id
             ORDER BY Id DESC
@@ -126,7 +151,8 @@ public sealed class LabelReprintService
                 reader.GetString(4),
                 reader.GetString(5),
                 reader.GetInt32(6) != 0,
-                reader.GetString(7)));
+                reader.GetString(7),
+                reader.IsDBNull(8) ? string.Empty : reader.GetString(8)));
         }
 
         return result;
@@ -142,6 +168,9 @@ public sealed class LabelReprintService
         command.Parameters.AddWithValue("$id", packagingUnitId);
         return Convert.ToInt32(await command.ExecuteScalarAsync() ?? 0);
     }
+
+    public Task<LabelPrintSnapshot?> LoadPrintSnapshotAsync(string packagingUnitId) =>
+        _snapshots.LoadSnapshotAsync(packagingUnitId);
 
     private async Task<int> GetNextReprintNumberAsync(string packagingUnitId)
     {
@@ -160,9 +189,9 @@ public sealed class LabelReprintService
         var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO LabelReprintJournal
-                (PackagingUnitId, ReprintNumber, PrintedAtUtc, PrinterName, Reason, Successful, ErrorMessage)
+                (PackagingUnitId, ReprintNumber, PrintedAtUtc, PrinterName, Reason, Successful, ErrorMessage, LayoutSource)
             VALUES
-                ($id, $number, $time, $printer, $reason, $successful, $error);
+                ($id, $number, $time, $printer, $reason, $successful, $error, $layout);
             """;
         command.Parameters.AddWithValue("$id", entry.PackagingUnitId);
         command.Parameters.AddWithValue("$number", entry.ReprintNumber);
@@ -171,6 +200,35 @@ public sealed class LabelReprintService
         command.Parameters.AddWithValue("$reason", entry.Reason);
         command.Parameters.AddWithValue("$successful", entry.Successful ? 1 : 0);
         command.Parameters.AddWithValue("$error", entry.ErrorMessage ?? string.Empty);
+        command.Parameters.AddWithValue("$layout", entry.LayoutSource ?? string.Empty);
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task EnsureColumnAsync(
+        SqliteConnection connection,
+        string tableName,
+        string columnName,
+        string definition)
+    {
+        var check = connection.CreateCommand();
+        check.CommandText = $"PRAGMA table_info({tableName});";
+        await using var reader = await check.ExecuteReaderAsync();
+        var exists = false;
+        while (await reader.ReadAsync())
+        {
+            if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                exists = true;
+                break;
+            }
+        }
+        await reader.DisposeAsync();
+
+        if (exists)
+            return;
+
+        var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {definition};";
+        await alter.ExecuteNonQueryAsync();
     }
 }
