@@ -33,6 +33,7 @@ public partial class App : Application
             InfoUpdateHelpBootstrap.Attach(window);
             ProductionReadinessBootstrap.Attach(window);
             LiveCommissioningBootstrap.Attach(window);
+            LabelReprintBootstrap.Attach(window);
             MainWindow = window;
             window.Show();
 
