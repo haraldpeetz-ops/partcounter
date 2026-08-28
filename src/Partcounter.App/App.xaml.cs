@@ -31,6 +31,7 @@ public partial class App : Application
             var window = new MainWindow();
             CompanyBrandingBootstrap.Attach(window);
             InfoUpdateHelpBootstrap.Attach(window);
+            ProductionReadinessBootstrap.Attach(window);
             MainWindow = window;
             window.Show();
 
