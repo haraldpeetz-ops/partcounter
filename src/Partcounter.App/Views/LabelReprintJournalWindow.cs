@@ -11,10 +11,10 @@ public sealed class LabelReprintJournalWindow : Window
     public LabelReprintJournalWindow(PackagingUnitRecord record, IReadOnlyList<LabelReprintJournalEntry> entries)
     {
         Title = $"Partcounter – Druckjournal VE {record.VeNumber}";
-        Width = 980;
-        Height = 560;
-        MinWidth = 760;
-        MinHeight = 420;
+        Width = 1180;
+        Height = 600;
+        MinWidth = 860;
+        MinHeight = 440;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = new SolidColorBrush(Color.FromRgb(0xF2, 0xF4, 0xF7));
 
@@ -37,6 +37,14 @@ public sealed class LabelReprintJournalWindow : Window
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 4, 0, 0)
         });
+        header.Children.Add(new TextBlock
+        {
+            Text = "R001.18 protokolliert zusätzlich, ob der Nachdruck aus dem archivierten Original-Layout-Snapshot oder – bei älteren VE – aus dem aktuellen Layout erzeugt wurde.",
+            Foreground = new SolidColorBrush(Color.FromRgb(0x65, 0x71, 0x80)),
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Margin = new Thickness(0, 4, 0, 0)
+        });
         root.Children.Add(header);
 
         var grid = new DataGrid
@@ -50,11 +58,12 @@ public sealed class LabelReprintJournalWindow : Window
         };
         Grid.SetRow(grid, 1);
         grid.Columns.Add(new DataGridTextColumn { Header = "Nachdruck", Binding = new Binding(nameof(LabelReprintJournalEntry.ReprintNumber)) { StringFormat = "#{0}" }, Width = 90 });
-        grid.Columns.Add(new DataGridTextColumn { Header = "Zeit", Binding = new Binding(nameof(LabelReprintJournalEntry.PrintedAtLocalText)), Width = 145 });
-        grid.Columns.Add(new DataGridTextColumn { Header = "Drucker", Binding = new Binding(nameof(LabelReprintJournalEntry.PrinterName)), Width = 180 });
-        grid.Columns.Add(new DataGridTextColumn { Header = "Ergebnis", Binding = new Binding(nameof(LabelReprintJournalEntry.ResultText)), Width = 115 });
-        grid.Columns.Add(new DataGridTextColumn { Header = "Grund", Binding = new Binding(nameof(LabelReprintJournalEntry.Reason)), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
-        grid.Columns.Add(new DataGridTextColumn { Header = "Fehler", Binding = new Binding(nameof(LabelReprintJournalEntry.ErrorMessage)), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
+        grid.Columns.Add(new DataGridTextColumn { Header = "Zeit", Binding = new Binding(nameof(LabelReprintJournalEntry.PrintedAtLocalText)) { Mode = BindingMode.OneWay }, Width = 145 });
+        grid.Columns.Add(new DataGridTextColumn { Header = "Drucker", Binding = new Binding(nameof(LabelReprintJournalEntry.PrinterName)) { Mode = BindingMode.OneWay }, Width = 170 });
+        grid.Columns.Add(new DataGridTextColumn { Header = "Ergebnis", Binding = new Binding(nameof(LabelReprintJournalEntry.ResultText)) { Mode = BindingMode.OneWay }, Width = 115 });
+        grid.Columns.Add(new DataGridTextColumn { Header = "Grund", Binding = new Binding(nameof(LabelReprintJournalEntry.Reason)) { Mode = BindingMode.OneWay }, Width = new DataGridLength(1.5, DataGridLengthUnitType.Star) });
+        grid.Columns.Add(new DataGridTextColumn { Header = "Layoutquelle", Binding = new Binding(nameof(LabelReprintJournalEntry.LayoutSource)) { Mode = BindingMode.OneWay }, Width = new DataGridLength(2.5, DataGridLengthUnitType.Star) });
+        grid.Columns.Add(new DataGridTextColumn { Header = "Fehler", Binding = new Binding(nameof(LabelReprintJournalEntry.ErrorMessage)) { Mode = BindingMode.OneWay }, Width = new DataGridLength(1.5, DataGridLengthUnitType.Star) });
         root.Children.Add(grid);
 
         var footer = new Grid { Margin = new Thickness(0, 10, 0, 0) };
