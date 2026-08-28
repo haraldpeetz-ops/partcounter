@@ -114,8 +114,10 @@ public sealed class LiveCommissioningBootstrap
     {
         if (e.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
         {
+            // ProductionReadinessBootstrap still normalizes legacy R001.15 labels. Queue at the
+            // same low priority after its handler so R001.16 remains the final visible revision.
             _window.Dispatcher.BeginInvoke(
-                DispatcherPriority.ContextIdle,
+                DispatcherPriority.SystemIdle,
                 new Action(UpdateRevisionUi));
         }
     }
@@ -127,9 +129,12 @@ public sealed class LiveCommissioningBootstrap
         foreach (var text in FindDescendants<TextBlock>(_window))
         {
             var expression = BindingOperations.GetBindingExpression(text, TextBlock.TextProperty);
-            if (expression?.ParentBinding.Path?.Path == "SystemStatusText" ||
-                text.Text?.Contains("ECHTBETRIEB MODBUS TCP", StringComparison.OrdinalIgnoreCase) == true ||
-                text.Text?.Contains("SIMULATION", StringComparison.OrdinalIgnoreCase) == true && text.Text.StartsWith("R001.", StringComparison.Ordinal))
+            var isRevisionStatus = expression?.ParentBinding.Path?.Path == "SystemStatusText" ||
+                                   text.Text?.Contains("ECHTBETRIEB MODBUS TCP", StringComparison.OrdinalIgnoreCase) == true ||
+                                   (text.Text?.Contains("SIMULATION", StringComparison.OrdinalIgnoreCase) == true &&
+                                    text.Text.StartsWith("R001.", StringComparison.Ordinal));
+
+            if (isRevisionStatus)
             {
                 BindingOperations.ClearBinding(text, TextBlock.TextProperty);
                 var simulation = _window.DataContext is MainViewModel vm && vm.IsSimulationMode;
