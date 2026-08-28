@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.17</Version>
-    <FileVersion>0.1.17.0</FileVersion>
-    <InformationalVersion>0.1.17-r001.17-label-reprint</InformationalVersion>
+    <Version>0.1.18</Version>
+    <FileVersion>0.1.18.0</FileVersion>
+    <InformationalVersion>0.1.18-r001.18-label-snapshot-als-hotfix</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
