@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -27,11 +28,14 @@ public sealed class HelpCenterWindow : Window
     private readonly TextBlock _screenshotCaption = new();
     private readonly TextBlock _screenshotPlaceholder = new();
     private readonly Button _copyScreenshotInstructionButton = new();
+    private readonly Button _autoCaptureButton = new();
+    private readonly Button _openCaptureFolderButton = new();
+    private readonly TextBlock _captureStatus = new();
     private HelpTopic? _currentTopic;
 
     public HelpCenterWindow()
     {
-        Title = "Partcounter R001.19 – Hilfe & Dokumentation";
+        Title = "Partcounter R001.20 – Hilfe & Dokumentation";
         Width = 1480;
         Height = 920;
         MinWidth = 1050;
@@ -44,6 +48,8 @@ public sealed class HelpCenterWindow : Window
         _categoryBox.SelectionChanged += (_, _) => RefreshFilter();
         _topicList.SelectionChanged += (_, _) => ShowTopic(_topicList.SelectedItem as HelpTopic);
         _copyScreenshotInstructionButton.Click += (_, _) => CopyScreenshotInstruction();
+        _autoCaptureButton.Click += async (_, _) => await RunAutomaticCaptureAsync();
+        _openCaptureFolderButton.Click += (_, _) => OpenCaptureFolder();
         PreviewKeyDown += OnPreviewKeyDown;
 
         foreach (var category in _help.Categories)
@@ -89,9 +95,10 @@ public sealed class HelpCenterWindow : Window
         filters.Children.Add(new TextBlock { Text = "Partcounter Hilfe", FontSize = 22, FontWeight = FontWeights.Bold });
         filters.Children.Add(new TextBlock
         {
-            Text = "R001.19 · Bedienung · Inbetriebnahme · Diagnose",
+            Text = "R001.20 · Bedienung · Inbetriebnahme · Diagnose · Auto-Screenshots",
             Foreground = new SolidColorBrush(Color.FromRgb(0x65, 0x71, 0x80)),
-            Margin = new Thickness(0, 3, 0, 8)
+            Margin = new Thickness(0, 3, 0, 8),
+            TextWrapping = TextWrapping.Wrap
         });
         filters.Children.Add(new TextBlock
         {
@@ -113,6 +120,48 @@ public sealed class HelpCenterWindow : Window
             FontSize = 11,
             Margin = new Thickness(0, 8, 0, 0)
         });
+
+        var captureBox = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0xEA, 0xF4, 0xFB)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x9C, 0xBF, 0xD6)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(9),
+            Margin = new Thickness(0, 10, 0, 0)
+        };
+        var captureStack = new StackPanel();
+        captureBox.Child = captureStack;
+        captureStack.Children.Add(new TextBlock
+        {
+            Text = "Automatische Dokumentationsaufnahme",
+            FontWeight = FontWeights.Bold
+        });
+        captureStack.Children.Add(new TextBlock
+        {
+            Text = "Erzeugt Original-PNGs direkt aus Partcounter. Geschützte Reiter werden nicht automatisch entsperrt; bei Bedarf vorher einmal freigeben.",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x42, 0x54, 0x66)),
+            Margin = new Thickness(0, 3, 0, 6)
+        });
+        var captureButtons = new WrapPanel();
+        _autoCaptureButton.Content = "Screenshots automatisch erstellen";
+        _autoCaptureButton.Padding = new Thickness(9, 5, 9, 5);
+        _autoCaptureButton.ToolTip = "Priorität-A-Screenshots automatisch aus der laufenden Partcounter-Oberfläche erzeugen";
+        _openCaptureFolderButton.Content = "Ordner öffnen";
+        _openCaptureFolderButton.Padding = new Thickness(9, 5, 9, 5);
+        captureButtons.Children.Add(_autoCaptureButton);
+        captureButtons.Children.Add(_openCaptureFolderButton);
+        captureStack.Children.Add(captureButtons);
+        _captureStatus.Text = $"Ziel: {DocumentationCaptureService.ScreenshotDirectory}";
+        _captureStatus.TextWrapping = TextWrapping.Wrap;
+        _captureStatus.FontSize = 10.5;
+        _captureStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x65, 0x71, 0x80));
+        _captureStatus.Margin = new Thickness(0, 5, 0, 0);
+        captureStack.Children.Add(_captureStatus);
+        filters.Children.Add(captureBox);
+
         leftDock.Children.Add(filters);
 
         _topicList.ItemsSource = _visibleTopics;
@@ -306,13 +355,33 @@ public sealed class HelpCenterWindow : Window
         _screenshotPlaceholder.Visibility = Visibility.Visible;
         _screenshotPlaceholder.Text =
             $"Screenshot-Slot vorbereitet.\n\nDatei: {topic.ScreenshotFileName}\n\n{topic.ScreenshotInstruction}\n\n" +
-            "Sobald der Original-Screenshot unter Help/Screenshots hinterlegt ist, wird er hier automatisch angezeigt.";
+            "R001.20 kann die wichtigsten Screenshots automatisch erzeugen. Alternativ wird ein eingebetteter Screenshot aus Help/Screenshots verwendet.";
     }
 
     private static BitmapImage? TryLoadScreenshot(string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName))
             return null;
+
+        var externalPath = Path.Combine(DocumentationCaptureService.ScreenshotDirectory, fileName);
+        if (File.Exists(externalPath))
+        {
+            try
+            {
+                using var stream = File.OpenRead(externalPath);
+                var external = new BitmapImage();
+                external.BeginInit();
+                external.CacheOption = BitmapCacheOption.OnLoad;
+                external.StreamSource = stream;
+                external.EndInit();
+                external.Freeze();
+                return external;
+            }
+            catch
+            {
+                // Fall through to embedded resource.
+            }
+        }
 
         try
         {
@@ -333,6 +402,87 @@ public sealed class HelpCenterWindow : Window
         catch
         {
             return null;
+        }
+    }
+
+    private async Task RunAutomaticCaptureAsync()
+    {
+        if (Owner is not MainWindow mainWindow)
+        {
+            MessageBox.Show(
+                "Das Hilfezentrum wurde ohne Partcounter-Hauptfenster geöffnet. Die automatische Aufnahme kann deshalb nicht gestartet werden.",
+                "Partcounter Dokumentationsaufnahme",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            "Partcounter erzeugt jetzt automatisch Original-Screenshots der verfügbaren Programmoberflächen.\n\n" +
+            "Es werden keine geschützten Reiter automatisch entsperrt, keine Modbus-Schreibbefehle gesendet und keine echten ALS-Fehler provoziert. " +
+            "Falls Admin-Bereiche mit aufgenommen werden sollen, diese bitte vorher freigeben.\n\nAufnahme jetzt starten?",
+            "Automatische Dokumentationsaufnahme",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+            return;
+
+        _autoCaptureButton.IsEnabled = false;
+        _captureStatus.Text = "Automatische Aufnahme läuft …";
+
+        try
+        {
+            var service = new DocumentationCaptureService();
+            var result = await service.CapturePriorityAAsync(
+                mainWindow,
+                this,
+                text => _captureStatus.Text = text);
+
+            _captureStatus.Text =
+                $"Fertig: {result.CapturedCount} PNGs · ZIP: {result.ZipPath}" +
+                (result.SkippedItems.Count > 0 ? $" · {result.SkippedItems.Count} ausgelassen" : string.Empty);
+
+            if (_currentTopic is not null)
+                ShowScreenshot(_currentTopic);
+
+            MessageBox.Show(
+                $"Automatische Dokumentationsaufnahme abgeschlossen.\n\n" +
+                $"Erstellt: {result.CapturedCount} Screenshots\n" +
+                $"Ausgelassen: {result.SkippedItems.Count}\n\n" +
+                $"Screenshot-Ordner:\n{result.ScreenshotDirectory}\n\nZIP-Paket:\n{result.ZipPath}",
+                "Partcounter Dokumentationsaufnahme",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            _captureStatus.Text = $"Aufnahme fehlgeschlagen: {ex.Message}";
+            MessageBox.Show(
+                ex.Message,
+                "Partcounter Dokumentationsaufnahme",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            _autoCaptureButton.IsEnabled = true;
+        }
+    }
+
+    private static void OpenCaptureFolder()
+    {
+        try
+        {
+            Directory.CreateDirectory(DocumentationCaptureService.ScreenshotDirectory);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = DocumentationCaptureService.ScreenshotDirectory,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Screenshot-Ordner", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
