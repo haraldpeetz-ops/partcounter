@@ -356,9 +356,13 @@ public sealed class DocumentationCaptureService
         return SensitiveBindingTerms.Any(term => path.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string BuildZipPath() => Path.Combine(
-        PackageDirectory,
-        $"Partcounter_R00120_HelpScreenshots_{DateTime.Now:yyyyMMdd_HHmmss}.zip");
+    private static string BuildZipPath()
+    {
+        var revisionFilePart = AppVersionInfo.Revision.Replace(".", string.Empty, StringComparison.Ordinal);
+        return Path.Combine(
+            PackageDirectory,
+            $"Partcounter_{revisionFilePart}_HelpScreenshots_{DateTime.Now:yyyyMMdd_HHmmss}.zip");
+    }
 
     private static void CreateZipPackage(string path)
     {
@@ -372,7 +376,9 @@ public sealed class DocumentationCaptureService
         var path = Path.Combine(ScreenshotDirectory, "CAPTURE_MANIFEST.txt");
         var lines = new List<string>
         {
-            "PARTCOUNTER R001.20 – AUTOMATISCHE DOKUMENTATIONSAUFNAHME",
+            $"PARTCOUNTER {AppVersionInfo.Revision} – AUTOMATISCHE DOKUMENTATIONSAUFNAHME",
+            $"Version: {AppVersionInfo.VersionText}",
+            $"Build: {AppVersionInfo.InformationalVersion}",
             $"Erstellt: {DateTime.Now:dd.MM.yyyy HH:mm:ss}",
             $"ZIP: {zipPath}",
             $"Erfolgreich: {_captured.Count}",
