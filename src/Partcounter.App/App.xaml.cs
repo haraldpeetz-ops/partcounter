@@ -10,7 +10,9 @@ public partial class App : Application
 {
     private bool _dispatcherErrorDialogShown;
     private bool _stressMode;
+    private bool _layoutMode;
     private string? _stressReportPath;
+    private string? _layoutReportPath;
 
     private static string LogDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -23,10 +25,15 @@ public partial class App : Application
         base.OnStartup(e);
 
         _stressMode = e.Args.Any(arg => string.Equals(arg, "--stress-smoke", StringComparison.OrdinalIgnoreCase));
+        _layoutMode = e.Args.Any(arg => string.Equals(arg, "--layout-smoke", StringComparison.OrdinalIgnoreCase));
         _stressReportPath = e.Args
             .FirstOrDefault(arg => arg.StartsWith("--stress-report=", StringComparison.OrdinalIgnoreCase))?
             .Split('=', 2)[1];
+        _layoutReportPath = e.Args
+            .FirstOrDefault(arg => arg.StartsWith("--layout-report=", StringComparison.OrdinalIgnoreCase))?
+            .Split('=', 2)[1];
 
+        AdaptiveUiService.Initialize();
         VersionUiService.Initialize();
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
@@ -36,7 +43,7 @@ public partial class App : Application
         {
             WriteLog(
                 "START",
-                $"{AppVersionInfo.ProductTitle} startup. Version={AppVersionInfo.VersionText}; Build={AppVersionInfo.InformationalVersion}; OS={Environment.OSVersion}; Runtime={Environment.Version}; Base={AppContext.BaseDirectory}; Stress={_stressMode}");
+                $"{AppVersionInfo.ProductTitle} startup. Version={AppVersionInfo.VersionText}; Build={AppVersionInfo.InformationalVersion}; OS={Environment.OSVersion}; Runtime={Environment.Version}; Base={AppContext.BaseDirectory}; Stress={_stressMode}; Layout={_layoutMode}");
 
             var window = new MainWindow();
             CompanyBrandingBootstrap.Attach(window);
@@ -51,14 +58,19 @@ public partial class App : Application
             VersionUiService.NormalizeWindow(window);
             MainWindow = window;
             window.Show();
+            AdaptiveUiService.NormalizeWindow(window);
 
-            if (_stressMode)
+            if (_stressMode || _layoutMode)
             {
                 window.ShowInTaskbar = false;
                 window.Left = -30000;
                 window.Top = -30000;
-                _ = RunStressAsync(window);
             }
+
+            if (_stressMode)
+                _ = RunStressAsync(window);
+            else if (_layoutMode)
+                _ = RunLayoutValidationAsync(window);
 
             WriteLog("START", $"{AppVersionInfo.ProductTitle} main window shown successfully.");
         }
@@ -74,9 +86,21 @@ public partial class App : Application
             ? Path.Combine(LogDirectory, $"Partcounter_Stress_{DateTime.Now:yyyyMMdd_HHmmss}.txt")
             : Environment.ExpandEnvironmentVariables(_stressReportPath);
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(6));
         var exitCode = await new ApplicationStressService().RunAsync(window, report, timeout.Token);
         WriteLog("STRESS", $"Stresslauf beendet. ExitCode={exitCode}; Report={report}");
+        Shutdown(exitCode);
+    }
+
+    private async Task RunLayoutValidationAsync(MainWindow window)
+    {
+        var report = string.IsNullOrWhiteSpace(_layoutReportPath)
+            ? Path.Combine(LogDirectory, $"Partcounter_Layout_{DateTime.Now:yyyyMMdd_HHmmss}.txt")
+            : Environment.ExpandEnvironmentVariables(_layoutReportPath);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        var exitCode = await new LayoutValidationService().RunAsync(window, report, timeout.Token);
+        WriteLog("LAYOUT", $"Layout-Smoke-Test beendet. ExitCode={exitCode}; Report={report}");
         Shutdown(exitCode);
     }
 
@@ -85,7 +109,7 @@ public partial class App : Application
         WriteLog("DISPATCHER_FATAL", e.Exception.ToString());
         e.Handled = true;
 
-        if (_stressMode)
+        if (_stressMode || _layoutMode)
         {
             Shutdown(91);
             return;
@@ -117,7 +141,7 @@ public partial class App : Application
     {
         WriteLog("STARTUP_FATAL", ex.ToString());
 
-        if (_stressMode)
+        if (_stressMode || _layoutMode)
         {
             Shutdown(92);
             return;
