@@ -1,0 +1,215 @@
+<UserControl x:Class="Partcounter.Views.ProAlphaIntegrationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="900" MinHeight="600">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border Background="#EEF3F7" BorderBrush="#C9D4DE" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+            <StackPanel>
+                <TextBlock Text="proALPHA – Auftragsdaten-Schnittstelle" FontSize="20" FontWeight="Bold"/>
+                <TextBlock Margin="0,5,0,0" TextWrapping="Wrap" Foreground="#465361"
+                           Text="Alternative Auftragsquelle zu ARBURG ALS. Unterstützt kontrollierte Datei-/Hotfolder-Importe sowie REST/JSON. Weil proALPHA-REST-Endpunkte und Authentifizierung je Version, Integrationsplattform und Kundensystem abweichen können, werden Endpunkt, Authentifizierung, OAuth2, Mandant/Werk, Proxy, TLS, Queryparameter und Feldmapping vollständig konfigurierbar gehalten."/>
+            </StackPanel>
+        </Border>
+
+        <TabControl Grid.Row="1">
+            <TabItem Header="proALPHA-Aufträge">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <WrapPanel>
+                        <Button Content="Vollständigkeit prüfen" Command="{Binding PreflightCommand}" Padding="14,7"/>
+                        <Button Content="Verbindung / Quelle testen" Command="{Binding TestConnectionCommand}" Padding="14,7"/>
+                        <Button Content="Aufträge laden" Command="{Binding LoadOrdersCommand}" Padding="14,7"/>
+                        <Button Content="Einstellungen speichern" Command="{Binding SaveSettingsCommand}" Padding="14,7"/>
+                        <TextBlock Text="{Binding LastImportText}" VerticalAlignment="Center" Margin="14,0,0,0" Foreground="#657180"/>
+                    </WrapPanel>
+                    <Border Grid.Row="1" Background="White" BorderBrush="#D8DEE6" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,8">
+                        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
+                    </Border>
+                    <DataGrid Grid.Row="2" ItemsSource="{Binding Orders}" SelectedItem="{Binding SelectedOrder}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Maschine/AP" Binding="{Binding MachineDisplay}" Width="110"/>
+                            <DataGridTextColumn Header="Auftrag" Binding="{Binding OrderNumber}" Width="135"/>
+                            <DataGridTextColumn Header="AG" Binding="{Binding OperationNumber}" Width="70"/>
+                            <DataGridTextColumn Header="Artikel" Binding="{Binding ArticleNumber}" Width="125"/>
+                            <DataGridTextColumn Header="Sollmenge" Binding="{Binding OrderQuantity, StringFormat={}{0:N0}}" Width="95"/>
+                            <DataGridTextColumn Header="Werkzeug" Binding="{Binding ToolNumber}" Width="105"/>
+                            <DataGridTextColumn Header="Kav." Binding="{Binding CavitiesText}" Width="55"/>
+                            <DataGridTextColumn Header="VE" Binding="{Binding PackagingQuantityText}" Width="80"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding OrderStatus}" Width="90"/>
+                            <DataGridTextColumn Header="Planstart" Binding="{Binding PlannedStartText}" Width="135"/>
+                            <DataGridTextColumn Header="Material" Binding="{Binding MaterialNumber}" Width="110"/>
+                            <DataGridTextColumn Header="Firma" Binding="{Binding CompanyCode}" Width="70"/>
+                            <DataGridTextColumn Header="Werk" Binding="{Binding PlantCode}" Width="70"/>
+                            <DataGridTextColumn Header="Quelle" Binding="{Binding SourceDescription}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <StackPanel Grid.Row="3" Margin="0,8,0,0">
+                        <Button Content="Ausgewählten proALPHA-Auftrag in Partcounter übernehmen" Command="{Binding ApplySelectedOrderCommand}" Padding="16,9" HorizontalAlignment="Left"/>
+                        <TextBlock Margin="0,5,0,0" TextWrapping="Wrap" Foreground="#657180"
+                                   Text="Übernehmen setzt Maschine, Artikel, Auftragsnummer und Sollmenge. Standardmäßig wird der Auftrag nur vorbereitet und muss im Leitstand bewusst gestartet werden."/>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Verbindung / Zugang">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="14" MaxWidth="1120" HorizontalAlignment="Left">
+                        <TextBlock Text="Allgemein / Quellweg" FontSize="18" FontWeight="Bold"/>
+                        <WrapPanel Margin="0,8,0,0">
+                            <StackPanel Width="230" Margin="4"><TextBlock Text="Quellmodus"/><ComboBox ItemsSource="{Binding SourceModes}" SelectedItem="{Binding Settings.SourceMode}"/></StackPanel>
+                            <StackPanel Width="190" Margin="4"><TextBlock Text="Umgebung / Systemname"/><TextBox Text="{Binding Settings.EnvironmentName}"/></StackPanel>
+                            <StackPanel Width="150" Margin="4"><TextBlock Text="Auto-Abruf"/><CheckBox Content="aktiv" IsChecked="{Binding Settings.AutoPoll}" Margin="0,6,0,0"/></StackPanel>
+                            <StackPanel Width="170" Margin="4"><TextBlock Text="Intervall [s]"/><TextBox Text="{Binding Settings.PollIntervalSeconds}"/></StackPanel>
+                            <StackPanel Width="170" Margin="4"><TextBlock Text="Kultur"/><TextBox Text="{Binding Settings.CultureName}" ToolTip="z. B. de-DE"/></StackPanel>
+                        </WrapPanel>
+
+                        <Separator Margin="0,14"/>
+                        <TextBlock Text="Datei / Hotfolder" FontSize="18" FontWeight="Bold"/>
+                        <DockPanel Margin="4">
+                            <Button DockPanel.Dock="Right" Content="Datei auswählen …" Command="{Binding BrowseFileCommand}" Padding="10,4"/>
+                            <TextBox Text="{Binding Settings.FilePath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"/>
+                        </DockPanel>
+                        <WrapPanel>
+                            <StackPanel Width="200" Margin="4"><TextBlock Text="Dateimuster"/><TextBox Text="{Binding Settings.FilePattern}"/></StackPanel>
+                            <StackPanel Width="200" Margin="4"><TextBlock Text="Excel-Blatt"/><TextBox Text="{Binding Settings.ExcelSheetName}"/></StackPanel>
+                            <StackPanel Width="120" Margin="4"><TextBlock Text="Kopfzeile"/><TextBox Text="{Binding Settings.HeaderRow}"/></StackPanel>
+                            <StackPanel Width="120" Margin="4"><TextBlock Text="CSV-Trenner"/><TextBox Text="{Binding Settings.CsvDelimiter}"/></StackPanel>
+                            <StackPanel Width="160" Margin="4"><TextBlock Text="Codierung"/><TextBox Text="{Binding Settings.FileEncodingName}"/></StackPanel>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <CheckBox Content="Nach Import archivieren" IsChecked="{Binding Settings.ArchiveAfterImport}" Margin="4,22,12,0"/>
+                            <StackPanel Width="330" Margin="4"><TextBlock Text="Archivordner"/><TextBox Text="{Binding Settings.ArchiveFolder}"/></StackPanel>
+                            <StackPanel Width="330" Margin="4"><TextBlock Text="Fehlerordner"/><TextBox Text="{Binding Settings.ErrorFolder}"/></StackPanel>
+                        </WrapPanel>
+
+                        <Separator Margin="0,14"/>
+                        <TextBlock Text="REST-Endpunkt / Request" FontSize="18" FontWeight="Bold"/>
+                        <TextBlock Text="REST-URL"/><TextBox Text="{Binding Settings.RestUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,3,0,6" ToolTip="Absolute URL. Platzhalter {Company}, {Plant}, {Resource}, {Status} sind zulässig."/>
+                        <WrapPanel>
+                            <StackPanel Width="120" Margin="4"><TextBlock Text="HTTP"/><ComboBox ItemsSource="{Binding HttpMethods}" SelectedItem="{Binding Settings.HttpMethod}"/></StackPanel>
+                            <StackPanel Width="200" Margin="4"><TextBlock Text="Accept"/><TextBox Text="{Binding Settings.AcceptMediaType}"/></StackPanel>
+                            <StackPanel Width="200" Margin="4"><TextBlock Text="Content-Type"/><TextBox Text="{Binding Settings.ContentMediaType}"/></StackPanel>
+                            <StackPanel Width="140" Margin="4"><TextBlock Text="Timeout [s]"/><TextBox Text="{Binding Settings.TimeoutSeconds}"/></StackPanel>
+                            <StackPanel Width="120" Margin="4"><TextBlock Text="Retries"/><TextBox Text="{Binding Settings.RetryCount}"/></StackPanel>
+                            <StackPanel Width="160" Margin="4"><TextBlock Text="Retry Delay [ms]"/><TextBox Text="{Binding Settings.RetryDelayMilliseconds}"/></StackPanel>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <StackPanel Width="330" Margin="4"><TextBlock Text="JSON-Wurzelpfad"/><TextBox Text="{Binding Settings.JsonRootPath}" ToolTip="z. B. data.orders"/></StackPanel>
+                            <StackPanel Width="330" Margin="4"><TextBlock Text="Next-Link JSON-Pfad"/><TextBox Text="{Binding Settings.NextLinkJsonPath}" ToolTip="leer = keine Pagination"/></StackPanel>
+                            <StackPanel Width="140" Margin="4"><TextBlock Text="Max. Seiten"/><TextBox Text="{Binding Settings.MaxPages}"/></StackPanel>
+                        </WrapPanel>
+                        <TextBlock Text="Queryparameter (eine Zeile: Name=Wert)" Margin="4,6,0,0"/><TextBox Text="{Binding Settings.QueryParameters}" AcceptsReturn="True" Height="70" Margin="4" FontFamily="Consolas"/>
+                        <TextBlock Text="Zusätzliche HTTP-Header (eine Zeile: Name: Wert)" Margin="4,6,0,0"/><TextBox Text="{Binding Settings.AdditionalHeaders}" AcceptsReturn="True" Height="70" Margin="4" FontFamily="Consolas"/>
+                        <TextBlock Text="POST-Body" Margin="4,6,0,0"/><TextBox Text="{Binding Settings.RequestBody}" AcceptsReturn="True" Height="100" Margin="4" FontFamily="Consolas"/>
+
+                        <Separator Margin="0,14"/>
+                        <TextBlock Text="Authentifizierung" FontSize="18" FontWeight="Bold"/>
+                        <WrapPanel>
+                            <StackPanel Width="260" Margin="4"><TextBlock Text="Authentifizierungsart"/><ComboBox ItemsSource="{Binding AuthenticationTypes}" SelectedItem="{Binding Settings.AuthenticationType}"/></StackPanel>
+                            <StackPanel Width="260" Margin="4"><TextBlock Text="Benutzername"/><TextBox Text="{Binding Settings.Username}"/></StackPanel>
+                            <StackPanel Width="260" Margin="4"><TextBlock Text="Passwort (DPAPI)"/><TextBox Text="{Binding Settings.Password}"/></StackPanel>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <StackPanel Width="320" Margin="4"><TextBlock Text="Bearer Token (DPAPI)"/><TextBox Text="{Binding Settings.BearerToken}"/></StackPanel>
+                            <StackPanel Width="220" Margin="4"><TextBlock Text="API-Key Header"/><TextBox Text="{Binding Settings.ApiKeyHeader}"/></StackPanel>
+                            <StackPanel Width="320" Margin="4"><TextBlock Text="API-Key Wert (DPAPI)"/><TextBox Text="{Binding Settings.ApiKeyValue}"/></StackPanel>
+                        </WrapPanel>
+
+                        <TextBlock Text="OAuth2" FontSize="16" FontWeight="Bold" Margin="4,10,0,3"/>
+                        <WrapPanel>
+                            <StackPanel Width="430" Margin="4"><TextBlock Text="Token-URL"/><TextBox Text="{Binding Settings.OAuthTokenUrl}"/></StackPanel>
+                            <StackPanel Width="260" Margin="4"><TextBlock Text="Client-ID"/><TextBox Text="{Binding Settings.OAuthClientId}"/></StackPanel>
+                            <StackPanel Width="320" Margin="4"><TextBlock Text="Client-Secret (DPAPI)"/><TextBox Text="{Binding Settings.OAuthClientSecret}"/></StackPanel>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <StackPanel Width="300" Margin="4"><TextBlock Text="Scope"/><TextBox Text="{Binding Settings.OAuthScope}"/></StackPanel>
+                            <StackPanel Width="300" Margin="4"><TextBlock Text="Audience / Resource"/><TextBox Text="{Binding Settings.OAuthAudience}"/></StackPanel>
+                            <StackPanel Width="360" Margin="4"><TextBlock Text="Refresh Token (DPAPI)"/><TextBox Text="{Binding Settings.OAuthRefreshToken}"/></StackPanel>
+                            <CheckBox Content="Client-ID/Secret als Basic Header senden" IsChecked="{Binding Settings.OAuthClientCredentialsInBasicHeader}" Margin="8,22,0,0"/>
+                        </WrapPanel>
+                        <TextBlock Text="OAuth Zusatzparameter (Name=Wert)" Margin="4,6,0,0"/><TextBox Text="{Binding Settings.OAuthAdditionalParameters}" AcceptsReturn="True" Height="65" Margin="4" FontFamily="Consolas"/>
+
+                        <Separator Margin="0,14"/>
+                        <TextBlock Text="TLS / Client-Zertifikat / Proxy" FontSize="18" FontWeight="Bold"/>
+                        <WrapPanel>
+                            <StackPanel Width="420" Margin="4"><TextBlock Text="Client-Zertifikat (.pfx/.p12)"/><TextBox Text="{Binding Settings.ClientCertificatePath}"/></StackPanel>
+                            <StackPanel Width="300" Margin="4"><TextBlock Text="Zertifikat-Passwort (DPAPI)"/><TextBox Text="{Binding Settings.ClientCertificatePassword}"/></StackPanel>
+                            <CheckBox Content="Nicht vertrauenswürdiges TLS akzeptieren (nur Test!)" IsChecked="{Binding Settings.AllowUntrustedTls}" Margin="8,22,0,0"/>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <StackPanel Width="220" Margin="4"><TextBlock Text="Proxy-Modus"/><ComboBox ItemsSource="{Binding ProxyModes}" SelectedItem="{Binding Settings.ProxyMode}"/></StackPanel>
+                            <StackPanel Width="340" Margin="4"><TextBlock Text="Proxy-URL"/><TextBox Text="{Binding Settings.ProxyUrl}"/></StackPanel>
+                            <StackPanel Width="220" Margin="4"><TextBlock Text="Proxy-Benutzer"/><TextBox Text="{Binding Settings.ProxyUsername}"/></StackPanel>
+                            <StackPanel Width="260" Margin="4"><TextBlock Text="Proxy-Passwort (DPAPI)"/><TextBox Text="{Binding Settings.ProxyPassword}"/></StackPanel>
+                        </WrapPanel>
+
+                        <Separator Margin="0,14"/>
+                        <TextBlock Text="proALPHA Firmen-/Produktionskontext" FontSize="18" FontWeight="Bold"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#657180" Text="Diese Werte werden nicht mit fest angenommenen Parameternamen übertragen. Sie stehen als Platzhalter {Company}, {Plant}, {Resource}, {Status} in URL, Queryparametern, Headern und POST-Body zur Verfügung."/>
+                        <WrapPanel Margin="0,6,0,0">
+                            <StackPanel Width="220" Margin="4"><TextBlock Text="Firma / Mandant"/><TextBox Text="{Binding Settings.CompanyCode}"/></StackPanel>
+                            <StackPanel Width="220" Margin="4"><TextBlock Text="Werk / Standort"/><TextBox Text="{Binding Settings.PlantCode}"/></StackPanel>
+                            <StackPanel Width="300" Margin="4"><TextBlock Text="Arbeitsplatz / Ressource"/><TextBox Text="{Binding Settings.ResourceFilter}"/></StackPanel>
+                            <StackPanel Width="260" Margin="4"><TextBlock Text="Auftragsstatus-Filter"/><TextBox Text="{Binding Settings.OrderStatusFilter}"/></StackPanel>
+                        </WrapPanel>
+
+                        <Separator Margin="0,14"/>
+                        <TextBlock Text="Importverhalten" FontSize="18" FontWeight="Bold"/>
+                        <CheckBox Content="Fehlende Artikel automatisch anlegen (nur mit gültigen Kavitäten und VE-Menge)" IsChecked="{Binding Settings.CreateMissingArticles}" Margin="4,7,0,0"/>
+                        <CheckBox Content="Bestehende Artikelstammdaten mit gelieferten Werten aktualisieren" IsChecked="{Binding Settings.UpdateExistingArticles}" Margin="4,5,0,0"/>
+                        <CheckBox Content="Beim Übernehmen automatisch starten" IsChecked="{Binding Settings.AutoStartOnApply}" Margin="4,5,0,0"/>
+                        <TextBlock Text="Maschinen-/Arbeitsplatz-Aliase (eine Zeile: proALPHA-Wert=M01)" Margin="4,8,0,0"/><TextBox Text="{Binding Settings.MachineAliasMap}" AcceptsReturn="True" Height="80" Margin="4" FontFamily="Consolas"/>
+                        <Button Content="Einstellungen speichern" Command="{Binding SaveSettingsCommand}" Padding="16,8" HorizontalAlignment="Left" Margin="4,10,0,20"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Feldmapping">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <TextBlock TextWrapping="Wrap" Foreground="#465361"
+                               Text="Pflichtfelder sind Auftragsnummer, Artikelnummer und Auftrags-Sollmenge. Für eine automatische Maschinenzuordnung sollte mindestens MachineNumber, MachineName, MachineExternalId oder WorkCenter gemappt sein. Bei REST dürfen punktgetrennte JSON-Pfade verwendet werden."/>
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding Mappings}" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,8">
+                        <DataGrid.Columns>
+                            <DataGridCheckBoxColumn Header="Pflicht" Binding="{Binding Required}" IsReadOnly="True" Width="65"/>
+                            <DataGridTextColumn Header="Partcounter-Zielfeld" Binding="{Binding TargetField}" IsReadOnly="True" Width="160"/>
+                            <DataGridTextColumn Header="proALPHA Quellfeld / JSON-Pfad" Binding="{Binding SourceField, UpdateSourceTrigger=PropertyChanged}" Width="245"/>
+                            <DataGridTextColumn Header="Bedeutung" Binding="{Binding Description}" IsReadOnly="True" Width="*"/>
+                            <DataGridTextColumn Header="Beispiel" Binding="{Binding Example}" IsReadOnly="True" Width="170"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <WrapPanel Grid.Row="2"><Button Content="Mapping zurücksetzen" Command="{Binding ResetMappingsCommand}" Padding="12,6"/><Button Content="Vollständigkeit prüfen" Command="{Binding PreflightCommand}" Padding="12,6"/></WrapPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Inbetriebnahme-Check">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Verbindungs-Preflight" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#657180" Margin="0,4,0,8"
+                                   Text="Diese Prüfung kontrolliert abhängig vom gewählten Quellmodus und Authentifizierungsverfahren alle in Partcounter erforderlichen Zugangsdaten, bevor ein echter Verbindungsversuch gestartet wird."/>
+                        <Button Content="Vollständigkeit jetzt prüfen" Command="{Binding PreflightCommand}" Padding="14,7" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding PreflightIssues}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" Margin="0,10,0,0">
+                        <DataGrid.Columns>
+                            <DataGridCheckBoxColumn Header="Fehler" Binding="{Binding IsError}" Width="65"/>
+                            <DataGridTextColumn Header="Feld" Binding="{Binding Field}" Width="180"/>
+                            <DataGridTextColumn Header="Prüfhinweis" Binding="{Binding Message}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>
