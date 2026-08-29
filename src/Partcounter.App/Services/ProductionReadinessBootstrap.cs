@@ -33,7 +33,7 @@ public sealed class ProductionReadinessBootstrap
 
     private void Hook()
     {
-        _window.Title = "Partcounter R001.15";
+        _window.Title = AppVersionInfo.ProductTitle;
         _window.Loaded += OnLoaded;
         _window.Closed += OnClosed;
     }
@@ -114,7 +114,7 @@ public sealed class ProductionReadinessBootstrap
         var settingsStack = GetSettingsStack(settingsTab);
         if (settingsStack is null)
             return;
-        if (settingsStack.Children.OfType<FrameworkElement>().Any(x => Equals(x.Tag, "PartcounterR00115ProductionReadiness")))
+        if (settingsStack.Children.OfType<FrameworkElement>().Any(x => Equals(x.Tag, "PartcounterProductionReadiness")))
             return;
 
         _statusText = new TextBlock
@@ -208,7 +208,7 @@ public sealed class ProductionReadinessBootstrap
 
         var panel = new Border
         {
-            Tag = "PartcounterR00115ProductionReadiness",
+            Tag = "PartcounterProductionReadiness",
             Background = Brushes.White,
             BorderBrush = new SolidColorBrush(Color.FromRgb(0xD8, 0xDE, 0xE6)),
             BorderThickness = new Thickness(1),
@@ -259,7 +259,7 @@ public sealed class ProductionReadinessBootstrap
         var hasUpdate = settingsStack.Children.OfType<FrameworkElement>()
             .Any(x => Equals(x.Tag, "PartcounterR00114UpdateCenter"));
         var hasProductionReadiness = settingsStack.Children.OfType<FrameworkElement>()
-            .Any(x => Equals(x.Tag, "PartcounterR00115ProductionReadiness"));
+            .Any(x => Equals(x.Tag, "PartcounterProductionReadiness"));
 
         if (!hasBranding || !hasUpdate || !hasProductionReadiness)
             return false;
@@ -279,8 +279,8 @@ public sealed class ProductionReadinessBootstrap
     {
         foreach (var text in FindDescendants<TextBlock>(_window))
         {
-            if (text.Text?.StartsWith("Installiert: R001.14 /", StringComparison.Ordinal) == true)
-                text.Text = text.Text.Replace("Installiert: R001.14 /", "Installiert: R001.15 /", StringComparison.Ordinal);
+            if (text.Text?.StartsWith("Installiert:", StringComparison.OrdinalIgnoreCase) == true)
+                text.Text = AppVersionInfo.InstalledText;
         }
     }
 
@@ -376,7 +376,7 @@ public sealed class ProductionReadinessBootstrap
 
     private void UpdateVersionBadge()
     {
-        _window.Title = "Partcounter R001.15";
+        _window.Title = AppVersionInfo.ProductTitle;
         var status = FindDescendant<TextBlock>(_window, text =>
         {
             var expression = BindingOperations.GetBindingExpression(text, TextBlock.TextProperty);
@@ -392,8 +392,8 @@ public sealed class ProductionReadinessBootstrap
         BindingOperations.ClearBinding(status, TextBlock.TextProperty);
         var simulation = _window.DataContext is MainViewModel vm && vm.IsSimulationMode;
         status.Text = simulation
-            ? "R001.15 · SIMULATION"
-            : "R001.15 · ECHTBETRIEB MODBUS TCP";
+            ? AppVersionInfo.SimulationStatus
+            : AppVersionInfo.ProductionStatus;
     }
 
     private static StackPanel? GetSettingsStack(TabItem? tab) => tab?.Content switch
