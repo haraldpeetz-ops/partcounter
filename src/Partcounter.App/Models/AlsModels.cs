@@ -14,7 +14,15 @@ public enum AlsAuthenticationType
     None = 0,
     Basic = 1,
     Bearer = 2,
-    ApiKey = 3
+    ApiKey = 3,
+    OAuth2ClientCredentials = 4
+}
+
+public enum AlsProxyMode
+{
+    SystemDefault = 0,
+    None = 1,
+    Custom = 2
 }
 
 public sealed class AlsConnectionSettings
@@ -43,6 +51,17 @@ public sealed class AlsConnectionSettings
     public string BearerToken { get; set; } = string.Empty;
     public string ApiKeyHeader { get; set; } = "X-API-Key";
     public string ApiKeyValue { get; set; } = string.Empty;
+
+    // Optional OAuth2 client-credentials support. Public ARBURG material confirms REST integration,
+    // but the exact customer-side authentication depends on the installed ALS/integration setup.
+    public string OAuthTokenUrl { get; set; } = string.Empty;
+    public string OAuthClientId { get; set; } = string.Empty;
+    public string OAuthClientSecret { get; set; } = string.Empty;
+    public string OAuthScope { get; set; } = string.Empty;
+    public string OAuthAudience { get; set; } = string.Empty;
+    public bool OAuthClientCredentialsInBasicHeader { get; set; }
+    public string OAuthAdditionalParameters { get; set; } = string.Empty;
+
     public string RequestBody { get; set; } = string.Empty;
     public string JsonRootPath { get; set; } = string.Empty;
     public string AdditionalHeaders { get; set; } = string.Empty;
@@ -50,6 +69,11 @@ public sealed class AlsConnectionSettings
     public bool AllowUntrustedTls { get; set; }
     public string ClientCertificatePath { get; set; } = string.Empty;
     public string ClientCertificatePassword { get; set; } = string.Empty;
+
+    public AlsProxyMode ProxyMode { get; set; } = AlsProxyMode.SystemDefault;
+    public string ProxyUrl { get; set; } = string.Empty;
+    public string ProxyUsername { get; set; } = string.Empty;
+    public string ProxyPassword { get; set; } = string.Empty;
 
     public bool CreateMissingArticles { get; set; } = true;
     public bool UpdateExistingArticles { get; set; }
