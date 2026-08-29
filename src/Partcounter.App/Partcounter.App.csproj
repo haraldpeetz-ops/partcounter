@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.21</Version>
-    <FileVersion>0.1.21.0</FileVersion>
-    <InformationalVersion>0.1.21-r001.21-support-version-core</InformationalVersion>
+    <Version>0.1.22</Version>
+    <FileVersion>0.1.22.0</FileVersion>
+    <InformationalVersion>0.1.22-r001.22-admin-hub</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
