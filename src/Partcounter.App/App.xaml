@@ -5,9 +5,27 @@
         <Style TargetType="Button">
             <Setter Property="Padding" Value="10,5"/>
             <Setter Property="Margin" Value="3"/>
+            <Setter Property="MinWidth" Value="0"/>
         </Style>
         <Style TargetType="ProgressBar">
             <Setter Property="Height" Value="18"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="MinWidth" Value="0"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="MinWidth" Value="0"/>
+        </Style>
+        <Style TargetType="TabControl">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+        </Style>
+        <Style TargetType="DataGrid">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="120"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
         </Style>
     </Application.Resources>
 </Application>
