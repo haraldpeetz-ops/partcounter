@@ -1,8 +1,10 @@
+using System.ComponentModel;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Partcounter.ViewModels;
 
 namespace Partcounter.Services;
 
@@ -12,6 +14,11 @@ namespace Partcounter.Services;
 /// </summary>
 public static partial class VersionUiService
 {
+    private sealed record ViewModelSubscription(
+        INotifyPropertyChanged Notifier,
+        PropertyChangedEventHandler Handler);
+
+    private static readonly Dictionary<Window, ViewModelSubscription> Subscriptions = new();
     private static bool _initialized;
 
     [GeneratedRegex(@"R\d{3}\.\d{1,3}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
@@ -48,10 +55,47 @@ public static partial class VersionUiService
         if (sender is not Window window)
             return;
 
-        // Mehrere ältere Bootstrap-Bausteine setzen ihre Titel/Statuswerte ebenfalls im Loaded-Ereignis.
-        // Deshalb wird die zentrale Normalisierung bewusst nachgelagert ausgeführt.
+        TrackRuntimeChanges(window);
+        ScheduleNormalization(window);
+    }
+
+    private static void TrackRuntimeChanges(Window window)
+    {
+        if (window is not MainWindow || Subscriptions.ContainsKey(window))
+            return;
+
+        if (window.DataContext is not INotifyPropertyChanged notifier)
+            return;
+
+        PropertyChangedEventHandler handler = (_, args) =>
+        {
+            if (args.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
+                ScheduleNormalization(window);
+        };
+
+        notifier.PropertyChanged += handler;
+        Subscriptions[window] = new ViewModelSubscription(notifier, handler);
+        window.Closed += OnTrackedWindowClosed;
+    }
+
+    private static void OnTrackedWindowClosed(object? sender, EventArgs e)
+    {
+        if (sender is not Window window || !Subscriptions.Remove(window, out var subscription))
+            return;
+
+        subscription.Notifier.PropertyChanged -= subscription.Handler;
+        window.Closed -= OnTrackedWindowClosed;
+    }
+
+    private static void ScheduleNormalization(Window window)
+    {
+        if (window.Dispatcher.HasShutdownStarted || window.Dispatcher.HasShutdownFinished)
+            return;
+
+        // SystemIdle läuft nach den älteren Loaded-/PropertyChanged-Bootstraps.
+        // Damit gewinnt immer die zentrale, aus der Assembly gelesene Versionsquelle.
         window.Dispatcher.BeginInvoke(
-            DispatcherPriority.ContextIdle,
+            DispatcherPriority.SystemIdle,
             new Action(() => NormalizeWindow(window)));
     }
 
@@ -81,12 +125,7 @@ public static partial class VersionUiService
             return AppVersionInfo.ProductionStatus;
 
         if (text.StartsWith("Installiert:", StringComparison.OrdinalIgnoreCase) && RevisionRegex().IsMatch(text))
-        {
-            var suffixIndex = text.IndexOf('/');
-            return suffixIndex >= 0
-                ? $"Installiert: {AppVersionInfo.Revision} / {AppVersionInfo.VersionText}"
-                : AppVersionInfo.InstalledText;
-        }
+            return AppVersionInfo.InstalledText;
 
         if (string.Equals(windowTypeName, "HelpCenterWindow", StringComparison.Ordinal) &&
             text.StartsWith("R", StringComparison.OrdinalIgnoreCase) &&
