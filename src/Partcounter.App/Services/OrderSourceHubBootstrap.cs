@@ -51,18 +51,21 @@ public sealed class OrderSourceHubBootstrap
              FindDescendant<AlsIntegrationView>(tab, _ => true) is not null));
         if (alsTab is null || alsTab.Content is null) return;
 
-        var alsContent = alsTab.Content as UIElement;
-        if (alsContent is null) return;
+        var alsContent = alsTab.Content as FrameworkElement;
+        if (alsContent is null || alsContent.DataContext is not AlsViewModel alsViewModel) return;
         if (_window.DataContext is not MainViewModel main) return;
 
         _proAlphaViewModel = new ProAlphaViewModel(main);
         await _proAlphaViewModel.InitializeAsync();
 
         var proAlphaView = new ProAlphaIntegrationView { DataContext = _proAlphaViewModel };
+        var alsExtendedView = new AlsExtendedAccessView { DataContext = alsViewModel };
         var innerTabs = new TabControl { Margin = new Thickness(0, 8, 0, 0) };
         var alsInner = new TabItem { Header = AlsSource, Content = alsContent };
+        var alsAccessInner = new TabItem { Header = "ALS Zugang erweitert", Content = alsExtendedView };
         var proAlphaInner = new TabItem { Header = ProAlphaSource, Content = proAlphaView };
         innerTabs.Items.Add(alsInner);
+        innerTabs.Items.Add(alsAccessInner);
         innerTabs.Items.Add(proAlphaInner);
 
         var activeCombo = new ComboBox
@@ -104,7 +107,7 @@ public sealed class OrderSourceHubBootstrap
                     topRow,
                     new TextBlock
                     {
-                        Text = "Nur eine Quelle soll im Regelbetrieb als führende Auftragsquelle verwendet werden. Beide Profile können unabhängig getestet und konfiguriert werden; die Auswahl wird dauerhaft gespeichert.",
+                        Text = "Nur eine Quelle soll im Regelbetrieb als führende Auftragsquelle verwendet werden. Beide Profile können unabhängig getestet und konfiguriert werden; die Auswahl wird dauerhaft gespeichert. 'ALS Zugang erweitert' enthält zusätzliche OAuth2-/Proxy- und Preflight-Felder, ändert aber die führende Quelle nicht.",
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = new SolidColorBrush(Color.FromRgb(0x65, 0x71, 0x80)),
                         Margin = new Thickness(0, 6, 0, 0)
@@ -138,7 +141,6 @@ public sealed class OrderSourceHubBootstrap
         innerTabs.SelectionChanged += (_, e) =>
         {
             if (!ReferenceEquals(e.Source, innerTabs)) return;
-            // Opening an inactive tab is allowed for commissioning/testing, but does not silently change the leading source.
             var opened = (innerTabs.SelectedItem as TabItem)?.Header?.ToString();
             status.Text = $"Führend: {activeCombo.SelectedItem} · geöffnet: {opened}";
         };
