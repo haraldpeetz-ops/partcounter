@@ -20,13 +20,16 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        VersionUiService.Initialize();
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
         try
         {
-            WriteLog("START", $"Partcounter startup. OS={Environment.OSVersion}; Runtime={Environment.Version}; Base={AppContext.BaseDirectory}");
+            WriteLog(
+                "START",
+                $"{AppVersionInfo.ProductTitle} startup. Version={AppVersionInfo.VersionText}; Build={AppVersionInfo.InformationalVersion}; OS={Environment.OSVersion}; Runtime={Environment.Version}; Base={AppContext.BaseDirectory}");
 
             var window = new MainWindow();
             CompanyBrandingBootstrap.Attach(window);
@@ -35,10 +38,12 @@ public partial class App : Application
             LiveCommissioningBootstrap.Attach(window);
             LabelReprintBootstrap.Attach(window);
             ProfessionalHelpBootstrap.Attach(window);
+            SupportCenterBootstrap.Attach(window);
+            VersionUiService.NormalizeWindow(window);
             MainWindow = window;
             window.Show();
 
-            WriteLog("START", "Main window shown successfully.");
+            WriteLog("START", $"{AppVersionInfo.ProductTitle} main window shown successfully.");
         }
         catch (Exception ex)
         {
@@ -56,8 +61,8 @@ public partial class App : Application
 
         _dispatcherErrorDialogShown = true;
         MessageBox.Show(
-            $"Partcounter hat einen unerwarteten Fehler festgestellt.\n\n{e.Exception.Message}\n\nDiagnose:\n{LogPath}",
-            "Partcounter – Fehler",
+            $"{AppVersionInfo.ProductTitle} hat einen unerwarteten Fehler festgestellt.\n\n{e.Exception.Message}\n\nDiagnose:\n{LogPath}",
+            $"{AppVersionInfo.ProductTitle} – Fehler",
             MessageBoxButton.OK,
             MessageBoxImage.Error);
     }
@@ -80,8 +85,8 @@ public partial class App : Application
         try
         {
             MessageBox.Show(
-                $"Partcounter konnte nicht gestartet werden.\n\n{ex.Message}\n\nEine Diagnose wurde gespeichert unter:\n{LogPath}",
-                "Partcounter – Startfehler",
+                $"{AppVersionInfo.ProductTitle} konnte nicht gestartet werden.\n\n{ex.Message}\n\nEine Diagnose wurde gespeichert unter:\n{LogPath}",
+                $"{AppVersionInfo.ProductTitle} – Startfehler",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
