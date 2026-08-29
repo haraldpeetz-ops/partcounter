@@ -251,9 +251,6 @@ public static class AdaptiveUiService
         var veryCompact = viewportHeight < 560 || viewportWidth < 900;
         var compact = viewportHeight < 720 || viewportWidth < 1180;
 
-        // The help dependency section used to be an Auto-sized final row. At 800x500 this row
-        // extended below the client area and had no scroll route. Wrap the existing content once
-        // and limit only this section on compact viewports. All dependency links stay reachable.
         var dependencyBorder = FindDescendants<Border>(window).FirstOrDefault(border =>
         {
             var stack = border.Child switch
@@ -280,16 +277,16 @@ public static class AdaptiveUiService
                 };
             }
 
+            // 88 DIPs leaves enough room for window chrome, title/category and the help body even
+            // in the deliberately harsh 800x500 validation viewport. All dependency links remain
+            // reachable through the section's own scrollbar.
             dependencyBorder.MaxHeight = veryCompact
-                ? 118
+                ? 88
                 : compact
                     ? 190
                     : double.PositiveInfinity;
         }
 
-        // Real help screenshots may be present on a customer's PC even if CI currently only sees
-        // placeholders. Limit large screenshots on short viewports so the text and dependency
-        // sections remain reachable without losing the image itself.
         foreach (var image in FindDescendants<Image>(window))
         {
             if (double.IsInfinity(image.MaxHeight) || image.MaxHeight < 200)
