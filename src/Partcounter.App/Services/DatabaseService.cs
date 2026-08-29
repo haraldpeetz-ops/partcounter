@@ -6,6 +6,9 @@ namespace Partcounter.Services;
 
 public sealed class DatabaseService
 {
+    private static readonly SemaphoreSlim InitializationGate = new(1, 1);
+    private static readonly SemaphoreSlim WriteGate = new(1, 1);
+
     public DatabaseService()
     {
         var baseDirectory = Path.Combine(
@@ -17,78 +20,90 @@ public sealed class DatabaseService
 
     public string DatabasePath { get; }
 
-    private string ConnectionString => $"Data Source={DatabasePath};Cache=Shared";
+    // SQLite supports many readers but only one writer at a time. The previous implementation allowed
+    // many VE-completion callbacks to compete for the write lock. R001.23 deliberately serializes the
+    // application's DatabaseService writes and gives SQLite a bounded busy timeout.
+    private string ConnectionString => $"Data Source={DatabasePath};Cache=Shared;Default Timeout=15;Pooling=True";
 
     public async Task InitializeAsync()
     {
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
+        await InitializationGate.WaitAsync();
+        try
+        {
+            await using var connection = new SqliteConnection(ConnectionString);
+            await connection.OpenAsync();
 
-        var command = connection.CreateCommand();
-        command.CommandText = """
-            PRAGMA journal_mode=WAL;
-            PRAGMA foreign_keys=ON;
+            var command = connection.CreateCommand();
+            command.CommandText = """
+                PRAGMA journal_mode=WAL;
+                PRAGMA foreign_keys=ON;
+                PRAGMA busy_timeout=15000;
 
-            CREATE TABLE IF NOT EXISTS Machines (
-                MachineNumber INTEGER PRIMARY KEY,
-                Name TEXT NOT NULL,
-                IpAddress TEXT NOT NULL,
-                Port INTEGER NOT NULL DEFAULT 502,
-                UnitId INTEGER NOT NULL DEFAULT 1,
-                Enabled INTEGER NOT NULL DEFAULT 1
-            );
+                CREATE TABLE IF NOT EXISTS Machines (
+                    MachineNumber INTEGER PRIMARY KEY,
+                    Name TEXT NOT NULL,
+                    IpAddress TEXT NOT NULL,
+                    Port INTEGER NOT NULL DEFAULT 502,
+                    UnitId INTEGER NOT NULL DEFAULT 1,
+                    Enabled INTEGER NOT NULL DEFAULT 1
+                );
 
-            CREATE TABLE IF NOT EXISTS Articles (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ArticleNumber TEXT NOT NULL UNIQUE,
-                Description TEXT NOT NULL,
-                ToolNumber TEXT NOT NULL,
-                ActiveCavities INTEGER NOT NULL CHECK(ActiveCavities BETWEEN 1 AND 64),
-                PackagingQuantity INTEGER NOT NULL CHECK(PackagingQuantity > 0),
-                Active INTEGER NOT NULL DEFAULT 1,
-                UpdatedAtUtc TEXT NOT NULL
-            );
+                CREATE TABLE IF NOT EXISTS Articles (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ArticleNumber TEXT NOT NULL UNIQUE,
+                    Description TEXT NOT NULL,
+                    ToolNumber TEXT NOT NULL,
+                    ActiveCavities INTEGER NOT NULL CHECK(ActiveCavities BETWEEN 1 AND 64),
+                    PackagingQuantity INTEGER NOT NULL CHECK(PackagingQuantity > 0),
+                    Active INTEGER NOT NULL DEFAULT 1,
+                    UpdatedAtUtc TEXT NOT NULL
+                );
 
-            CREATE TABLE IF NOT EXISTS PackagingUnits (
-                Id TEXT PRIMARY KEY,
-                MachineNumber INTEGER NOT NULL,
-                MachineName TEXT NOT NULL,
-                VeNumber INTEGER NOT NULL,
-                OrderNumber TEXT NOT NULL,
-                ArticleNumber TEXT NOT NULL,
-                ArticleDescription TEXT NOT NULL,
-                ToolNumber TEXT NOT NULL,
-                Cavities INTEGER NOT NULL,
-                TargetQuantity INTEGER NOT NULL,
-                ActualQuantity INTEGER NOT NULL,
-                Overfill INTEGER NOT NULL,
-                CompletionReason INTEGER NOT NULL,
-                CompletedAtUtc TEXT NOT NULL,
-                LabelStatus TEXT NOT NULL,
-                PrintedAtUtc TEXT NULL
-            );
+                CREATE TABLE IF NOT EXISTS PackagingUnits (
+                    Id TEXT PRIMARY KEY,
+                    MachineNumber INTEGER NOT NULL,
+                    MachineName TEXT NOT NULL,
+                    VeNumber INTEGER NOT NULL,
+                    OrderNumber TEXT NOT NULL,
+                    ArticleNumber TEXT NOT NULL,
+                    ArticleDescription TEXT NOT NULL,
+                    ToolNumber TEXT NOT NULL,
+                    Cavities INTEGER NOT NULL,
+                    TargetQuantity INTEGER NOT NULL,
+                    ActualQuantity INTEGER NOT NULL,
+                    Overfill INTEGER NOT NULL,
+                    CompletionReason INTEGER NOT NULL,
+                    CompletedAtUtc TEXT NOT NULL,
+                    LabelStatus TEXT NOT NULL,
+                    PrintedAtUtc TEXT NULL
+                );
 
-            CREATE INDEX IF NOT EXISTS IX_PackagingUnits_CompletedAtUtc
-                ON PackagingUnits(CompletedAtUtc DESC);
+                CREATE INDEX IF NOT EXISTS IX_PackagingUnits_CompletedAtUtc
+                    ON PackagingUnits(CompletedAtUtc DESC);
 
-            CREATE TABLE IF NOT EXISTS Settings (
-                Key TEXT PRIMARY KEY,
-                Value TEXT NOT NULL
-            );
+                CREATE TABLE IF NOT EXISTS Settings (
+                    Key TEXT PRIMARY KEY,
+                    Value TEXT NOT NULL
+                );
 
-            CREATE TABLE IF NOT EXISTS Events (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                CreatedAtUtc TEXT NOT NULL,
-                MachineNumber INTEGER NULL,
-                Category TEXT NOT NULL,
-                Message TEXT NOT NULL
-            );
-            """;
-        await command.ExecuteNonQueryAsync();
+                CREATE TABLE IF NOT EXISTS Events (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    CreatedAtUtc TEXT NOT NULL,
+                    MachineNumber INTEGER NULL,
+                    Category TEXT NOT NULL,
+                    Message TEXT NOT NULL
+                );
+                """;
+            await command.ExecuteNonQueryAsync();
 
-        await SeedMachinesAsync(connection);
-        await SeedArticlesAsync(connection);
-        await EnsureDefaultSettingsAsync(connection);
+            await SeedMachinesAsync(connection);
+            await SeedArticlesAsync(connection);
+            await EnsureDefaultSettingsAsync(connection);
+        }
+        finally
+        {
+            InitializationGate.Release();
+        }
     }
 
     public async Task<IReadOnlyList<MachineConfiguration>> LoadMachinesAsync()
@@ -151,36 +166,35 @@ public sealed class DatabaseService
         if (article.PackagingQuantity == 0)
             throw new ArgumentOutOfRangeException(nameof(article.PackagingQuantity), "VE-Menge muss größer 0 sein.");
 
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
-        var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT INTO Articles
-                (ArticleNumber, Description, ToolNumber, ActiveCavities, PackagingQuantity, Active, UpdatedAtUtc)
-            VALUES
-                ($article, $description, $tool, $cavities, $quantity, $active, $updated)
-            ON CONFLICT(ArticleNumber) DO UPDATE SET
-                Description = excluded.Description,
-                ToolNumber = excluded.ToolNumber,
-                ActiveCavities = excluded.ActiveCavities,
-                PackagingQuantity = excluded.PackagingQuantity,
-                Active = excluded.Active,
-                UpdatedAtUtc = excluded.UpdatedAtUtc;
-            """;
-        command.Parameters.AddWithValue("$article", article.ArticleNumber.Trim());
-        command.Parameters.AddWithValue("$description", article.Description.Trim());
-        command.Parameters.AddWithValue("$tool", article.ToolNumber.Trim());
-        command.Parameters.AddWithValue("$cavities", (int)article.ActiveCavities);
-        command.Parameters.AddWithValue("$quantity", (long)article.PackagingQuantity);
-        command.Parameters.AddWithValue("$active", article.Active ? 1 : 0);
-        command.Parameters.AddWithValue("$updated", DateTime.UtcNow.ToString("O"));
-        await command.ExecuteNonQueryAsync();
+        await ExecuteWriteAsync(async connection =>
+        {
+            var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO Articles
+                    (ArticleNumber, Description, ToolNumber, ActiveCavities, PackagingQuantity, Active, UpdatedAtUtc)
+                VALUES
+                    ($article, $description, $tool, $cavities, $quantity, $active, $updated)
+                ON CONFLICT(ArticleNumber) DO UPDATE SET
+                    Description = excluded.Description,
+                    ToolNumber = excluded.ToolNumber,
+                    ActiveCavities = excluded.ActiveCavities,
+                    PackagingQuantity = excluded.PackagingQuantity,
+                    Active = excluded.Active,
+                    UpdatedAtUtc = excluded.UpdatedAtUtc;
+                """;
+            command.Parameters.AddWithValue("$article", article.ArticleNumber.Trim());
+            command.Parameters.AddWithValue("$description", article.Description.Trim());
+            command.Parameters.AddWithValue("$tool", article.ToolNumber.Trim());
+            command.Parameters.AddWithValue("$cavities", (int)article.ActiveCavities);
+            command.Parameters.AddWithValue("$quantity", (long)article.PackagingQuantity);
+            command.Parameters.AddWithValue("$active", article.Active ? 1 : 0);
+            command.Parameters.AddWithValue("$updated", DateTime.UtcNow.ToString("O"));
+            await command.ExecuteNonQueryAsync();
+        });
     }
 
-    public async Task SavePackagingUnitAsync(PackagingUnitRecord record)
+    public Task SavePackagingUnitAsync(PackagingUnitRecord record) => ExecuteWriteAsync(async connection =>
     {
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
         var command = connection.CreateCommand();
         command.CommandText = """
             INSERT OR IGNORE INTO PackagingUnits
@@ -209,19 +223,17 @@ public sealed class DatabaseService
         command.Parameters.AddWithValue("$labelStatus", record.LabelStatus);
         command.Parameters.AddWithValue("$printedAtUtc", record.PrintedAtUtc?.ToString("O") ?? (object)DBNull.Value);
         await command.ExecuteNonQueryAsync();
-    }
+    });
 
-    public async Task UpdateLabelStatusAsync(string id, string labelStatus, DateTime? printedAtUtc)
+    public Task UpdateLabelStatusAsync(string id, string labelStatus, DateTime? printedAtUtc) => ExecuteWriteAsync(async connection =>
     {
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
         var command = connection.CreateCommand();
         command.CommandText = "UPDATE PackagingUnits SET LabelStatus=$status, PrintedAtUtc=$printed WHERE Id=$id;";
         command.Parameters.AddWithValue("$status", labelStatus);
         command.Parameters.AddWithValue("$printed", printedAtUtc?.ToString("O") ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$id", id);
         await command.ExecuteNonQueryAsync();
-    }
+    });
 
     public async Task<IReadOnlyList<PackagingUnitRecord>> LoadRecentPackagingUnitsAsync(int limit = 100)
     {
@@ -275,21 +287,17 @@ public sealed class DatabaseService
         return await command.ExecuteScalarAsync() as string;
     }
 
-    public async Task SetSettingAsync(string key, string value)
+    public Task SetSettingAsync(string key, string value) => ExecuteWriteAsync(async connection =>
     {
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
         var command = connection.CreateCommand();
         command.CommandText = "INSERT INTO Settings(Key, Value) VALUES($key, $value) ON CONFLICT(Key) DO UPDATE SET Value=excluded.Value;";
         command.Parameters.AddWithValue("$key", key);
         command.Parameters.AddWithValue("$value", value);
         await command.ExecuteNonQueryAsync();
-    }
+    });
 
-    public async Task AddEventAsync(int? machineNumber, string category, string message)
+    public Task AddEventAsync(int? machineNumber, string category, string message) => ExecuteWriteAsync(async connection =>
     {
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
         var command = connection.CreateCommand();
         command.CommandText = "INSERT INTO Events(CreatedAtUtc, MachineNumber, Category, Message) VALUES($time, $machine, $category, $message);";
         command.Parameters.AddWithValue("$time", DateTime.UtcNow.ToString("O"));
@@ -297,6 +305,26 @@ public sealed class DatabaseService
         command.Parameters.AddWithValue("$category", category);
         command.Parameters.AddWithValue("$message", message);
         await command.ExecuteNonQueryAsync();
+    });
+
+    private async Task ExecuteWriteAsync(Func<SqliteConnection, Task> write)
+    {
+        await WriteGate.WaitAsync();
+        try
+        {
+            await using var connection = new SqliteConnection(ConnectionString);
+            await connection.OpenAsync();
+            await using (var busy = connection.CreateCommand())
+            {
+                busy.CommandText = "PRAGMA busy_timeout=15000; PRAGMA foreign_keys=ON;";
+                await busy.ExecuteNonQueryAsync();
+            }
+            await write(connection);
+        }
+        finally
+        {
+            WriteGate.Release();
+        }
     }
 
     private static async Task SeedMachinesAsync(SqliteConnection connection)
