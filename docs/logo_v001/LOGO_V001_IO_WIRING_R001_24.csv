@@ -1,0 +1,12 @@
+Signal;LOGO_Terminal;SignalType;NominalVoltage;SourceDestination;Function;RequiredProtection;CommissioningCheck
+Supply_L+;L+;Power;24VDC;24VDC control supply;LOGO supply;Upstream fused control circuit;Measure voltage under load
+Supply_M;M;Power;0V;Common control reference;LOGO 0V;Defined common reference;Verify common reference with I1 signal source
+CycleRaw;I1;DigitalInput;24VDC;Injection molding machine cycle output;One positive edge equals one tool cycle;Interface relay or optocoupler if galvanic/reference unclear;Measure pulse width and prove one count per cycle
+EndPosition;I2;DigitalInput;24VDC;Optional packaging changer sensor;End-position confirmation;Input protection per sensor wiring;Station01 leave monitoring OFF unless sensor installed
+LocalAck;I3;DigitalInput;24VDC;Optional local pushbutton;Local acknowledgement optional;Normal control circuit protection;Optional feature
+ValveRelayCommand;Q1;RelayOutput;Potential-free contact;LOGO to 24V interface relay;Triggers packaging changer valve pulse;Externally fused Q1 branch and DC suppression on relay coil;Measure 50/250/750/2500/5000ms pulses before valve connection
+ValveInterfaceRelay;External;RelayCoil;24VDC;Q1 to interface relay;Separates LOGO contact from valve load;Coil suppression/freewheel as appropriate;Verify pickup/dropout and contact rating
+ValveSolenoid;External;InductiveLoad;24VDC;Interface relay to Festo valve;Pneumatic packaging changer actuation;Fuse sized from actual valve data and suppression if not integrated;Record coil current power and suppression at commissioning
+VeChangeLamp;Q2;RelayOutput;SiteSpecific;Optional lamp;VE change indication;External fuse as required;Optional
+FaultLamp;Q3;RelayOutput;SiteSpecific;Optional lamp/relay;Technical fault indication;External fuse as required;Optional
+Ethernet;RJ45;Ethernet;SELV;Production LAN/WLAN bridge;Modbus TCP server connection;Industrial network segmentation recommended;Ping IP then TCP502/Modbus test
