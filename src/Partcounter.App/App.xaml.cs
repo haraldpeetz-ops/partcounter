@@ -9,6 +9,8 @@ namespace Partcounter;
 public partial class App : Application
 {
     private bool _dispatcherErrorDialogShown;
+    private bool _stressMode;
+    private string? _stressReportPath;
 
     private static string LogDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -20,6 +22,11 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        _stressMode = e.Args.Any(arg => string.Equals(arg, "--stress-smoke", StringComparison.OrdinalIgnoreCase));
+        _stressReportPath = e.Args
+            .FirstOrDefault(arg => arg.StartsWith("--stress-report=", StringComparison.OrdinalIgnoreCase))?
+            .Split('=', 2)[1];
+
         VersionUiService.Initialize();
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
@@ -29,7 +36,7 @@ public partial class App : Application
         {
             WriteLog(
                 "START",
-                $"{AppVersionInfo.ProductTitle} startup. Version={AppVersionInfo.VersionText}; Build={AppVersionInfo.InformationalVersion}; OS={Environment.OSVersion}; Runtime={Environment.Version}; Base={AppContext.BaseDirectory}");
+                $"{AppVersionInfo.ProductTitle} startup. Version={AppVersionInfo.VersionText}; Build={AppVersionInfo.InformationalVersion}; OS={Environment.OSVersion}; Runtime={Environment.Version}; Base={AppContext.BaseDirectory}; Stress={_stressMode}");
 
             var window = new MainWindow();
             CompanyBrandingBootstrap.Attach(window);
@@ -44,6 +51,14 @@ public partial class App : Application
             MainWindow = window;
             window.Show();
 
+            if (_stressMode)
+            {
+                window.ShowInTaskbar = false;
+                window.Left = -30000;
+                window.Top = -30000;
+                _ = RunStressAsync(window);
+            }
+
             WriteLog("START", $"{AppVersionInfo.ProductTitle} main window shown successfully.");
         }
         catch (Exception ex)
@@ -52,10 +67,28 @@ public partial class App : Application
         }
     }
 
+    private async Task RunStressAsync(MainWindow window)
+    {
+        var report = string.IsNullOrWhiteSpace(_stressReportPath)
+            ? Path.Combine(LogDirectory, $"Partcounter_Stress_{DateTime.Now:yyyyMMdd_HHmmss}.txt")
+            : Environment.ExpandEnvironmentVariables(_stressReportPath);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+        var exitCode = await new ApplicationStressService().RunAsync(window, report, timeout.Token);
+        WriteLog("STRESS", $"Stresslauf beendet. ExitCode={exitCode}; Report={report}");
+        Shutdown(exitCode);
+    }
+
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         WriteLog("DISPATCHER_FATAL", e.Exception.ToString());
         e.Handled = true;
+
+        if (_stressMode)
+        {
+            Shutdown(91);
+            return;
+        }
 
         if (_dispatcherErrorDialogShown)
             return;
@@ -82,6 +115,12 @@ public partial class App : Application
     private void HandleFatalStartupException(Exception ex)
     {
         WriteLog("STARTUP_FATAL", ex.ToString());
+
+        if (_stressMode)
+        {
+            Shutdown(92);
+            return;
+        }
 
         try
         {
