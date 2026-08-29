@@ -61,6 +61,7 @@ public static class AdaptiveUiService
             : Math.Max(1, window.ActualHeight);
 
         NormalizeVisualTree(window, viewportWidth, viewportHeight);
+        NormalizeSpecialWindows(window, viewportWidth, viewportHeight);
         if (window is MainWindow main)
             ApplyMainWindowBreakpoints(main, viewportWidth, viewportHeight);
     }
@@ -240,6 +241,62 @@ public static class AdaptiveUiService
 
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
             NormalizeVisualTree(VisualTreeHelper.GetChild(root, i), viewportWidth, viewportHeight);
+    }
+
+    private static void NormalizeSpecialWindows(Window window, double viewportWidth, double viewportHeight)
+    {
+        if (!window.GetType().Name.Equals("HelpCenterWindow", StringComparison.Ordinal))
+            return;
+
+        var veryCompact = viewportHeight < 560 || viewportWidth < 900;
+        var compact = viewportHeight < 720 || viewportWidth < 1180;
+
+        // The help dependency section used to be an Auto-sized final row. At 800x500 this row
+        // extended below the client area and had no scroll route. Wrap the existing content once
+        // and limit only this section on compact viewports. All dependency links stay reachable.
+        var dependencyBorder = FindDescendants<Border>(window).FirstOrDefault(border =>
+        {
+            var stack = border.Child switch
+            {
+                StackPanel direct => direct,
+                ScrollViewer { Content: StackPanel wrapped } => wrapped,
+                _ => null
+            };
+            return stack?.Children.OfType<TextBlock>()
+                .Any(text => string.Equals(text.Text, "Funktionsabhängigkeiten", StringComparison.Ordinal)) == true;
+        });
+
+        if (dependencyBorder is not null)
+        {
+            if (dependencyBorder.Child is StackPanel stack)
+            {
+                dependencyBorder.Child = null;
+                dependencyBorder.Child = new ScrollViewer
+                {
+                    Content = stack,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    PanningMode = PanningMode.VerticalOnly
+                };
+            }
+
+            dependencyBorder.MaxHeight = veryCompact
+                ? 118
+                : compact
+                    ? 190
+                    : double.PositiveInfinity;
+        }
+
+        // Real help screenshots may be present on a customer's PC even if CI currently only sees
+        // placeholders. Limit large screenshots on short viewports so the text and dependency
+        // sections remain reachable without losing the image itself.
+        foreach (var image in FindDescendants<Image>(window))
+        {
+            if (double.IsInfinity(image.MaxHeight) || image.MaxHeight < 200)
+                continue;
+
+            image.MaxHeight = veryCompact ? 105 : compact ? 190 : 300;
+        }
     }
 
     private static void NormalizeLargeFixedColumns(Grid grid, double safeWidth)
