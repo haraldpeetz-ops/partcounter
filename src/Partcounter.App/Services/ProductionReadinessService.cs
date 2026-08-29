@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO.Compression;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Data.Sqlite;
@@ -196,16 +195,14 @@ public sealed class ProductionReadinessService
     {
         Directory.CreateDirectory(DiagnosticDirectory);
         var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        var packagePath = Path.Combine(DiagnosticDirectory, $"Partcounter_Diagnose_R001_15_{stamp}.zip");
+        var revisionFilePart = AppVersionInfo.Revision.Replace('.', '_');
+        var packagePath = Path.Combine(DiagnosticDirectory, $"Partcounter_Diagnose_{revisionFilePart}_{stamp}.zip");
 
         var health = CheckDatabaseCore();
         var events = ReadRecentEventsCore();
-        var assembly = Assembly.GetExecutingAssembly();
-        var version = assembly.GetName().Version?.ToString() ?? "–";
-        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? version;
 
         using var archive = ZipFile.Open(packagePath, ZipArchiveMode.Create);
-        AddTextEntry(archive, "manifest.txt", BuildManifest(version, informational));
+        AddTextEntry(archive, "manifest.txt", BuildManifest());
         AddTextEntry(archive, "database-health.txt", BuildDatabaseHealthText(health));
         AddTextEntry(archive, "recent-events.tsv", events);
 
@@ -256,14 +253,14 @@ public sealed class ProductionReadinessService
         return sb.ToString();
     }
 
-    private string BuildManifest(string version, string informational)
+    private string BuildManifest()
     {
         var latestBackup = GetLatestBackup();
         var sb = new StringBuilder();
         sb.AppendLine("PARTCOUNTER DIAGNOSEPAKET");
-        sb.AppendLine("Revision: R001.15");
-        sb.AppendLine($"Assembly: {version}");
-        sb.AppendLine($"Build: {informational}");
+        sb.AppendLine($"Revision: {AppVersionInfo.Revision}");
+        sb.AppendLine($"Version: {AppVersionInfo.VersionText}");
+        sb.AppendLine($"Build: {AppVersionInfo.InformationalVersion}");
         sb.AppendLine($"Erstellt lokal: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine($"Erstellt UTC: {DateTime.UtcNow:O}");
         sb.AppendLine($"OS: {RuntimeInformation.OSDescription}");
