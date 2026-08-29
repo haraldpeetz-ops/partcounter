@@ -40,7 +40,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        Title = "Partcounter R001.12";
+        Title = AppVersionInfo.ProductTitle;
         DataContext = _viewModel;
         _viewModel.PropertyChanged += OnMainViewModelPropertyChanged;
         _adminAccess.StateChanged += OnAdminAccessStateChanged;
@@ -136,7 +136,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 $"Partcounter konnte nicht initialisiert werden:\n\n{ex.Message}",
-                "Partcounter R001.12",
+                AppVersionInfo.ProductTitle,
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
@@ -371,8 +371,8 @@ public partial class MainWindow : Window
             return;
 
         _versionStatusTextBlock.Text = _viewModel.IsSimulationMode
-            ? "R001.12 · SIMULATION"
-            : "R001.12 · ECHTBETRIEB MODBUS TCP";
+            ? AppVersionInfo.SimulationStatus
+            : AppVersionInfo.ProductionStatus;
     }
 
     private static TextBlock? FindBoundTextBlock(DependencyObject root, string bindingPath)
