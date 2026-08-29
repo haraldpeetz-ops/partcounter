@@ -62,7 +62,8 @@ public sealed class ApplicationStressService
                     machine.ResumeOrder();
                 }
 
-                var maxCycles = (int)Math.Ceiling(targetPerRound / (double)Math.Max<ushort>(1, article.ActiveCavities)) + 64;
+                var cavityCount = Math.Max(1, (int)article.ActiveCavities);
+                var maxCycles = (int)Math.Ceiling(targetPerRound / (double)cavityCount) + 64;
                 for (var cycle = 0; cycle < maxCycles; cycle++)
                 {
                     foreach (var machine in vm.Machines)
@@ -76,7 +77,7 @@ public sealed class ApplicationStressService
                         process.Refresh();
                         peakWorkingSet = Math.Max(peakWorkingSet, process.WorkingSet64);
                         peakManaged = Math.Max(peakManaged, GC.GetTotalMemory(false));
-                        await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background, cancellationToken);
+                        await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
                         await Task.Delay(1, cancellationToken);
                     }
                 }
@@ -85,7 +86,7 @@ public sealed class ApplicationStressService
                 if (unfinished.Count > 0)
                     errors.Add($"Runde {round}: {unfinished.Count} Maschinen nach geplantem Zyklusbudget noch nicht abgeschlossen.");
 
-                await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle, cancellationToken);
+                await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                 notes.Add($"Runde {round}: VE-Ereignisse kumuliert={Volatile.Read(ref stressVeEvents):N0}");
             }
 
@@ -102,7 +103,6 @@ public sealed class ApplicationStressService
             if (!health.IsOk)
                 errors.Add($"SQLite-Integritätsprüfung fehlgeschlagen: {health.Summary}");
 
-            // Repeated read/load pressure against the same live DB.
             var database = new DatabaseService();
             for (var i = 0; i < 150; i++)
             {
