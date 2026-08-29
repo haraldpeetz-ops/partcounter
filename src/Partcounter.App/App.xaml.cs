@@ -47,6 +47,7 @@ public partial class App : Application
             ProfessionalHelpBootstrap.Attach(window);
             SupportCenterBootstrap.Attach(window);
             window.ScheduleAdminHubInitialization();
+            OrderSourceHubBootstrap.Attach(window);
             VersionUiService.NormalizeWindow(window);
             MainWindow = window;
             window.Show();
