@@ -1,0 +1,61 @@
+<UserControl x:Class="Partcounter.Views.AlsExtendedAccessView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="850" MinHeight="500">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="16" MaxWidth="1050" HorizontalAlignment="Left">
+            <TextBlock Text="ARBURG ALS – erweiterter Zugangscheck" FontSize="22" FontWeight="Bold"/>
+            <TextBlock TextWrapping="Wrap" Foreground="#566473" Margin="0,5,0,12"
+                       Text="Zusätzliche Felder für kundenspezifische REST-Zugänge. Verwenden Sie OAuth2/Proxy nur, wenn diese Angaben vom ARBURG ALS Support bzw. Ihrer IT für die konkrete Installation vorgegeben wurden. Der bestehende Datei-/REST-Import und das Feldmapping bleiben unverändert."/>
+
+            <WrapPanel>
+                <Button Content="Vollständigkeit prüfen" Command="{Binding PreflightCommand}" Padding="14,7"/>
+                <Button Content="ALS-Einstellungen speichern" Command="{Binding SaveSettingsCommand}" Padding="14,7"/>
+                <Button Content="Verbindung testen" Command="{Binding TestConnectionCommand}" Padding="14,7"/>
+            </WrapPanel>
+            <Border Background="#EEF3F7" BorderBrush="#C9D4DE" BorderThickness="1" CornerRadius="5" Padding="9" Margin="0,8,0,12">
+                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
+            </Border>
+
+            <TextBlock Text="OAuth2 Client Credentials (optional)" FontSize="18" FontWeight="Bold"/>
+            <TextBlock TextWrapping="Wrap" Foreground="#657180" Margin="0,3,0,7"
+                       Text="Wenn die Authentifizierung auf OAuth2ClientCredentials steht, ruft Partcounter vor jedem manuellen/automatischen ALS-Abruf selbständig ein Access Token ab und verwendet dieses anschließend als Bearer Token."/>
+            <TextBlock Text="Token-URL"/><TextBox Text="{Binding Settings.OAuthTokenUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,3,0,5"/>
+            <WrapPanel>
+                <StackPanel Width="280" Margin="4"><TextBlock Text="Client-ID"/><TextBox Text="{Binding Settings.OAuthClientId}"/></StackPanel>
+                <StackPanel Width="330" Margin="4"><TextBlock Text="Client-Secret (DPAPI)"/><TextBox Text="{Binding Settings.OAuthClientSecret}"/></StackPanel>
+                <StackPanel Width="260" Margin="4"><TextBlock Text="Scope"/><TextBox Text="{Binding Settings.OAuthScope}"/></StackPanel>
+            </WrapPanel>
+            <WrapPanel>
+                <StackPanel Width="320" Margin="4"><TextBlock Text="Audience / Resource"/><TextBox Text="{Binding Settings.OAuthAudience}"/></StackPanel>
+                <CheckBox Content="Client-ID/Secret als HTTP Basic Header senden" IsChecked="{Binding Settings.OAuthClientCredentialsInBasicHeader}" Margin="8,22,0,0"/>
+            </WrapPanel>
+            <TextBlock Text="Zusätzliche Tokenparameter (eine Zeile: Name=Wert)" Margin="4,7,0,0"/>
+            <TextBox Text="{Binding Settings.OAuthAdditionalParameters}" AcceptsReturn="True" Height="70" Margin="4" FontFamily="Consolas"/>
+
+            <Separator Margin="0,14"/>
+            <TextBlock Text="Proxy (optional)" FontSize="18" FontWeight="Bold"/>
+            <WrapPanel Margin="0,6,0,0">
+                <StackPanel Width="220" Margin="4"><TextBlock Text="Proxy-Modus"/><ComboBox ItemsSource="{Binding ProxyModes}" SelectedItem="{Binding Settings.ProxyMode}"/></StackPanel>
+                <StackPanel Width="370" Margin="4"><TextBlock Text="Proxy-URL"/><TextBox Text="{Binding Settings.ProxyUrl}" ToolTip="z. B. http://proxy.intern:8080"/></StackPanel>
+                <StackPanel Width="220" Margin="4"><TextBlock Text="Proxy-Benutzer"/><TextBox Text="{Binding Settings.ProxyUsername}"/></StackPanel>
+                <StackPanel Width="260" Margin="4"><TextBlock Text="Proxy-Passwort (DPAPI)"/><TextBox Text="{Binding Settings.ProxyPassword}"/></StackPanel>
+            </WrapPanel>
+
+            <Separator Margin="0,14"/>
+            <TextBlock Text="Preflight-Ergebnis" FontSize="18" FontWeight="Bold"/>
+            <DataGrid ItemsSource="{Binding PreflightIssues}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" Height="240" Margin="0,8,0,12">
+                <DataGrid.Columns>
+                    <DataGridCheckBoxColumn Header="Fehler" Binding="{Binding IsError}" Width="65"/>
+                    <DataGridTextColumn Header="Feld" Binding="{Binding Field}" Width="190"/>
+                    <DataGridTextColumn Header="Hinweis" Binding="{Binding Message}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Background="#FFF4D6" BorderBrush="#D6A500" BorderThickness="1" CornerRadius="5" Padding="10" Margin="0,0,0,18">
+                <TextBlock TextWrapping="Wrap"
+                           Text="Für den ersten realen ALS-Test zusätzlich vom ARBURG/IT-Ansprechpartner bestätigen lassen: ALS-Version, REST/API-Modul bzw. Lizenz, exakten Endpoint, Authentifizierungsverfahren, Firewall/DNS/Port, TLS-Zertifikatskette, JSON-Beispielantwort und die eindeutige Maschinenkennung. Diese Werte können Partcounter nicht aus einer unbekannten Kundeninstallation erraten."/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
