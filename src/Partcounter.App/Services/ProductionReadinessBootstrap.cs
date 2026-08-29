@@ -257,9 +257,9 @@ public sealed class ProductionReadinessBootstrap
         var hasBranding = settingsStack.Children.OfType<FrameworkElement>()
             .Any(x => Equals(x.Tag, "PartcounterCompanyBrandingSettings"));
         var hasUpdate = settingsStack.Children.OfType<FrameworkElement>()
-            .Any(x => Equals(x.Tag, "PartcounterR00114UpdateCenter"));
+            .Any(x => Equals(x.Tag, "PartcounterUpdateCenter") || Equals(x.Tag, "PartcounterR00114UpdateCenter"));
         var hasProductionReadiness = settingsStack.Children.OfType<FrameworkElement>()
-            .Any(x => Equals(x.Tag, "PartcounterProductionReadiness"));
+            .Any(x => Equals(x.Tag, "PartcounterProductionReadiness") || Equals(x.Tag, "PartcounterR00115ProductionReadiness"));
 
         if (!hasBranding || !hasUpdate || !hasProductionReadiness)
             return false;
