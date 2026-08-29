@@ -7,9 +7,10 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
-    <Version>0.1.23</Version>
-    <FileVersion>0.1.23.0</FileVersion>
-    <InformationalVersion>0.1.23-r001.23-stress-proalpha</InformationalVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.1.24</Version>
+    <FileVersion>0.1.24.0</FileVersion>
+    <InformationalVersion>0.1.24-r001.24-adaptive-ui-logo-guide</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
