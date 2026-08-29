@@ -37,7 +37,7 @@ public sealed class InfoUpdateHelpBootstrap
 
     private void Hook()
     {
-        _window.Title = "Partcounter R001.19";
+        _window.Title = AppVersionInfo.ProductTitle;
         _window.Loaded += OnLoaded;
         _window.Closed += OnClosed;
         _window.PreviewKeyDown += OnPreviewKeyDown;
@@ -94,13 +94,13 @@ public sealed class InfoUpdateHelpBootstrap
         });
         if (modeButton?.Parent is not StackPanel rightStack)
             return;
-        if (rightStack.Children.OfType<FrameworkElement>().Any(x => Equals(x.Tag, "PartcounterR00119HelpButton")))
+        if (rightStack.Children.OfType<FrameworkElement>().Any(x => Equals(x.Tag, "PartcounterHelpButton")))
             return;
 
         var areaHelp = new Button
         {
             Content = "Bereichshilfe (F1)",
-            Tag = "PartcounterR00119ContextHelpButton",
+            Tag = "PartcounterContextHelpButton",
             Margin = new Thickness(8, 0, 0, 0),
             Padding = new Thickness(10, 5, 10, 5),
             ToolTip = "Direkt die Hilfe zum aktuell geöffneten Partcounter-Bereich anzeigen"
@@ -110,7 +110,7 @@ public sealed class InfoUpdateHelpBootstrap
         var help = new Button
         {
             Content = "Hilfe",
-            Tag = "PartcounterR00119HelpButton",
+            Tag = "PartcounterHelpButton",
             Margin = new Thickness(8, 0, 0, 0),
             Padding = new Thickness(10, 5, 10, 5),
             ToolTip = "Komplettes Partcounter-Hilfezentrum öffnen"
@@ -120,7 +120,7 @@ public sealed class InfoUpdateHelpBootstrap
         var about = new Button
         {
             Content = "Über",
-            Tag = "PartcounterR00114AboutButton",
+            Tag = "PartcounterAboutButton",
             Margin = new Thickness(8, 0, 0, 0),
             Padding = new Thickness(10, 5, 10, 5),
             ToolTip = "Version, Programmierer, Lizenz- und Systeminformationen"
@@ -145,7 +145,7 @@ public sealed class InfoUpdateHelpBootstrap
         };
         if (settingsStack is null)
             return;
-        if (settingsStack.Children.OfType<FrameworkElement>().Any(x => Equals(x.Tag, "PartcounterR00114UpdateCenter")))
+        if (settingsStack.Children.OfType<FrameworkElement>().Any(x => Equals(x.Tag, "PartcounterUpdateCenter")))
             return;
 
         _networkPathBox = new TextBox
@@ -156,7 +156,7 @@ public sealed class InfoUpdateHelpBootstrap
         };
         _updateStatus = new TextBlock
         {
-            Text = $"Installiert: R001.19 / {_updateService.CurrentVersion}",
+            Text = AppVersionInfo.InstalledText,
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromRgb(0x42, 0x54, 0x66)),
             Margin = new Thickness(0, 8, 0, 0)
@@ -216,7 +216,7 @@ public sealed class InfoUpdateHelpBootstrap
 
         var panel = new Border
         {
-            Tag = "PartcounterR00114UpdateCenter",
+            Tag = "PartcounterUpdateCenter",
             Background = Brushes.White,
             BorderBrush = new SolidColorBrush(Color.FromRgb(0xD8, 0xDE, 0xE6)),
             BorderThickness = new Thickness(1),
@@ -254,7 +254,7 @@ public sealed class InfoUpdateHelpBootstrap
             if (package is null)
             {
                 SelectPackage(null);
-                _updateStatus.Text = $"Kein neueres gültiges Partcounter-Update in {path} gefunden.";
+                _updateStatus.Text = $"Kein neueres gültiges Partcounter-Update in {path} gefunden. {AppVersionInfo.InstalledText}.";
                 return;
             }
             SelectPackage(package);
@@ -304,7 +304,7 @@ public sealed class InfoUpdateHelpBootstrap
 
         _updateStatus.Text = package.IsNewer
             ? $"Update verfügbar: {package.Manifest.Revision} / {package.TargetVersion} · {package.PayloadFileCount} geprüfte Dateien · {Path.GetFileName(package.PackagePath)}"
-            : $"Paket geprüft, aber nicht neuer: {package.Manifest.Revision} / {package.TargetVersion}; installiert ist {_updateService.CurrentVersion}.";
+            : $"Paket geprüft, aber nicht neuer: {package.Manifest.Revision} / {package.TargetVersion}; {AppVersionInfo.InstalledText}.";
     }
 
     private async Task InstallSelectedAsync()
@@ -407,7 +407,7 @@ public sealed class InfoUpdateHelpBootstrap
 
     private void UpdateVersionBadge()
     {
-        _window.Title = "Partcounter R001.19";
+        _window.Title = AppVersionInfo.ProductTitle;
         var status = FindDescendant<TextBlock>(_window, text =>
         {
             var expression = BindingOperations.GetBindingExpression(text, TextBlock.TextProperty);
@@ -418,7 +418,7 @@ public sealed class InfoUpdateHelpBootstrap
         if (status is null) return;
         BindingOperations.ClearBinding(status, TextBlock.TextProperty);
         var simulation = _window.DataContext is MainViewModel vm && vm.IsSimulationMode;
-        status.Text = simulation ? "R001.19 · SIMULATION" : "R001.19 · ECHTBETRIEB MODBUS TCP";
+        status.Text = simulation ? AppVersionInfo.SimulationStatus : AppVersionInfo.ProductionStatus;
     }
 
     private static T? FindDescendant<T>(DependencyObject root, Predicate<T> predicate) where T : DependencyObject
