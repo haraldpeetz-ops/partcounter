@@ -1,0 +1,26 @@
+TestId;TestName;Precondition;Action;ExpectedLOGO;ExpectedPartcounter;PassCriteria
+T01;Protocol handshake;LOGO RUN Modbus server port502;Connect Partcounter in controlled real mode;HR20/VW38=2 heartbeat changes;Machine Online no protocol error;Online within communication timeout and HR20 exactly2
+T02;4 cavities VE20;Cavities4 TargetParts20 TargetCycles5 Valve75;Generate exactly5 positive I1 edges;One completion Q1 about750ms VW56=5 VW72=4 VW70=1;VE actual20 no overfill;Exactly one VE completion and one valve pulse
+T03;64 cavities VE1000;Cavities64 TargetParts1000 TargetCycles16;Generate16 I1 edges;VW56=16 VW72=64 one completion;VE actual1024 overfill24;Exactly1024 calculated parts and one VE
+T04;No double count on long pulse;Valid running job;Hold I1 HIGH for2s then LOW;CurrentVECycles increases by exactly1;Displayed parts increase by exactly cavities once;No repeated counts while I1 remains HIGH
+T05;Pause while I1 LOW;Running job;Send pause then generate3 I1 edges;No cycle increments;Machine shows paused;Counters unchanged while paused
+T06;Resume with I1 still HIGH;Pause active I1 HIGH;Send resume without lowering I1;No immediate new cycle;No phantom part increase;Only next LOW then HIGH edge counts
+T07;Manual VE nonempty;Running job after3 counted cycles;Send manual VE command with new CommandSequence;VW56=3 VW70=2 Q1 pulse current VE resets;History records manual VE with3*cavities parts;Exactly one manual completion
+T08;Manual VE empty;Running job current cycles0;Send manual VE command;No completion no valve;No new VE history;Empty VE cannot be created
+T09;New job reset;Previous job has counters;Send job with ResetJob bit and new sequence;CurrentVECycles TotalCycles CompletedVEs reset and AckSequence updates;New order starts at zero;All job counters zero exactly once
+T10;Command one-shot;CommandSequence equals AckSequence;Leave ResetJob or Manual bit at1 without changing sequence;No repeated action;No repeated action;One-shot depends on sequence not bit duration
+T11;Sequence wrap;AckSequence32767;Send next command sequence1;NewCommand detected Ack becomes1;Command accepted;Wrap does not lose command
+T12;Valve minimum;Valid job ValvePulse10Ms5;Trigger completion;Q1 approximately50ms;VE completes;Measured pulse within agreed tolerance
+T13;Valve standard;Valid job ValvePulse10Ms75;Trigger completion;Q1 approximately750ms;VE completes;Measured pulse within agreed tolerance
+T14;Valve maximum;Valid job ValvePulse10Ms500;Trigger completion;Q1 approximately5000ms;VE completes;Measured pulse within agreed tolerance
+T15;Invalid cavities low;Set ActiveCavities0 in controlled test;ConfigValid false ErrorCode2 recommended no count;Partcounter should not start such job;No counting/valve action
+T16;Invalid cavities high;Set ActiveCavities65 in controlled test;ConfigValid false ErrorCode2 recommended;Partcounter validation blocks normal write;No counting/valve action
+T17;Invalid target cycles;Set TargetCycles0 or >32767 controlled test;ConfigValid false ErrorCode4 recommended;Partcounter validation blocks normal write;No counting/valve action
+T18;PC heartbeat stale;Running job connected;Disconnect Ethernet for >5s while generating cycles;Status bit5 goes1 but local count continues;Machine goes offline on PC;No production count loss due solely to PC disconnect
+T19;Local VE during PC outage;Running job with known remaining cycles;Disconnect network then finish VE through I1;LOGO completes VE and Q1 locally CompletionSequence changes;PC unavailable during outage;Local changer must still operate
+T20;Reconnect sequence sync;After T18/T19 reconnect Ethernet;Allow Partcounter poll before issuing command;PC reads AckSequence then continues sequence;Machine returns Online without unintended reset;No spurious command on reconnect
+T21;Repeated VEs;Stable connected setup;Run at least20 automatic VEs;Each VE exactly one completion and pulse CompletedVEs monotonic;20 history rows consistent;No missing/duplicate completion
+T22;1000-cycle endurance;Stable setup;Generate1000 valid machine cycle edges;TotalCycles exactly1000 and current/VE values consistent;Displayed totals consistent;Zero lost or doubled cycles
+T23;Power restart behavior;Retentivity configured and commissioning conditions safe;Cycle power in controlled non-production test;Retentive counters behave as designed;PC reconnects and reads valid protocol;Behavior documented and accepted before production
+T24;Optional end position disabled;Station01 no I2 sensor;Run multiple VEs with monitoringOFF;No ErrorCode10 from open I2;Normal VE operation;Open I2 never blocks Station01
+T25;Safety independence;Machine safety circuit available;Activate safety function per machine procedure;Partcounter LOGO does not bypass or replace safety;No claim/control over safety circuit;Safety remains independent and validated separately
