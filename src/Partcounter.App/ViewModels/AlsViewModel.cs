@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Windows.Input;
@@ -18,11 +19,15 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
     private const string BearerKey = "ALS.Secret.Bearer";
     private const string ApiKeyValueKey = "ALS.Secret.ApiKey";
     private const string CertificatePasswordKey = "ALS.Secret.CertificatePassword";
+    private const string OAuthClientSecretKey = "ALS.Secret.OAuthClientSecret";
+    private const string ProxyPasswordKey = "ALS.Secret.ProxyPassword";
+    private static readonly SemaphoreSlim ProxyGate = new(1, 1);
 
     private readonly MainViewModel _main;
     private readonly DatabaseService _database = new();
     private readonly ProtectedSettingsService _protectedSettings;
     private readonly AlsIntegrationService _integration = new();
+    private readonly AlsExtendedAccessService _extendedAccess = new();
     private readonly DispatcherTimer _pollTimer;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
 
@@ -43,6 +48,7 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
         ApplySelectedOrderCommand = new AsyncRelayCommand(_ => ApplySelectedOrderAsync());
         BrowseFileCommand = new RelayCommand(_ => BrowseFile());
         ResetMappingsCommand = new RelayCommand(_ => ResetMappings());
+        PreflightCommand = new RelayCommand(_ => RunPreflight());
 
         _pollTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -53,9 +59,11 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
 
     public ObservableCollection<AlsOrderRecord> Orders { get; } = new();
     public ObservableCollection<AlsFieldMapping> Mappings { get; } = new();
+    public ObservableCollection<IntegrationPreflightIssue> PreflightIssues { get; } = new();
 
     public IReadOnlyList<AlsSourceMode> SourceModes { get; } = Enum.GetValues<AlsSourceMode>();
     public IReadOnlyList<AlsAuthenticationType> AuthenticationTypes { get; } = Enum.GetValues<AlsAuthenticationType>();
+    public IReadOnlyList<AlsProxyMode> ProxyModes { get; } = Enum.GetValues<AlsProxyMode>();
     public IReadOnlyList<string> HttpMethods { get; } = new[] { "GET", "POST" };
 
     public ICommand SaveSettingsCommand { get; }
@@ -64,6 +72,7 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
     public ICommand ApplySelectedOrderCommand { get; }
     public ICommand BrowseFileCommand { get; }
     public ICommand ResetMappingsCommand { get; }
+    public ICommand PreflightCommand { get; }
 
     public AlsConnectionSettings Settings
     {
@@ -95,6 +104,7 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
     {
         await LoadSettingsAsync();
         ConfigurePollingTimer();
+        RunPreflight(updateStatus: false);
         StatusText = Settings.SourceMode == AlsSourceMode.FileExport
             ? "ALS-Dateiimport bereit. Quellpfad und Feldmapping prüfen, dann 'Aufträge laden'."
             : "ALS-REST-Import bereit. URL, Authentifizierung und Feldmapping prüfen, dann Verbindung testen.";
@@ -119,6 +129,8 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
         Settings.BearerToken = await _protectedSettings.GetSecretAsync(BearerKey);
         Settings.ApiKeyValue = await _protectedSettings.GetSecretAsync(ApiKeyValueKey);
         Settings.ClientCertificatePassword = await _protectedSettings.GetSecretAsync(CertificatePasswordKey);
+        Settings.OAuthClientSecret = await _protectedSettings.GetSecretAsync(OAuthClientSecretKey);
+        Settings.ProxyPassword = await _protectedSettings.GetSecretAsync(ProxyPasswordKey);
 
         var mappingJson = await _database.GetSettingAsync(MappingsKey);
         if (!string.IsNullOrWhiteSpace(mappingJson))
@@ -166,14 +178,27 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
             await _protectedSettings.SetSecretAsync(BearerKey, Settings.BearerToken);
             await _protectedSettings.SetSecretAsync(ApiKeyValueKey, Settings.ApiKeyValue);
             await _protectedSettings.SetSecretAsync(CertificatePasswordKey, Settings.ClientCertificatePassword);
+            await _protectedSettings.SetSecretAsync(OAuthClientSecretKey, Settings.OAuthClientSecret);
+            await _protectedSettings.SetSecretAsync(ProxyPasswordKey, Settings.ProxyPassword);
 
             ConfigurePollingTimer();
-            StatusText = "ALS-Einstellungen gespeichert. Kennwörter/Tokens wurden mit Windows-DPAPI für den aktuellen Benutzer geschützt.";
+            RunPreflight(updateStatus: false);
+            StatusText = "ALS-Einstellungen gespeichert. Kennwörter, Tokens und Client-Secrets wurden mit Windows-DPAPI für den aktuellen Benutzer geschützt.";
         }
         catch (Exception ex)
         {
             StatusText = $"ALS-Einstellungen konnten nicht gespeichert werden: {ex.Message}";
         }
+    }
+
+    private void RunPreflight(bool updateStatus = true)
+    {
+        var result = _extendedAccess.Validate(Settings, Mappings);
+        PreflightIssues.Clear();
+        foreach (var issue in result.Issues)
+            PreflightIssues.Add(issue);
+        if (updateStatus)
+            StatusText = result.Summary + (result.Issues.Count > 0 ? " Hinweise siehe erweiterten ALS-Zugangscheck." : string.Empty);
     }
 
     private async Task TestConnectionAsync()
@@ -182,8 +207,16 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
         _isLoading = true;
         try
         {
+            RunPreflight(updateStatus: false);
+            if (PreflightIssues.Any(issue => issue.IsError))
+            {
+                StatusText = $"ALS-Verbindungscheck abgebrochen: {PreflightIssues.Count(i => i.IsError)} Pflichtangabe(n) fehlen.";
+                return;
+            }
+
             StatusText = "ALS-Verbindung/Quelle wird geprüft …";
-            StatusText = await _integration.TestConnectionAsync(Settings, Mappings);
+            StatusText = await ExecuteIntegrationWithAccessAsync(
+                effective => _integration.TestConnectionAsync(effective, Mappings));
         }
         catch (Exception ex)
         {
@@ -201,10 +234,19 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
         _isLoading = true;
         try
         {
+            RunPreflight(updateStatus: false);
+            if (PreflightIssues.Any(issue => issue.IsError))
+            {
+                if (userInitiated)
+                    StatusText = $"ALS-Abruf nicht gestartet: {PreflightIssues.Count(i => i.IsError)} Pflichtangabe(n) fehlen.";
+                return;
+            }
+
             if (userInitiated)
                 StatusText = "ALS-Auftragsdaten werden gelesen …";
 
-            var orders = await _integration.LoadOrdersAsync(Settings, Mappings);
+            var orders = await ExecuteIntegrationWithAccessAsync(
+                effective => _integration.LoadOrdersAsync(effective, Mappings));
             Orders.Clear();
             foreach (var order in orders)
                 Orders.Add(order);
@@ -222,6 +264,47 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
         {
             _isLoading = false;
         }
+    }
+
+    private async Task<T> ExecuteIntegrationWithAccessAsync<T>(Func<AlsConnectionSettings, Task<T>> operation)
+    {
+        var effective = await BuildEffectiveSettingsAsync();
+        await ProxyGate.WaitAsync();
+        var previousProxy = HttpClient.DefaultProxy;
+        try
+        {
+            if (Settings.ProxyMode == AlsProxyMode.Custom)
+            {
+                var proxy = new WebProxy(Settings.ProxyUrl);
+                if (!string.IsNullOrWhiteSpace(Settings.ProxyUsername))
+                    proxy.Credentials = new NetworkCredential(Settings.ProxyUsername, Settings.ProxyPassword);
+                HttpClient.DefaultProxy = proxy;
+            }
+            else if (Settings.ProxyMode == AlsProxyMode.None)
+            {
+                HttpClient.DefaultProxy = new NoProxy();
+            }
+
+            return await operation(effective);
+        }
+        finally
+        {
+            HttpClient.DefaultProxy = previousProxy;
+            ProxyGate.Release();
+        }
+    }
+
+    private async Task<AlsConnectionSettings> BuildEffectiveSettingsAsync()
+    {
+        if (Settings.AuthenticationType != AlsAuthenticationType.OAuth2ClientCredentials)
+            return Settings;
+
+        var token = await _extendedAccess.AcquireOAuthClientCredentialsTokenAsync(Settings);
+        var clone = JsonSerializer.Deserialize<AlsConnectionSettings>(JsonSerializer.Serialize(Settings))
+            ?? throw new InvalidOperationException("ALS-Einstellungen konnten für OAuth2 nicht vorbereitet werden.");
+        clone.AuthenticationType = AlsAuthenticationType.Bearer;
+        clone.BearerToken = token;
+        return clone;
     }
 
     private async Task ApplySelectedOrderAsync()
@@ -418,6 +501,8 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
         clone.BearerToken = string.Empty;
         clone.ApiKeyValue = string.Empty;
         clone.ClientCertificatePassword = string.Empty;
+        clone.OAuthClientSecret = string.Empty;
+        clone.ProxyPassword = string.Empty;
         return clone;
     }
 
@@ -448,6 +533,13 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     private sealed record StoredMapping(string TargetField, string SourceField);
+
+    private sealed class NoProxy : IWebProxy
+    {
+        public ICredentials? Credentials { get; set; }
+        public Uri? GetProxy(Uri destination) => destination;
+        public bool IsBypassed(Uri host) => true;
+    }
 
     private sealed class RelayCommand(Action<object?> execute) : ICommand
     {
