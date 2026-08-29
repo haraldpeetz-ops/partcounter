@@ -14,14 +14,14 @@ namespace Partcounter.Services;
 /// </summary>
 public static class AdaptiveUiService
 {
-    private sealed class WindowState
+    private sealed class AdaptiveWindowState
     {
         public bool ValidationOverride { get; set; }
         public double ValidationWidth { get; set; }
         public double ValidationHeight { get; set; }
     }
 
-    private static readonly Dictionary<Window, WindowState> Windows = new();
+    private static readonly Dictionary<Window, AdaptiveWindowState> Windows = new();
     private static readonly Dictionary<ColumnDefinition, GridLength> OriginalColumns = new();
     private static readonly Dictionary<FrameworkElement, double> OriginalExplicitWidths = new();
     private static bool _initialized;
@@ -46,7 +46,7 @@ public static class AdaptiveUiService
 
         if (!Windows.TryGetValue(window, out var state))
         {
-            state = new WindowState();
+            state = new AdaptiveWindowState();
             Windows[window] = state;
         }
 
@@ -65,16 +65,11 @@ public static class AdaptiveUiService
             ApplyMainWindowBreakpoints(main, viewportWidth, viewportHeight);
     }
 
-    /// <summary>
-    /// Wird ausschließlich vom automatisierten Layout-Smoke-Test verwendet. Es erlaubt, die
-    /// Layoutlogik unabhängig von der physischen Auflösung des CI-Runners mit einer definierten
-    /// logischen WPF-Arbeitsfläche zu messen.
-    /// </summary>
     public static void ApplyValidationViewport(Window window, double width, double height)
     {
         if (!Windows.TryGetValue(window, out var state))
         {
-            state = new WindowState();
+            state = new AdaptiveWindowState();
             Windows[window] = state;
         }
 
@@ -107,7 +102,7 @@ public static class AdaptiveUiService
 
         if (!Windows.ContainsKey(window))
         {
-            Windows[window] = new WindowState();
+            Windows[window] = new AdaptiveWindowState();
             window.SizeChanged += OnWindowSizeChanged;
             window.StateChanged += OnWindowStateChanged;
             window.Closed += OnWindowClosed;
@@ -156,8 +151,6 @@ public static class AdaptiveUiService
         var availableWidth = Math.Max(640, area.Width - 12);
         var availableHeight = Math.Max(420, area.Height - 12);
 
-        // Kein WPF-Fenster darf durch ein historisches MinWidth/MinHeight größer als die
-        // reale Arbeitsfläche erzwungen werden.
         var safeMinimumWidth = Math.Min(880, availableWidth);
         var safeMinimumHeight = Math.Min(560, availableHeight);
         if (window.MinWidth > safeMinimumWidth)
@@ -168,7 +161,7 @@ public static class AdaptiveUiService
         window.MaxWidth = availableWidth;
         window.MaxHeight = availableHeight;
 
-        if (window.WindowState == WindowState.Maximized)
+        if (window.WindowState == System.Windows.WindowState.Maximized)
             return;
 
         var desiredWidth = double.IsNaN(window.Width) || window.Width <= 0
@@ -180,7 +173,6 @@ public static class AdaptiveUiService
 
         if (window is MainWindow)
         {
-            // Auf kleineren Notebooks soll die Anwendung den verfügbaren Platz vollständig nutzen.
             if (availableWidth < 1500)
                 desiredWidth = availableWidth;
             if (availableHeight < 900)
@@ -211,8 +203,6 @@ public static class AdaptiveUiService
                     element.MinHeight = 0;
             }
 
-            // Historische feste Breiten von großen Inhaltscontainern dürfen kleine Viewports nicht
-            // erzwingen. Kleine Eingabefeldbreiten bleiben bewusst unangetastet.
             if (element is StackPanel or Border)
             {
                 if (!double.IsNaN(element.Width) && element.Width > safeWidth)
@@ -313,7 +303,6 @@ public static class AdaptiveUiService
             };
         }
 
-        // Kopfzeile: lange Status-/Supportleisten dürfen den Titelbereich nicht überdecken.
         foreach (var panel in FindDescendants<StackPanel>(window))
         {
             if (panel.Parent is Grid parent && Grid.GetColumn(panel) == 1 && parent.ColumnDefinitions.Count == 2)
