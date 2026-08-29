@@ -24,6 +24,7 @@ public partial class MainWindow
         _adminHubScheduled = true;
         _viewModel.PropertyChanged += OnAdminHubViewModelPropertyChanged;
         _adminAccess.StateChanged += OnAdminHubAccessStateChanged;
+        MainTabs.SelectionChanged += OnAdminHubMainTabSelectionChanged;
         Closed += OnAdminHubClosed;
 
         _adminHubInitializationTimer = new DispatcherTimer(
@@ -71,8 +72,6 @@ public partial class MainWindow
         if (settingsStack is null)
             return false;
 
-        // Erst umgruppieren, wenn die vorhandenen Einstellungs-Erweiterungen vollständig montiert sind.
-        // Dadurch bleiben Branding, Updatecenter und Produktionsbereitschaft unverändert funktionsfähig.
         var hasBranding = settingsStack.Children.OfType<FrameworkElement>()
             .Any(element => Equals(element.Tag, "PartcounterCompanyBrandingSettings"));
         var hasUpdateCenter = settingsStack.Children.OfType<FrameworkElement>()
@@ -117,9 +116,6 @@ public partial class MainWindow
         MainTabs.Items.Add(_administrationTab);
         _protectedTabs[_administrationTab] = "Administration";
 
-        // Unsichtbare Kompatibilitätsreiter erhalten die bisherigen Headernamen. Bestehende
-        // Hilfe-/Screenshot-Navigation kann sie weiterhin ansteuern; nach Auswahl wird auf den
-        // entsprechenden Unterreiter im Admin-Hub umgeleitet. In der normalen UI sind sie unsichtbar.
         AddAdminNavigationAlias("Maschinen / Modbus");
         AddAdminNavigationAlias("Etiketteneditor");
         AddAdminNavigationAlias("Inbetriebnahme / Diagnose");
@@ -146,7 +142,6 @@ public partial class MainWindow
         var root = new DockPanel();
         var information = new Border
         {
-            DockPanel.Dock = Dock.Top,
             Background = new SolidColorBrush(Color.FromRgb(0xEE, 0xF3, 0xF7)),
             BorderBrush = new SolidColorBrush(Color.FromRgb(0xC6, 0xD1, 0xDC)),
             BorderThickness = new Thickness(1),
@@ -154,6 +149,8 @@ public partial class MainWindow
             Padding = new Thickness(12),
             Margin = new Thickness(8, 8, 8, 0)
         };
+        DockPanel.SetDock(information, Dock.Top);
+
         var stack = new StackPanel();
         information.Child = stack;
         stack.Children.Add(new TextBlock
@@ -327,16 +324,13 @@ public partial class MainWindow
         RefreshAdminHubState();
     }
 
-    private void OnMainAdminAliasSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private void OnAdminHubMainTabSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // Reserved for compatibility; MainTabs is handled through the window's existing selection event.
-    }
-
-    private void NavigateAdminAliasIfNeeded()
-    {
-        if (MainTabs.SelectedItem is not TabItem selected ||
+        if (!ReferenceEquals(e.Source, MainTabs) ||
+            MainTabs.SelectedItem is not TabItem selected ||
             selected.Tag is not string tag ||
-            !tag.StartsWith("PartcounterAdminAlias:", StringComparison.Ordinal))
+            !tag.StartsWith("PartcounterAdminAlias:", StringComparison.Ordinal) ||
+            !_adminAccess.IsUnlocked)
         {
             return;
         }
@@ -431,8 +425,6 @@ public partial class MainWindow
                 : "Simulation aktivieren";
             _adminModeToggleButton.IsEnabled = _adminAccess.IsUnlocked;
         }
-
-        NavigateAdminAliasIfNeeded();
     }
 
     private static bool HeaderContains(TabItem tab, string value) =>
@@ -448,6 +440,7 @@ public partial class MainWindow
 
         if (_administrationTabs is not null)
             _administrationTabs.SelectionChanged -= OnAdministrationTabSelectionChanged;
+        MainTabs.SelectionChanged -= OnAdminHubMainTabSelectionChanged;
         _viewModel.PropertyChanged -= OnAdminHubViewModelPropertyChanged;
         _adminAccess.StateChanged -= OnAdminHubAccessStateChanged;
         Closed -= OnAdminHubClosed;
