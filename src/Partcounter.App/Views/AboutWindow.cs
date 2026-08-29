@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -12,7 +11,7 @@ public sealed class AboutWindow : Window
 {
     public AboutWindow()
     {
-        Title = "Über Partcounter";
+        Title = $"Über {AppVersionInfo.ProductTitle}";
         Width = 760;
         Height = 720;
         MinWidth = 650;
@@ -24,9 +23,8 @@ public sealed class AboutWindow : Window
 
     private UIElement BuildUi()
     {
-        var assembly = Assembly.GetExecutingAssembly();
-        var version = assembly.GetName().Version?.ToString() ?? "–";
-        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? version;
+        var version = AppVersionInfo.VersionText;
+        var informational = AppVersionInfo.InformationalVersion;
         var dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Partcounter");
         var dbPath = Path.Combine(dataDirectory, "partcounter.db");
 
@@ -53,14 +51,15 @@ public sealed class AboutWindow : Window
         stack.Children.Add(Section("Produkt"));
         stack.Children.Add(InfoGrid(new[]
         {
-            ("Aktuelle Revision", "R001.20"),
-            ("Assembly-Version", version),
+            ("Aktuelle Revision", AppVersionInfo.Revision),
+            ("Programmversion", version),
             ("Build-Information", informational),
             ("Programmierer", "Harald Peetz"),
             ("Technologie", "C# · .NET 8 · WPF · SQLite · NModbus"),
             ("Modbus-Protokoll", $"Partcounter Protocol V{ModbusRegisterMap.ProtocolVersion}"),
             ("LOGO!-Programm", "Partcounter_LOGO_V001"),
             ("Dokumentation", "F1-Kontexthilfe · automatische Original-Screenshot-Erfassung"),
+            ("Support", "Bedienungs-/Supportzentrum · Datenbankprüfung · Supportpaket"),
             ("Produktionsschutz", "Tägliche SQLite-Sicherung · Integritätsprüfung · Diagnosepaket")
         }));
 
@@ -157,12 +156,13 @@ public sealed class AboutWindow : Window
     private static string BuildSystemInfo(string version, string informational, string dataDirectory, string dbPath)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Partcounter R001.20");
-        sb.AppendLine($"Assembly: {version}");
+        sb.AppendLine(AppVersionInfo.ProductTitle);
+        sb.AppendLine($"Version: {version}");
         sb.AppendLine($"Build: {informational}");
         sb.AppendLine("Programmierer: Harald Peetz");
         sb.AppendLine($"Modbus Protocol: V{ModbusRegisterMap.ProtocolVersion}");
         sb.AppendLine("Dokumentation: F1-Kontexthilfe + automatische Original-Screenshot-Erfassung");
+        sb.AppendLine("Support: integriertes Bedienungs-/Supportzentrum, Datenbankprüfung, Supportpaket");
         sb.AppendLine("Produktionsschutz: tägliche SQLite-Sicherung, Integritätsprüfung, Diagnosepaket");
         sb.AppendLine($"OS: {RuntimeInformation.OSDescription}");
         sb.AppendLine($".NET: {RuntimeInformation.FrameworkDescription}");
