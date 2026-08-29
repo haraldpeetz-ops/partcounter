@@ -5,7 +5,9 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Partcounter.Models;
 using Partcounter.ViewModels;
+using Partcounter.Views;
 
 namespace Partcounter.Services;
 
@@ -54,7 +56,8 @@ public sealed class LayoutValidationService
                     await ExerciseNestedTabsAsync(window, mainTabs, viewport.Width, viewport.Height, issues, cancellationToken);
                 }
 
-                notes.Add($"{viewport.Width}x{viewport.Height}: alle sichtbaren Haupt-/Unterreiter durchlaufen");
+                await ValidateAuxiliaryWindowsAsync(window, viewport.Width, viewport.Height, issues, cancellationToken);
+                notes.Add($"{viewport.Width}x{viewport.Height}: Haupt-/Unterreiter plus sichere Hilfsfenster durchlaufen");
             }
 
             AdaptiveUiService.EndValidationViewport(window);
@@ -67,6 +70,89 @@ public sealed class LayoutValidationService
             try { AdaptiveUiService.EndValidationViewport(window); } catch { }
             await WriteReportAsync(reportPath, false, stopwatch.Elapsed, notes, issues, CancellationToken.None);
             return 3;
+        }
+    }
+
+    private static async Task ValidateAuxiliaryWindowsAsync(
+        MainWindow mainWindow,
+        int viewportWidth,
+        int viewportHeight,
+        List<string> issues,
+        CancellationToken cancellationToken)
+    {
+        if (mainWindow.DataContext is not MainViewModel mainViewModel)
+            return;
+
+        var record = new PackagingUnitRecord(
+            "LAYOUT-TEST-VE",
+            1,
+            "Spritzgussmaschine 01",
+            1,
+            "LAYOUT-ORDER-001",
+            "DEMO-064",
+            "Layout Testartikel",
+            "WZ-LAYOUT",
+            64,
+            1000,
+            1024,
+            24,
+            VeCompletionReason.AutomaticFull,
+            DateTime.UtcNow,
+            "Printed",
+            DateTime.UtcNow);
+
+        var windows = new List<(Window Window, string Name, Action? SpecialClose)>
+        {
+            (new AboutWindow { Owner = mainWindow }, "Über", null),
+            (new HelpCenterWindow { Owner = mainWindow }, "Hilfezentrum", null),
+            (new SupportCenterWindow(mainWindow), "Bedienung & Support", null),
+            (new LabelReprintDialog(record, 0) { Owner = mainWindow }, "Etikett nachdrucken", null),
+            (new LabelReprintJournalWindow(record, Array.Empty<LabelReprintJournalEntry>()) { Owner = mainWindow }, "Nachdruckjournal", null)
+        };
+
+        var compact = new CompactMonitorWindow(mainViewModel, mainWindow);
+        windows.Add((compact, "Mini-Monitor", compact.ShutdownMonitor));
+
+        foreach (var candidate in windows)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                candidate.Window.ShowInTaskbar = false;
+                candidate.Window.Left = -30000;
+                candidate.Window.Top = -30000;
+                candidate.Window.Show();
+                await YieldLayoutAsync(candidate.Window, cancellationToken);
+
+                var width = Math.Min(viewportWidth, Math.Max(360, candidate.Window.Width));
+                var height = Math.Min(viewportHeight, Math.Max(300, candidate.Window.Height));
+                AdaptiveUiService.ApplyValidationViewport(candidate.Window, width, height);
+                await YieldLayoutAsync(candidate.Window, cancellationToken);
+                ValidateCurrentVisualTree(
+                    candidate.Window,
+                    viewportWidth,
+                    viewportHeight,
+                    $"Hilfsfenster {candidate.Name}",
+                    issues);
+            }
+            catch (Exception ex)
+            {
+                issues.Add($"{viewportWidth}x{viewportHeight} · Hilfsfenster {candidate.Name}: Prüfung fehlgeschlagen: {ex.Message}");
+            }
+            finally
+            {
+                try
+                {
+                    if (candidate.SpecialClose is not null)
+                        candidate.SpecialClose();
+                    else
+                        candidate.Window.Close();
+                }
+                catch
+                {
+                    // Validation cleanup must not hide the original layout result.
+                }
+            }
         }
     }
 
@@ -114,7 +200,7 @@ public sealed class LayoutValidationService
     }
 
     private static void ValidateCurrentVisualTree(
-        MainWindow window,
+        Window window,
         int viewportWidth,
         int viewportHeight,
         string context,
@@ -131,7 +217,7 @@ public sealed class LayoutValidationService
             if (IsValidationNoise(element))
                 continue;
 
-            if (element.MinWidth > viewportWidth + 2 || element.MinHeight > viewportHeight + 2)
+            if (element.MinWidth > window.ActualWidth + 2 || element.MinHeight > window.ActualHeight + 2)
             {
                 AddUnique(
                     $"{viewportWidth}x{viewportHeight} · {context}: {Describe(element)} erzwingt Min={element.MinWidth:N0}x{element.MinHeight:N0}",
@@ -176,7 +262,7 @@ public sealed class LayoutValidationService
         {
             if (current is ScrollViewer)
                 return true;
-            if (current is DataGrid or ListBox or ListView)
+            if (current is DataGrid or ListBox or ListView or FlowDocumentScrollViewer)
                 return true;
             if (current is FrameworkElement fe && fe.ClipToBounds && !ReferenceEquals(fe, element))
                 return true;
@@ -283,6 +369,16 @@ public sealed class LayoutValidationService
         sb.AppendLine("GETESTETE LOGISCHE WPF-VIEWPORTS");
         foreach (var viewport in Viewports)
             sb.AppendLine($"- {viewport.Width} x {viewport.Height}");
+        sb.AppendLine();
+        sb.AppendLine("ABDECKUNG");
+        sb.AppendLine("- alle sichtbaren Hauptreiter");
+        sb.AppendLine("- verschachtelte Unterreiter");
+        sb.AppendLine("- Über-Fenster");
+        sb.AppendLine("- Hilfezentrum");
+        sb.AppendLine("- Bedienung & Support");
+        sb.AppendLine("- Etikett-Nachdruckdialog");
+        sb.AppendLine("- Nachdruckjournal");
+        sb.AppendLine("- Mini-Monitor");
         sb.AppendLine();
         sb.AppendLine("NOTIZEN");
         foreach (var note in notes)
