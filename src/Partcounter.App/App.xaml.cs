@@ -39,6 +39,7 @@ public partial class App : Application
             LabelReprintBootstrap.Attach(window);
             ProfessionalHelpBootstrap.Attach(window);
             SupportCenterBootstrap.Attach(window);
+            window.ScheduleAdminHubInitialization();
             VersionUiService.NormalizeWindow(window);
             MainWindow = window;
             window.Show();
