@@ -78,8 +78,6 @@ public sealed class LayoutValidationService
         List<string> issues,
         CancellationToken cancellationToken)
     {
-        // Mehrere Durchläufe sind nötig, weil das Auswählen eines Tabs weitere verschachtelte
-        // TabControls erst in den Visual Tree materialisieren kann.
         for (var pass = 0; pass < 3; pass++)
         {
             var nestedControls = FindDescendants<TabControl>(window)
@@ -161,8 +159,6 @@ public sealed class LayoutValidationService
             if (!horizontalOverflow && !verticalOverflow)
                 continue;
 
-            // Sehr kleine dekorative Überschreitungen durch Border/Shadow/FocusChrome interessieren
-            // nicht; bedienbare Controls und Inhaltscontainer dagegen schon.
             if (element.ActualWidth < 24 && element.ActualHeight < 24)
                 continue;
 
@@ -190,11 +186,16 @@ public sealed class LayoutValidationService
         return false;
     }
 
-    private static bool IsValidationNoise(FrameworkElement element) =>
-        element is ScrollBar or Thumb or RepeatButton or GridSplitter or Separator or
-        element.GetType().Name.Contains("Chrome", StringComparison.OrdinalIgnoreCase) ||
-        element.GetType().Name.Contains("Adorner", StringComparison.OrdinalIgnoreCase) ||
-        element.GetType().Name.Contains("Presenter", StringComparison.OrdinalIgnoreCase);
+    private static bool IsValidationNoise(FrameworkElement element)
+    {
+        if (element is ScrollBar or Thumb or RepeatButton or GridSplitter or Separator)
+            return true;
+
+        var typeName = element.GetType().Name;
+        return typeName.Contains("Chrome", StringComparison.OrdinalIgnoreCase) ||
+               typeName.Contains("Adorner", StringComparison.OrdinalIgnoreCase) ||
+               typeName.Contains("Presenter", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool IsVisibleTab(TabItem tab) =>
         tab.Visibility == Visibility.Visible &&
