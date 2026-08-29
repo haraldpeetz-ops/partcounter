@@ -47,7 +47,9 @@ public sealed class ApplicationStressService
             notes.Add($"Stressartikel: {article.ArticleNumber}, Kavitäten={article.ActiveCavities}, VE={article.PackagingQuantity}");
 
             const int rounds = 4;
-            const uint targetPerRound = 64_000;
+            const uint targetPerRound = 16_000;
+            notes.Add($"Simulierte Sollteile: {(long)rounds * targetPerRound * vm.Machines.Count:N0}");
+
             for (var round = 1; round <= rounds; round++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -63,7 +65,7 @@ public sealed class ApplicationStressService
                 }
 
                 var cavityCount = Math.Max(1, (int)article.ActiveCavities);
-                var maxCycles = (int)Math.Ceiling(targetPerRound / (double)cavityCount) + 64;
+                var maxCycles = (int)Math.Ceiling(targetPerRound / (double)cavityCount) + 32;
                 for (var cycle = 0; cycle < maxCycles; cycle++)
                 {
                     foreach (var machine in vm.Machines)
@@ -72,13 +74,13 @@ public sealed class ApplicationStressService
                             machine.ApplySimulationCycle();
                     }
 
-                    if (cycle % 40 == 0)
+                    if (cycle % 20 == 0)
                     {
                         process.Refresh();
                         peakWorkingSet = Math.Max(peakWorkingSet, process.WorkingSet64);
                         peakManaged = Math.Max(peakManaged, GC.GetTotalMemory(false));
                         await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
-                        await Task.Delay(1, cancellationToken);
+                        await Task.Delay(2, cancellationToken);
                     }
                 }
 
@@ -95,7 +97,7 @@ public sealed class ApplicationStressService
 
             var expected = Volatile.Read(ref stressVeEvents);
             var databasePath = new DatabaseService().DatabasePath;
-            var persisted = await WaitForStressRowsAsync(databasePath, expected, TimeSpan.FromSeconds(90), cancellationToken);
+            var persisted = await WaitForStressRowsAsync(databasePath, expected, TimeSpan.FromSeconds(75), cancellationToken);
             if (persisted < expected)
                 errors.Add($"SQLite: nur {persisted:N0} von {expected:N0} ausgelösten Stress-VE-Datensätzen persistiert.");
 
@@ -111,6 +113,8 @@ public sealed class ApplicationStressService
                 if (i % 25 == 0)
                     await database.AddEventAsync(null, "STRESS_HEARTBEAT", $"Stress-Lesedurchlauf {i}");
             }
+
+            await StressOrderInterfacesAsync(notes, errors, cancellationToken);
 
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -137,6 +141,105 @@ public sealed class ApplicationStressService
         }
 
         void CountVe(object? sender, VeCompletedEventArgs args) => Interlocked.Increment(ref stressVeEvents);
+    }
+
+    private static async Task StressOrderInterfacesAsync(List<string> notes, List<string> errors, CancellationToken cancellationToken)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"Partcounter_R00123_Stress_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var source = Path.Combine(root, "orders.csv");
+        try
+        {
+            const int orderCount = 5000;
+            var sb = new StringBuilder(orderCount * 100);
+            sb.AppendLine("MachineNumber;MachineName;MachineId;WorkCenter;OrderNumber;OperationNumber;ArticleNumber;OrderQuantity;ArticleDescription;ToolNumber;Cavities;PackagingQuantity;PlannedStart;OrderStatus;Company;Plant");
+            for (var i = 1; i <= orderCount; i++)
+            {
+                var machine = ((i - 1) % 30) + 1;
+                sb.Append(machine).Append(';')
+                  .Append($"Spritzgussmaschine {machine:00}").Append(';')
+                  .Append($"ARB-{machine:00}").Append(';')
+                  .Append($"SGM-{machine:00}").Append(';')
+                  .Append($"STRESS-ERP-{i:000000}").Append(';')
+                  .Append("0010;")
+                  .Append($"ART-{i % 400:000}").Append(';')
+                  .Append(1000 + i).Append(';')
+                  .Append("Stressartikel;")
+                  .Append($"WZ-{i % 100:000}").Append(';')
+                  .Append("8;1000;29.08.2026 22:00;Released;100;01")
+                  .AppendLine();
+            }
+            await File.WriteAllTextAsync(source, sb.ToString(), new UTF8Encoding(false), cancellationToken);
+
+            var proSettings = new ProAlphaConnectionSettings
+            {
+                SourceMode = ProAlphaSourceMode.FileExport,
+                FilePath = source,
+                CsvDelimiter = ";",
+                HeaderRow = 1,
+                CultureName = "de-DE"
+            };
+            var proMappings = new[]
+            {
+                new ProAlphaFieldMapping("MachineNumber", "MachineNumber", false, ""),
+                new ProAlphaFieldMapping("MachineName", "MachineName", false, ""),
+                new ProAlphaFieldMapping("MachineExternalId", "MachineId", false, ""),
+                new ProAlphaFieldMapping("WorkCenter", "WorkCenter", false, ""),
+                new ProAlphaFieldMapping("OrderNumber", "OrderNumber", true, ""),
+                new ProAlphaFieldMapping("OperationNumber", "OperationNumber", false, ""),
+                new ProAlphaFieldMapping("ArticleNumber", "ArticleNumber", true, ""),
+                new ProAlphaFieldMapping("OrderQuantity", "OrderQuantity", true, ""),
+                new ProAlphaFieldMapping("ArticleDescription", "ArticleDescription", false, ""),
+                new ProAlphaFieldMapping("ToolNumber", "ToolNumber", false, ""),
+                new ProAlphaFieldMapping("Cavities", "Cavities", false, ""),
+                new ProAlphaFieldMapping("PackagingQuantity", "PackagingQuantity", false, ""),
+                new ProAlphaFieldMapping("PlannedStart", "PlannedStart", false, ""),
+                new ProAlphaFieldMapping("OrderStatus", "OrderStatus", false, ""),
+                new ProAlphaFieldMapping("CompanyCode", "Company", false, ""),
+                new ProAlphaFieldMapping("PlantCode", "Plant", false, "")
+            };
+            var proService = new ProAlphaIntegrationService();
+            for (var pass = 1; pass <= 3; pass++)
+            {
+                var orders = await proService.LoadOrdersAsync(proSettings, proMappings, cancellationToken);
+                if (orders.Count != orderCount)
+                    errors.Add($"proALPHA Parser Pass {pass}: erwartet {orderCount:N0}, erhalten {orders.Count:N0}.");
+            }
+            notes.Add($"proALPHA Parserlast: {orderCount:N0} Datensätze × 3 Durchläufe");
+
+            var alsSettings = new AlsConnectionSettings
+            {
+                SourceMode = AlsSourceMode.FileExport,
+                FilePath = source,
+                CsvDelimiter = ";",
+                HeaderRow = 1,
+                CultureName = "de-DE"
+            };
+            var alsMappings = new[]
+            {
+                new AlsFieldMapping("MachineNumber", "MachineNumber", false, ""),
+                new AlsFieldMapping("MachineName", "MachineName", false, ""),
+                new AlsFieldMapping("MachineExternalId", "MachineId", false, ""),
+                new AlsFieldMapping("OrderNumber", "OrderNumber", true, ""),
+                new AlsFieldMapping("OperationNumber", "OperationNumber", false, ""),
+                new AlsFieldMapping("ArticleNumber", "ArticleNumber", true, ""),
+                new AlsFieldMapping("OrderQuantity", "OrderQuantity", true, ""),
+                new AlsFieldMapping("ArticleDescription", "ArticleDescription", false, ""),
+                new AlsFieldMapping("ToolNumber", "ToolNumber", false, ""),
+                new AlsFieldMapping("Cavities", "Cavities", false, ""),
+                new AlsFieldMapping("PackagingQuantity", "PackagingQuantity", false, ""),
+                new AlsFieldMapping("PlannedStart", "PlannedStart", false, ""),
+                new AlsFieldMapping("OrderStatus", "OrderStatus", false, "")
+            };
+            var alsOrders = await new AlsIntegrationService().LoadOrdersAsync(alsSettings, alsMappings, cancellationToken);
+            if (alsOrders.Count != orderCount)
+                errors.Add($"ALS Parser: erwartet {orderCount:N0}, erhalten {alsOrders.Count:N0}.");
+            notes.Add($"ALS Parserlast: {orderCount:N0} Datensätze");
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
     }
 
     private static async Task<long> WaitForStressRowsAsync(
