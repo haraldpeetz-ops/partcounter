@@ -19,9 +19,7 @@ jobs:
 
       - name: Apply V3 identity and limit hardening
         shell: pwsh
-        run: |
-          python -c "from pathlib import Path; p=Path('tools/apply_r00125_v3_identity_limits.py'); s=p.read_text(encoding='utf-8'); bad='text = replace_once(text, \"public void ProtocolV3_BoundaryContractIsAdditive()\", \"public void ProtocolV3_BoundaryContractIsAdditive()\", \"protocol test marker\")\n'; p.write_text(s.replace(bad, ''), encoding='utf-8')"
-          python tools/apply_r00125_v3_identity_limits.py
+        run: python tools/run_r00125_v3_identity_limits.py
 
       - name: Commit hardened product source
         shell: pwsh
