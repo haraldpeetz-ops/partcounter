@@ -1,4 +1,4 @@
-name: Apply R001.25 restart recovery
+name: Apply R001.25 recovery safety guard
 
 on:
   push:
@@ -8,8 +8,8 @@ permissions:
   contents: write
 
 jobs:
-  apply-restart-recovery:
-    if: contains(github.event.head_commit.message, '[apply-restart-recovery]')
+  apply-recovery-safety:
+    if: contains(github.event.head_commit.message, '[apply-recovery-safety]')
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -17,9 +17,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Apply guarded restart recovery hardening
+      - name: Apply recovery identity safety fixes
         shell: pwsh
-        run: python tools/run_r00125_restart_recovery.py
+        run: python tools/apply_r00125_recovery_safety_fix.py
 
       - name: Commit hardened product source
         shell: pwsh
@@ -28,5 +28,5 @@ jobs:
           git config user.email "partcounter-ci@users.noreply.github.com"
           git add src tests docs
           if (git diff --cached --quiet) { throw 'No product changes generated.' }
-          git commit -m "fix: persist and reconcile live orders across restart [restart-recovery-applied]"
+          git commit -m "fix: preserve uncertain activation and reject foreign recovery state [recovery-safety-applied]"
           git push
