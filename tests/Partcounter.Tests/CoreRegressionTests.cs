@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Partcounter.Models;
 using Partcounter.Services;
+using Xunit;
 
 namespace Partcounter.Tests;
 
