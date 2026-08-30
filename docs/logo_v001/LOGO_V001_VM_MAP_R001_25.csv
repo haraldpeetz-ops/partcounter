@@ -1,0 +1,38 @@
+Direction;HoldingRegister;PCOffset;LOGOVM;Type;Name;RangeOrValue;RequiredMapping;Notes
+PC_TO_LOGO;HR1;0;VW0;UINT16;ProtocolVersion;3;Modbus holding register;Must equal protocol 3
+PC_TO_LOGO;HR2;1;VW2;UINT16;CommandSequence;1..32767;Modbus holding register;Wrap 32767 to 1
+PC_TO_LOGO;HR3;2;VW4;UINT16;CommandWord;Bits0..4;Modbus holding register;Low command bits are V5.0..V5.4
+PC_TO_LOGO;HR4;3;VW6;UINT16;ActiveCavities;1..64;Modbus holding register;Active mold cavities
+PC_TO_LOGO;HR5;4;VW8;UINT16;TargetPartsPerVE_HI;0..65535;Part of VD8;High word
+PC_TO_LOGO;HR6;5;VW10;UINT16;TargetPartsPerVE_LO;0..65535;Part of VD8;Low word
+PC_TO_LOGO;HR7;6;VW12;UINT16;ValvePulse10Ms;5..500;Modbus holding register;50..5000 ms
+PC_TO_LOGO;HR8;7;VW14;UINT16;JobId_HI;0..32767;Part of VD14;Unique production-instance token high word
+PC_TO_LOGO;HR9;8;VW16;UINT16;JobId_LO;1..32767;Part of VD14;Unique production-instance token low word
+PC_TO_LOGO;HR10;9;VW18;UINT16;TargetCyclesPerVE_HI;0;Part of VD18;High word remains 0 in released range
+PC_TO_LOGO;HR11;10;VW20;UINT16;TargetCyclesPerVE_LO;1..32767;Part of VD18;B003 On Threshold reads VD18
+PC_TO_LOGO;HR12;11;VW22;UINT16;PcHeartbeat;1..32767;Modbus holding register;Diagnostic only
+PC_TO_LOGO;HR13;12;VW24;UINT16;HoldAfterVeNumber;1..32767;Modbus holding register;Local count hold after this completed VE
+LOGO_TO_PC;HR20;19;VW38;UINT16;ProtocolVersion;3;NAQ/VM output;Partcounter rejects other versions
+LOGO_TO_PC;HR21;20;VW40;UINT16;StatusWord;Bits0..7;NQ bits V41.0..V41.7;VB40 kept 0
+LOGO_TO_PC;HR22;21;VW42;UINT16;CurrentVECycles_HI;0;Part of VD42;B003 Counter mapping
+LOGO_TO_PC;HR23;22;VW44;UINT16;CurrentVECycles_LO;0..32767;Part of VD42;B003 Counter mapping
+LOGO_TO_PC;HR24;23;VW46;UINT16;TotalCycles_HI;0..15;Part of VD46;B004 Counter mapping
+LOGO_TO_PC;HR25;24;VW48;UINT16;TotalCycles_LO;0..65535;Part of VD46;B004 Counter mapping
+LOGO_TO_PC;HR26;25;VW50;UINT16;CurrentVENumber;1..32767;NAQ;CompletedVEs + 1
+LOGO_TO_PC;HR27;26;VW52;UINT16;CompletedVEs;0..32767;NAQ;Low word of scratch counter
+LOGO_TO_PC;HR28;27;VW54;UINT16;LastCompletedVECycles_HI;0;NAQ constant;Reserved high word in released VE range
+LOGO_TO_PC;HR29;28;VW56;UINT16;LastCompletedVECycles_LO;0..32767;B010 Aen mapping;Snapshot before reset
+LOGO_TO_PC;HR30;29;VW58;UINT16;AckSequence;0..32767;B027 Aen mapping;Last processed command
+LOGO_TO_PC;HR31;30;VW60;UINT16;ActiveCavitiesEcho;1..64;NAQ;Latched/accepted cavities echo
+LOGO_TO_PC;HR32;31;VW62;UINT16;LastCompletedVENumber;0..32767;NAQ;Last completed VE
+LOGO_TO_PC;HR33;32;VW64;UINT16;CompletionSequence;0..32767;NAQ;Changes once per VE
+LOGO_TO_PC;HR34;33;VW66;UINT16;LogoHeartbeat;1..32767;NAQ;Diagnostic heartbeat
+LOGO_TO_PC;HR35;34;VW68;UINT16;ErrorCode;0..30;NAQ;Defined Partcounter errors
+LOGO_TO_PC;HR36;35;VW70;UINT16;LastCompletionReason;0..2;B012 Aen mapping;0 unknown 1 auto 2 manual
+LOGO_TO_PC;HR37;36;VW72;UINT16;LastCompletedCavities;0..64;B013 Aen mapping;Cavities at VE completion
+LOGO_TO_PC;HR38;37;VW74;UINT16;HoldAfterVeNumberEcho;1..32767;NAQ;Must represent accepted local hold
+LOGO_TO_PC;HR39;38;VW76;UINT16;JobIdEcho_HI;0..32767;NAQ;Accepted production instance high word
+LOGO_TO_PC;HR40;39;VW78;UINT16;JobIdEcho_LO;1..32767;NAQ;Accepted production instance low word
+INTERNAL;;-;VD80;UINT32;CompletedVEsScratch;0..32767;B017 Counter mapping;VW82 low word used by NAI12
+INTERNAL;;-;VD84;UINT32;LogoHeartbeatScratch;0..32766;B033 Counter mapping;VW86 low word used by NAI13
+INTERNAL;;-;VW88;UINT16;StoredPcHeartbeat;0..32767;B039 Aen mapping;Heartbeat comparison memory
