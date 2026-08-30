@@ -49,6 +49,22 @@ public sealed class VeBoundaryPolicyTests
     }
 
     [Fact]
+    public void LogoTotalCycleLimit_IsRejectedBeforeOrderStart()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            VeBoundaryPolicy.Plan(1, 0, 1_000_000, 1000, 1));
+        Assert.Contains("999.999", ex.Message);
+    }
+
+    [Fact]
+    public void ExactLogoTotalCycleLimit_IsAccepted()
+    {
+        var capacity = VeBoundaryPolicy.CalculateOrderCapacity(999_999, 1000, 1);
+        Assert.Equal((uint)999_999, capacity.RequiredTotalCycles);
+        Assert.Equal((ushort)1000, capacity.RequiredPackagingUnits);
+    }
+
+    [Fact]
     public void OrdersBeyondLogoVeRange_AreRejectedBeforeStart()
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>

@@ -304,6 +304,8 @@ public sealed class MachineFleetService : IAsyncDisposable
             throw new InvalidOperationException($"{operation}: Kavitäten-Echo {snapshot.ActiveCavitiesEcho} entspricht nicht Soll {expectedCavities.Value}.");
         if (expectedHoldAfterVeNumber.HasValue && snapshot.HoldAfterVeNumberEcho != expectedHoldAfterVeNumber.Value)
             throw new InvalidOperationException($"{operation}: HoldAfterVE-Echo {snapshot.HoldAfterVeNumberEcho} entspricht nicht Soll {expectedHoldAfterVeNumber.Value}.");
+        if (expectedHoldAfterVeNumber is > 0 && (snapshot.StatusWord & ModbusRegisterMap.StatusCompletionHoldArmed) == 0)
+            throw new InvalidOperationException($"{operation}: LOGO! hat HoldAfterVE {expectedHoldAfterVeNumber.Value} bestätigt, aber CompletionHoldArmed ist nicht aktiv.");
         session.LastSnapshot = snapshot;
         session.LastMessage = null;
         UpdateGlobalDiagnostics(session);

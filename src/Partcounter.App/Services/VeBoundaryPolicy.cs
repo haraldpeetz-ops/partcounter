@@ -6,6 +6,10 @@ public sealed record VeBoundaryPlan(
     uint EffectiveQuantity,
     ushort HoldAfterVeNumber);
 
+public sealed record OrderCapacityPlan(
+    uint RequiredTotalCycles,
+    ushort RequiredPackagingUnits);
+
 public static class VeBoundaryPolicy
 {
     public static VeBoundaryPlan Plan(
@@ -15,16 +19,10 @@ public static class VeBoundaryPolicy
         uint standardVeTarget,
         ushort activeCavities)
     {
-        if (currentVeNumber is 0 or > ModbusRegisterMap.MaxVeNumber)
-            throw new ArgumentOutOfRangeException(nameof(currentVeNumber));
-        if (orderTargetQuantity == 0)
-            throw new ArgumentOutOfRangeException(nameof(orderTargetQuantity));
-        if (standardVeTarget == 0)
-            throw new ArgumentOutOfRangeException(nameof(standardVeTarget));
-        if (activeCavities is < 1 or > 64)
-            throw new ArgumentOutOfRangeException(nameof(activeCavities));
-        if (producedBeforeCurrentVe >= orderTargetQuantity)
-            throw new ArgumentOutOfRangeException(nameof(producedBeforeCurrentVe), "Der Auftrag ist bereits vollständig produziert.");
+        ValidateBasicInputs(currentVeNumber, producedBeforeCurrentVe, orderTargetQuantity, standardVeTarget, activeCavities);
+
+        if (currentVeNumber == 1 && producedBeforeCurrentVe == 0)
+            _ = CalculateOrderCapacity(orderTargetQuantity, standardVeTarget, activeCavities);
 
         var remaining = (ulong)orderTargetQuantity - producedBeforeCurrentVe;
         var currentTarget = (uint)Math.Min((ulong)standardVeTarget, remaining);
@@ -58,6 +56,63 @@ public static class VeBoundaryPolicy
             (uint)currentCycles,
             effectiveCurrent,
             (ushort)boundary);
+    }
+
+    public static OrderCapacityPlan CalculateOrderCapacity(
+        uint orderTargetQuantity,
+        uint standardVeTarget,
+        ushort activeCavities)
+    {
+        if (orderTargetQuantity == 0)
+            throw new ArgumentOutOfRangeException(nameof(orderTargetQuantity));
+        if (standardVeTarget == 0)
+            throw new ArgumentOutOfRangeException(nameof(standardVeTarget));
+        if (activeCavities is < 1 or > 64)
+            throw new ArgumentOutOfRangeException(nameof(activeCavities));
+
+        ulong remaining = orderTargetQuantity;
+        ulong totalCycles = 0;
+        uint ves = 0;
+
+        while (remaining > 0)
+        {
+            var target = (uint)Math.Min((ulong)standardVeTarget, remaining);
+            var cycles = CeilingDivide(target, activeCavities);
+            if (cycles is 0 or > ModbusRegisterMap.MaxTargetCyclesPerVe)
+                throw new InvalidOperationException($"Eine VE benötigt {cycles:N0} Zyklen; zulässig sind maximal {ModbusRegisterMap.MaxTargetCyclesPerVe:N0}.");
+
+            totalCycles += cycles;
+            if (totalCycles > ModbusRegisterMap.MaxTotalCyclesPerJob)
+                throw new InvalidOperationException($"Der Auftrag benötigt {totalCycles:N0} LOGO!-Zyklen und überschreitet die freigegebene Grenze von {ModbusRegisterMap.MaxTotalCyclesPerJob:N0}. Auftrag segmentieren.");
+
+            ves++;
+            if (ves > ModbusRegisterMap.MaxVeNumber)
+                throw new InvalidOperationException($"Der Auftrag benötigt mehr als {ModbusRegisterMap.MaxVeNumber:N0} VE. Auftrag aufteilen.");
+
+            var effectiveQuantity = cycles * activeCavities;
+            remaining = remaining > effectiveQuantity ? remaining - effectiveQuantity : 0;
+        }
+
+        return new OrderCapacityPlan((uint)totalCycles, (ushort)ves);
+    }
+
+    private static void ValidateBasicInputs(
+        ushort currentVeNumber,
+        uint producedBeforeCurrentVe,
+        uint orderTargetQuantity,
+        uint standardVeTarget,
+        ushort activeCavities)
+    {
+        if (currentVeNumber is 0 or > ModbusRegisterMap.MaxVeNumber)
+            throw new ArgumentOutOfRangeException(nameof(currentVeNumber));
+        if (orderTargetQuantity == 0)
+            throw new ArgumentOutOfRangeException(nameof(orderTargetQuantity));
+        if (standardVeTarget == 0)
+            throw new ArgumentOutOfRangeException(nameof(standardVeTarget));
+        if (activeCavities is < 1 or > 64)
+            throw new ArgumentOutOfRangeException(nameof(activeCavities));
+        if (producedBeforeCurrentVe >= orderTargetQuantity)
+            throw new ArgumentOutOfRangeException(nameof(producedBeforeCurrentVe), "Der Auftrag ist bereits vollständig produziert.");
     }
 
     private static ulong CeilingDivide(uint numerator, ushort denominator) =>

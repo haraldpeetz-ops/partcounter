@@ -48,6 +48,7 @@ public static class ModbusRegisterMap
     // LOGO! analog references and arithmetic use signed 16-bit integer values.
     // Keep all values that must be copied/compared inside the LOGO! in the positive 16-bit range.
     public const uint MaxTargetCyclesPerVe = 32_767;
+    public const uint MaxTotalCyclesPerJob = 999_999;
     public const ushort MaxSequenceValue = 32_767;
     public const ushort MaxHeartbeatValue = 32_767;
     public const ushort MaxVeNumber = 32_767;
