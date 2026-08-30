@@ -1,195 +1,261 @@
-# Partcounter V2 – Modbus TCP Register Map
+# Partcounter Protocol V3 – Modbus TCP Register Map
 
-**Protokollversion:** 2  
-**Partcounter Revision:** R001.7  
-**Modbus TCP:** Port 502  
-**PC:** Client/Master  
-**Siemens LOGO!:** Server/Slave  
-**Unit ID:** standardmäßig 1
+**Partcounter Revision:** R001.25  
+**Protokollversion:** 3  
+**PC-Rolle:** Modbus-TCP Client/Master  
+**Siemens LOGO!-Rolle:** Modbus-TCP Server  
+**Standard-Port:** 502  
+**Standard Unit ID:** 1
 
-> NModbus adressiert Holding Register nullbasiert. In der folgenden Tabelle ist `HR1` die fachliche erste Registerposition und entspricht in der PC-Software Adresse `0`. Auf LOGO!-Seite beginnt die V2-VM-Zuordnung bei `VW0`.
+Dieses Dokument ist die **normative Registerbelegung** für Partcounter R001.25. PC-Software und LOGO!-Programm müssen exakt denselben V3-Stand verwenden. Eine LOGO! mit Protocol V1/V2 wird von R001.25 bewusst abgewiesen.
 
-## Engineering-Grundsätze V2
+> NModbus adressiert nullbasiert. PC-Offset `0` entspricht fachlich `HR1` und LOGO-VM `VW0`.
 
-Die LOGO! verwendet für Zählungen native Vor-/Rückwärtszähler. Der Gesamtzykluszähler wird als DWord übertragen; die PC-Anwendung berechnet Teilemengen mit der Kavitätenzahl. Damit wird die 16-Bit-Grenze der allgemeinen LOGO!-Analogarithmetik nicht für Teilemultiplikationen verwendet.
+## 1. Engineering-Grundsätze
 
-Der Siemens-Vor-/Rückwärtszähler besitzt zwar einen Bereich bis 999999 und kann Zählerstand sowie Ein-/Ausschaltschwellen per Parameter-VM-Mapping als `VD` bereitstellen. Partcounter begrenzt eine einzelne VE bewusst auf **32767 Zyklen**. Grund: der abgeschlossene VE-Zähler muss innerhalb der LOGO! vor dem Reset sicher gepuffert werden; Werte im positiven 16-Bit-Bereich lassen sich ohne 32-Bit-Hilfslogik zuverlässig verarbeiten.
+- Die LOGO! zählt reale Maschinenzyklen lokal.
+- Teilemengen werden am PC aus `Zyklen × Kavitäten` berechnet.
+- Eine einzelne VE ist auf **32767 Zyklen** begrenzt.
+- Ein LOGO!-Auftrag ist auf **999999 Gesamtzyklen** begrenzt.
+- VE-/Command-/Heartbeat-Sequenzen arbeiten im positiven Bereich bis 32767.
+- 32-Bit-Werte werden **High Word, danach Low Word** übertragen.
+- Ein Befehl gilt PC-seitig erst als erfolgreich, wenn die LOGO! dieselbe `AckSequence`, `ErrorCode=0` und die erforderlichen Echo-Werte meldet.
+- One-Shot-Retries verwenden **dieselbe CommandSequence**, damit ein verlorenes TCP-Antworttelegramm keinen zweiten Reset/VE-Wechsel erzeugt.
+- `HoldAfterVeNumber` wird vorab in der LOGO! gespeichert. Dadurch kann sie an einer kritischen VE-Grenze lokal stoppen, bevor der PC den Abschluss pollt.
+- `JobId` ist eine technische Produktionsinstanz-ID und nicht die sichtbare Auftragsnummer.
 
-Weitere LOGO!-interne Sequenz-/Heartbeat-Werte werden ebenfalls auf 1…32767 begrenzt und danach auf 1 zurückgeführt.
+## 2. PC → LOGO! – HR1 bis HR13
 
-## PC → LOGO! Konfiguration HR1–HR12
+| HR | PC-Offset | LOGO VM | Typ | Name | Freigegebener Inhalt |
+|---:|---:|---|---|---|---|
+| HR1 | 0 | VW0 | UINT16 | ProtocolVersion | `3` |
+| HR2 | 1 | VW2 | UINT16 | CommandSequence | 1…32767 |
+| HR3 | 2 | VW4 | UINT16 | CommandWord | Bitfeld |
+| HR4 | 3 | VW6 | UINT16 | ActiveCavities | 1…64 |
+| HR5 | 4 | VW8 | UINT16 | TargetPartsPerVE_HI | High Word |
+| HR6 | 5 | VW10 | UINT16 | TargetPartsPerVE_LO | Low Word |
+| HR7 | 6 | VW12 | UINT16 | ValvePulse10Ms | 5…500 |
+| HR8 | 7 | VW14 | UINT16 | JobId_HI | 0…32767 |
+| HR9 | 8 | VW16 | UINT16 | JobId_LO | 1…32767 |
+| HR10 | 9 | VW18 | UINT16 | TargetCyclesPerVE_HI | High Word; im freigegebenen Bereich 0 |
+| HR11 | 10 | VW20 | UINT16 | TargetCyclesPerVE_LO | 1…32767 |
+| HR12 | 11 | VW22 | UINT16 | PcHeartbeat | 1…32767 |
+| HR13 | 12 | VW24 | UINT16 | HoldAfterVeNumber | 1…32767 |
 
-| HR | Offset | LOGO VM | Datentyp | Bedeutung |
-|---:|---:|---|---|---|
-| HR1 | 0 | VW0 | UINT16 | ProtocolVersion = 2 |
-| HR2 | 1 | VW2 | UINT16 | CommandSequence 1…32767 |
-| HR3 | 2 | VW4 | UINT16 | CommandWord |
-| HR4 | 3 | VW6 | UINT16 | ActiveCavities 1–64 |
-| HR5 | 4 | VW8 | UINT16 | TargetPartsPerVE High Word |
-| HR6 | 5 | VW10 | UINT16 | TargetPartsPerVE Low Word |
-| HR7 | 6 | VW12 | UINT16 | ValvePulse10Ms, 5…500 = 50…5000 ms |
-| HR8 | 7 | VW14 | UINT16 | JobId High Word |
-| HR9 | 8 | VW16 | UINT16 | JobId Low Word |
-| HR10 | 9 | VW18 | UINT16 | TargetCyclesPerVE High Word |
-| HR11 | 10 | VW20 | UINT16 | TargetCyclesPerVE Low Word |
-| HR12 | 11 | VW22 | UINT16 | PC Heartbeat 1…32767 |
+`VW26…VW36` bleiben für spätere Erweiterungen reserviert und dürfen von R001.25 nicht anderweitig verwendet werden.
 
-`VW24` bis `VW36` bleiben für spätere Protokollerweiterungen reserviert.
-
-### Direkte Parameter-VM-Zuordnung des VE-Zählers
-
-Der Ein-Schwellwert (`On Threshold`) des LOGO!-Vor-/Rückwärtszählers wird als DWord direkt auf **VD18** gemappt. Damit bilden HR10/HR11 gemeinsam den dynamischen Zielzykluswert des Zählerblocks.
-
-Für Partcounter V2 gilt:
+### 2.1 TargetCyclesPerVE
 
 ```text
-1 <= TargetCyclesPerVE <= 32767
 TargetCyclesPerVE = ceil(TargetPartsPerVE / ActiveCavities)
 EffectiveVE       = TargetCyclesPerVE × ActiveCavities
 ```
 
-Beispiel: **1000 Teile / 64 Kavitäten = 16 Zielzyklen = 1024 effektive Teile**.
+Beispiel: 1000 Sollteile bei 64 Kavitäten → 16 Zyklen → 1024 effektive Teile.
 
-### Ventilzeit HR7
+Der `On Threshold` des LOGO!-VE-Zählers wird direkt auf `VD18` gemappt.
 
-Die PC-Oberfläche und das interne Datenmodell arbeiten weiter in Millisekunden. Vor dem Modbus-Schreiben rechnet Partcounter auf die fest konfigurierte LOGO!-Zeitbasis von 10 ms um:
+### 2.2 ValvePulse10Ms
 
 ```text
 ValvePulse10Ms = ValvePulseMs / 10
 ```
 
-Beispiel: `750 ms -> HR7 = 75`.
+Freigabe: 50…5000 ms in 10-ms-Schritten. Beispiel: 750 ms → HR7 = 75.
 
-Zulässig sind 50…5000 ms in 10-ms-Schritten. Der verwendete LOGO!-Zeitbaustein wird auf die feste Zeitbasis **10 Millisekunden** eingestellt und sein Zeitparameter per Parameter-VM-Mapping an VW12 gebunden.
+### 2.3 JobId
 
-## CommandWord HR3
+Jede neue reale Auftragsaktivierung erhält vor dem ersten Modbus-Schreiben eine eigene technische JobId. Partcounter erzeugt sie so, dass beide 16-Bit-Wörter im positiven LOGO!-Analogbereich 0…32767 bleiben; die Low-Word-Komponente ist nie 0. Dieselbe JobId bleibt während des kompletten Auftrags einschließlich Zieländerungen und Recovery bestehen.
 
-| Bit | Maske | Bedeutung |
-|---:|---:|---|
-| 0 | 0x0001 | Automatic enabled |
-| 1 | 0x0002 | Reset / neuer Auftrag |
-| 2 | 0x0004 | Manueller VE-Wechsel |
-| 3 | 0x0008 | Alarm quittieren |
-| 4 | 0x0010 | Zählung pausieren |
+Die sichtbare ERP-/Auftragsnummer wird dadurch nicht verändert und kann später erneut verwendet werden, ohne einen alten LOGO!-Auftrag mit einer neuen Produktionsinstanz zu verwechseln.
 
-One-Shot-Befehle werden nur bearbeitet, wenn `CommandSequence != AckSequence`. Nach Bearbeitung übernimmt die LOGO! die Sequenz in `AckSequence`.
+### 2.4 HoldAfterVeNumber
 
-Partcounter verwendet Sequenznummern 1…32767. Nach 32767 folgt wieder 1. Beim PC-Neustart liest Partcounter zuerst den aktuellen `AckSequence`-Wert und beginnt mit dem darauffolgenden Wert. Damit wird weder die LOGO!-16-Bit-Grenze verletzt noch der erste Befehl nach Neustart als altes Duplikat verworfen.
+`HoldAfterVeNumber` ist die Nummer der nächsten VE, nach deren Abschluss die LOGO! lokal weitere Zählpulse blockieren muss.
 
-## LOGO! → PC Status HR20–HR37
+Beispiel:
 
-| HR | LOGO VM | Offset | Datentyp | Bedeutung |
-|---:|---|---:|---|---|
-| HR20 | VW38 | 0 | UINT16 | ProtocolVersion = 2 |
-| HR21 | VW40 | 1 | UINT16 | StatusWord |
-| HR22 | VW42 | 2 | UINT16 | CurrentVECycles High Word |
-| HR23 | VW44 | 3 | UINT16 | CurrentVECycles Low Word |
-| HR24 | VW46 | 4 | UINT16 | TotalCycles High Word |
-| HR25 | VW48 | 5 | UINT16 | TotalCycles Low Word |
-| HR26 | VW50 | 6 | UINT16 | CurrentVENumber |
-| HR27 | VW52 | 7 | UINT16 | CompletedVEs |
-| HR28 | VW54 | 8 | UINT16 | LastCompletedVECycles High Word, V2 = 0 |
-| HR29 | VW56 | 9 | UINT16 | LastCompletedVECycles Low Word |
-| HR30 | VW58 | 10 | UINT16 | AckSequence 0…32767 |
-| HR31 | VW60 | 11 | UINT16 | ActiveCavitiesEcho |
-| HR32 | VW62 | 12 | UINT16 | LastCompletedVENumber |
-| HR33 | VW64 | 13 | UINT16 | CompletionSequence 0…32767 |
-| HR34 | VW66 | 14 | UINT16 | LOGO Heartbeat 1…32767 |
-| HR35 | VW68 | 15 | UINT16 | ErrorCode |
-| HR36 | VW70 | 16 | UINT16 | LastCompletionReason |
-| HR37 | VW72 | 17 | UINT16 | LastCompletedCavities |
+```text
+Auftrag: 9500 Teile
+Standard-VE: 1000
+Kavitäten: 8
 
-### Parameter-VM-Zuordnung der Zähler
+VE 1…9 können autonom laufen.
+Nach VE 9: lokaler Completion-Hold.
+PC setzt Ziel der letzten Teil-VE und neuen Hold auf VE 10.
+Erst nach bestätigter Neuparametrierung und Resume läuft die Zählung weiter.
+```
 
-- `CurrentVECycles.Counter` → **VD42** (HR22/HR23)
-- `TotalCycles.Counter` → **VD46** (HR24/HR25)
-- `TargetCyclesPerVE / CurrentVECycles.On Threshold` → **VD18** (HR10/HR11)
+## 3. CommandWord HR3
 
-Da `CurrentVECycles <= 32767`, bleibt dessen High Word immer 0. Der Gesamtzykluszähler darf den 16-Bit-Bereich überschreiten und wird deshalb vollständig als DWord ausgewertet.
+Die niederwertigen Word-Bits liegen auf LOGO!-Seite in `V5.x`.
 
-`LastCompletedVECycles` wird beim VE-Abschluss vor dem Reset in einem 16-Bit-Arbeitswert gespeichert. HR28 bleibt 0; HR29 enthält den gepufferten Zykluswert. Die DWord-Darstellung bleibt bewusst erhalten, damit die PC-Struktur einheitlich bleibt und eine spätere Protokollerweiterung möglich ist.
+| Bit | Maske | LOGO-Bit | Bedeutung |
+|---:|---:|---|---|
+| 0 | 0x0001 | V5.0 | AutomaticEnabled, Level |
+| 1 | 0x0002 | V5.1 | ResetJob / neuer Auftrag, One-Shot |
+| 2 | 0x0004 | V5.2 | ManualVEChange, One-Shot |
+| 3 | 0x0008 | V5.3 | AcknowledgeAlarm, One-Shot |
+| 4 | 0x0010 | V5.4 | PauseCounting, Level |
 
-## StatusWord HR21
+One-Shot-Bits werden nur bei `CommandSequence != AckSequence` verarbeitet. Danach übernimmt die LOGO! die bearbeitete Sequenz in `AckSequence`.
 
-| Bit | Maske | Bedeutung |
-|---:|---:|---|
-| 0 | 0x0001 | LOGO bereit |
-| 1 | 0x0002 | Automatik aktiv |
-| 2 | 0x0004 | VE-Wechsel läuft |
-| 3 | 0x0008 | Alarm |
-| 4 | 0x0010 | Zykluseingang aktiv |
-| 5 | 0x0020 | PC-Heartbeat steht |
+## 4. LOGO! → PC – HR20 bis HR40
 
-Ein stehender PC-Heartbeat ist Diagnose, kein Produktions-Stopp-Befehl.
+| HR | Status-Index | LOGO VM | Typ | Name |
+|---:|---:|---|---|---|
+| HR20 | 0 | VW38 | UINT16 | ProtocolVersion = 3 |
+| HR21 | 1 | VW40 | UINT16 | StatusWord |
+| HR22 | 2 | VW42 | UINT16 | CurrentVECycles_HI |
+| HR23 | 3 | VW44 | UINT16 | CurrentVECycles_LO |
+| HR24 | 4 | VW46 | UINT16 | TotalCycles_HI |
+| HR25 | 5 | VW48 | UINT16 | TotalCycles_LO |
+| HR26 | 6 | VW50 | UINT16 | CurrentVENumber |
+| HR27 | 7 | VW52 | UINT16 | CompletedVEs |
+| HR28 | 8 | VW54 | UINT16 | LastCompletedVECycles_HI |
+| HR29 | 9 | VW56 | UINT16 | LastCompletedVECycles_LO |
+| HR30 | 10 | VW58 | UINT16 | AckSequence |
+| HR31 | 11 | VW60 | UINT16 | ActiveCavitiesEcho |
+| HR32 | 12 | VW62 | UINT16 | LastCompletedVENumber |
+| HR33 | 13 | VW64 | UINT16 | CompletionSequence |
+| HR34 | 14 | VW66 | UINT16 | LogoHeartbeat |
+| HR35 | 15 | VW68 | UINT16 | ErrorCode |
+| HR36 | 16 | VW70 | UINT16 | LastCompletionReason |
+| HR37 | 17 | VW72 | UINT16 | LastCompletedCavities |
+| HR38 | 18 | VW74 | UINT16 | HoldAfterVeNumberEcho |
+| HR39 | 19 | VW76 | UINT16 | JobIdEcho_HI |
+| HR40 | 20 | VW78 | UINT16 | JobIdEcho_LO |
 
-## ErrorCode HR35
+### 4.1 Parameter-/VM-Zuordnungen
+
+- `CurrentVECycles.Counter` → `VD42` → HR22/HR23.
+- `TotalCycles.Counter` → `VD46` → HR24/HR25.
+- `CurrentVECycles.OnThreshold` → `VD18` ← HR10/HR11.
+- `LastCompletedVECycles` → VW56; HR28 bleibt bei der freigegebenen 32767-VE-Grenze 0.
+- `AckSequence` → VW58.
+- `LastCompletionReason` → VW70.
+- `LastCompletedCavities` → VW72.
+- `HoldAfterVeNumberEcho` → VW74.
+- `JobIdEcho` → VW76/VW78.
+
+## 5. StatusWord HR21
+
+Die niederwertigen Bits liegen in `VB41`.
+
+| Bit | Maske | LOGO-Bit | Bedeutung |
+|---:|---:|---|---|
+| 0 | 0x0001 | V41.0 | Ready |
+| 1 | 0x0002 | V41.1 | AutomaticEnabled |
+| 2 | 0x0004 | V41.2 | VE-Wechslerimpuls aktiv |
+| 3 | 0x0008 | V41.3 | Alarm |
+| 4 | 0x0010 | V41.4 | I1 Zykluseingang aktiv |
+| 5 | 0x0020 | V41.5 | PC-Heartbeat stale |
+| 6 | 0x0040 | V41.6 | Completion-Hold armed |
+| 7 | 0x0080 | V41.7 | Completion-Hold active |
+
+`PcHeartbeatStale` ist Diagnose. Ein Kommunikationsausfall stoppt normale gleichartige Voll-VE nicht künstlich. Der lokale Completion-Hold stoppt dagegen gezielt an dem vorab geplanten Grenzpunkt.
+
+## 6. ErrorCode HR35
+
+Freigegebener Grundsatz:
 
 | Wert | Bedeutung |
 |---:|---|
 | 0 | kein Fehler |
 | 1 | falsche Protokollversion |
 | 2 | ungültige Kavitätenzahl |
-| 3 | TargetPartsPerVE = 0 |
-| 4 | TargetCyclesPerVE außerhalb 1…32767 |
-| 5 | Ventilimpuls außerhalb 50…5000 ms bzw. kein 10-ms-Raster |
-| 10 | optionale Wechsler-Endlage nicht rechtzeitig erreicht |
+| 3 | ungültiges Teileziel |
+| 4 | Zielzyklen außerhalb 1…32767 |
+| 5 | Ventilimpuls außerhalb 50…5000 ms / ungültiges Raster |
+| 10 | optionale Endlage VE-Wechsler nicht rechtzeitig erreicht |
 | 30 | interner ungültiger Ablaufzustand |
 
-## LastCompletionReason HR36
+Weitere Fehlercodes dürfen erst nach synchroner Erweiterung von PC-Code, LOGO!-Engineering und Testmatrix belegt werden.
+
+## 7. LastCompletionReason HR36
 
 | Wert | Bedeutung |
 |---:|---|
-| 0 | unbekannt / noch keine VE |
+| 0 | unbekannt / noch kein Abschluss |
 | 1 | automatisch voll |
 | 2 | manueller VE-Wechsel |
 
-## VE-Abschluss-Handshake
+## 8. Command/Ack-Transaktion
 
-Vor dem Zurücksetzen des aktuellen VE-Zählers muss die LOGO! in definierter Reihenfolge:
+PC-Sequenz:
 
-1. `LastCompletedVECycles = CurrentVECycles` speichern.
-2. `LastCompletedCavities = ActiveCavitiesLatched` speichern.
-3. `LastCompletedVENumber = CurrentVENumber` speichern.
-4. `LastCompletionReason` setzen.
-5. `CompletedVEs` erhöhen.
-6. `CompletionSequence` erhöhen; nach 32767 auf 1 zurückführen.
-7. VE-Wechselstatus setzen und den pneumatischen Impuls ausführen.
-8. `CurrentVENumber` erhöhen.
-9. `CurrentVECycles` zurücksetzen.
+1. Aktuellen LOGO!-Snapshot lesen.
+2. Lokale CommandSequence mit `AckSequence` synchronisieren.
+3. Nächste Sequenz 1…32767 bilden.
+4. Parameter + CommandWord schreiben.
+5. Status pollen.
+6. Erst bei passender `AckSequence` weiterprüfen.
+7. `ErrorCode == 0` verlangen.
+8. Bei Parametertelegramm `ActiveCavitiesEcho`, `HoldAfterVeNumberEcho` und `JobIdEcho` mit Soll vergleichen.
+9. Erst dann den Vorgang lokal als bestätigt behandeln.
 
-Der PC erkennt eine neue fertige VE an jeder Änderung von `CompletionSequence` und berechnet:
+Bei Verbindungs-/Antwortverlust wird derselbe Sequenzwert erneut verwendet. Meldet die LOGO! bereits diese AckSequence, wird nicht erneut ausgelöst, sondern nur die Antwort validiert.
 
-```text
-LastCompletedVEQuantity = LastCompletedVECycles × LastCompletedCavities
-```
+## 9. VE-Abschluss-Handshake
 
-## Heartbeat-Verhalten
+Vor Reset der aktuellen VE müssen die Abschlussdaten stabil gespeichert werden:
 
-- PC schreibt zyklisch Werte 1…32767 in HR12 und springt danach auf 1.
-- LOGO! schreibt zyklisch Werte 1…32767 in HR34 und springt danach auf 1.
-- Ein nicht mehr wechselnder Wert erzeugt Kommunikationsdiagnose.
-- **Ein PC-/WLAN-Ausfall darf die lokale Zählung und den automatischen VE-Wechsel nicht stoppen.**
-- Sicherheitsfunktionen der Maschine dürfen niemals von diesem Protokoll abhängen.
+1. LastCompletedVECycles übernehmen.
+2. LastCompletedCavities übernehmen.
+3. LastCompletedVENumber übernehmen.
+4. LastCompletionReason setzen.
+5. CompletedVEs erhöhen.
+6. CompletionSequence erhöhen / bei 32767 auf 1 zurückführen.
+7. VE-Wechslerimpuls ausführen.
+8. CurrentVENumber fortschreiben.
+9. CurrentVECycles zurücksetzen.
+10. Wenn die abgeschlossene VE `HoldAfterVeNumber` erreicht hat, muss der lokale CountGate für nachfolgende Zyklusflanken blockiert bleiben.
 
-## 32-Bit-Werte
+Der PC erkennt eine neue VE an der Änderung von `CompletionSequence`.
 
-Partcounter V2 überträgt DWord-Werte als High Word, danach Low Word:
+## 10. Recovery nach PC-Neustart
+
+Ein offener Echtauftrag wird auf PC-Seite persistiert. Nach Neustart gilt:
+
+1. Auftrag lokal nur PAUSIERT laden.
+2. LOGO!-Protocol V3 lesen.
+3. `JobIdEcho` gegen den gespeicherten Produktionsinstanz-Token prüfen.
+4. `ActiveCavitiesEcho` prüfen.
+5. LOGO! kontrolliert pausieren und erneut lesen.
+6. Zähler-/VE-/Hold-Zustand rekonstruieren.
+7. Auftrag weiterhin PAUSIERT lassen.
+8. Fortsetzen nur durch bewusste Bedieneraktion.
+
+Ein unsicherer Start (`PendingActivation`) darf nur verworfen werden, wenn die LOGO! nachweislich keinen aktiven Produktionszustand besitzt.
+
+## 11. Heartbeats
+
+- PC: HR12, 1…32767, danach Wrap auf 1.
+- LOGO!: HR34, 1…32767, danach Wrap auf 1.
+- Entscheidend ist eine Wertänderung im Diagnosefenster.
+- Heartbeat-Ausfall ist Diagnose und keine Safety-Funktion.
+
+## 12. 32-Bit-Wortreihenfolge
 
 ```text
 value = (high << 16) | low
 ```
 
-Die VM-DWord-Belegung folgt der Siemens-Darstellung mit höchstwertigem Byte zuerst. Die tatsächliche Zuordnung wird bei der ersten Testmaschine zusätzlich mit bekannten Testwerten verifiziert.
+High Word wird immer zuerst übertragen. Die tatsächliche Wortreihenfolge ist Bestandteil der M01-Abnahme mit bekannten Testmustern.
 
-## Betriebsgrenzen V2
+## 13. Betriebsgrenzen Protocol V3
 
-- Kavitäten: 1…64
-- Zyklen je VE: 1…32767
-- Ventilimpuls: 50…5000 ms in 10-ms-Schritten
-- CommandSequence: 1…32767, zyklisch
-- Heartbeat: 1…32767, zyklisch
-- Gesamtzykluszähler LOGO!: bis 999999 je Auftrag; größere Produktionslose müssen in mehrere LOGO!-Aufträge segmentiert werden, solange kein erweitertes Zählkonzept freigegeben ist.
+- Kavitäten: 1…64.
+- Zyklen je VE: 1…32767.
+- Gesamtzyklen je LOGO-Auftrag: 0…999999.
+- VE-Nummer / CompletedVEs: maximal 32767 je Auftrag.
+- Ventilimpuls: 50…5000 ms in 10-ms-Schritten.
+- CommandSequence: 1…32767 zyklisch.
+- Heartbeats: 1…32767 zyklisch.
+- JobId: nonzero; High-/Low-Word für den Partcounter-Generator jeweils im positiven LOGO-Bereich.
 
-## Kompatibilität
+Aufträge oberhalb der freigegebenen LOGO-Zählergrenzen werden bereits vor dem Start vom PC abgewiesen und müssen segmentiert werden.
 
-Partcounter R001.7 erwartet `ProtocolVersion = 2`. Ein älteres LOGO!-Programm mit Protokoll V1 wird bewusst abgewiesen. Vor Produktivbetrieb müssen PC-Software und LOGO!-Programm dieselbe Protokollversion verwenden.
+## 14. Safety-Grenze
+
+Partcounter und die Standard-LOGO! sind **keine Sicherheitssteuerung**. Not-Halt, Schutztüren, sichere Bewegungsfreigaben und sonstige Safety-Funktionen verbleiben vollständig in den dafür vorgesehenen sicheren Maschinenstromkreisen bzw. Safety-Steuerungen.
