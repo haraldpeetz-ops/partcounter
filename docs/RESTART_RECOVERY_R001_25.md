@@ -41,3 +41,17 @@ CI prüft Persistenz, Rekonstruktion und Doppel-Completion-Schutz. Die reale Wie
 Wenn ein realer Auftragswrite wegen Verbindungsabbruch nicht eindeutig bestätigt werden kann, bleibt `PendingActivation` absichtlich erhalten. Partcounter darf auf dieser Maschine keinen neuen Auftrag starten, weil die LOGO! den Write möglicherweise bereits verarbeitet hat. Der Recovery-Abgleich entscheidet später anhand von `JobIdEcho`.
 
 Ein Pending-Checkpoint mit abweichender JobId wird nur dann automatisch verworfen, wenn die LOGO! **nachweislich leer/inaktiv** ist: JobIdEcho=0, TotalCycles=0, CurrentParts=0, CompletedVEs=0 und AutomaticEnabled=0. Jeder andere fremde oder unklare LOGO!-Zustand blockiert die Echtbetriebsaktivierung.
+
+
+## Snapshot-Isolation während Recovery
+Beim Umschalten in Echtbetrieb startet die Kommunikationsflotte zunächst mit deaktivierter `SnapshotReceived`-Publikation. Polling/Heartbeat darf laufen, aber kein normaler MachineState-/VE-Eventpfad wird aktiviert, bevor JobId, Kavitäten und Grenzzustand abgeglichen sind. Direkte Recovery-Snapshots werden ebenfalls nicht in den normalen Eventpfad publiziert. Erst nach erfolgreichem Abgleich wird `IsSimulationMode=false` gesetzt und die Snapshot-Publikation freigegeben.
+
+## Offline erreichter Completion-Hold
+Steht die LOGO! beim Wiederanlauf bereits exakt an `HoldAfterVE`, muss `CompletionHoldActive` gesetzt sein. Partcounter schreibt unter bestätigter Pause zuerst das nächste VE-Ziel und den nächsten Hold, liest anschließend einen frischen Snapshot und verlangt:
+- JobIdEcho unverändert,
+- Kavitäten-Echo unverändert,
+- neues HoldAfterVE-Echo korrekt,
+- CompletionHoldArmed aktiv,
+- CompletionHoldActive **gelöst**.
+
+Erst dann darf der Auftrag später durch den Bediener fortgesetzt werden. Ein überschrittener Hold oder ein abgeschlossener Hold ohne `CompletionHoldActive` blockiert den Echtbetrieb. Dieselbe Hold-Lösebestätigung wird auch bei normalen VE-Grenzen, manuellen VE-Neuplanungen sowie neuem/resettem Auftrag verwendet.

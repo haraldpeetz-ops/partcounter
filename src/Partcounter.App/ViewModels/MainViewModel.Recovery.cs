@@ -62,7 +62,6 @@ public sealed partial class MainViewModel
 
             try
             {
-                await _fleet.SetMachinePollingEnabledAsync(machineNumber, enabled: true);
                 var snapshot = await _fleet.ReadSnapshotAsync(machineNumber);
 
                 if (snapshot.JobIdEcho != checkpoint.JobId)
@@ -108,13 +107,8 @@ public sealed partial class MainViewModel
                     currentPlan = VeBoundaryPolicy.Plan(machine.CurrentVeNumber, producedBeforeCurrentVe,
                         machine.OrderTargetQuantity, machine.TargetPartsPerVe, machine.ActiveCavities);
 
-                var holdEcho = snapshot.HoldAfterVeNumberEcho;
                 var checkpointHold = checkpoint.ScheduledHoldAfterVeNumber;
                 var planHold = currentPlan?.HoldAfterVeNumber ?? checkpointHold;
-                if (holdEcho == 0 || (holdEcho != checkpointHold && holdEcho != planHold))
-                    throw new InvalidOperationException($"HoldAfterVE-Echo {holdEcho} passt weder zu Checkpoint {checkpointHold} noch zur aktuellen Planung {planHold}.");
-
-                _scheduledCompletionHolds[machineNumber] = holdEcho;
 
                 if (snapshot.CompletedVes > checkpoint.LastKnownCompletedVes)
                 {
@@ -133,10 +127,12 @@ public sealed partial class MainViewModel
                                 currentPlan.HoldAfterVeNumber);
                             await _fleet.UpdateVeTargetAsync(machineNumber, recoveryJob, pauseCounting: true);
                             _scheduledCompletionHolds[machineNumber] = currentPlan.HoldAfterVeNumber;
+                            snapshot = await ConfirmCompletionHoldReleasedAsync(machineNumber, checkpoint.JobId, machine.ActiveCavities, currentPlan.HoldAfterVeNumber);
+                            planHold = currentPlan.HoldAfterVeNumber;
                         }
                         _manualVeReconfigurationPending.Remove(machineNumber);
                         await _database.AddEventAsync(machineNumber, "RECOVERY_MANUAL_VE_RESOLVED",
-                            $"Manueller VE-Wechsel wurde während des Neustarts eindeutig über CompletedVEs/LastCompletionReason erkannt und sicher neu geplant.");
+                            "Manueller VE-Wechsel wurde über CompletedVEs/LastCompletionReason eindeutig erkannt, unter bestätigter Pause neu geplant und der Completion-Hold ist gelöst.");
                     }
                     else
                     {
@@ -146,17 +142,37 @@ public sealed partial class MainViewModel
                     }
                 }
 
-                if (machine.OrderState == ProductionOrderState.Completed)
-                {
-                    if (snapshot.CurrentVeNumber > holdEcho &&
-                        (snapshot.StatusWord & ModbusRegisterMap.StatusCompletionHoldActive) == 0)
-                        throw new InvalidOperationException("Auftrag ist laut Zähler vollständig, aber der erwartete Completion-Hold ist nicht aktiv.");
+                var boundaryDecision = RecoveryBoundaryPolicy.Decide(
+                    snapshot, checkpointHold, planHold, machine.OrderState == ProductionOrderState.Completed);
+                if (boundaryDecision.Action == RecoveryBoundaryAction.Reject)
+                    throw new InvalidOperationException(boundaryDecision.Error ?? "Ungültiger LOGO!-Recovery-Grenzzustand.");
 
+                if (boundaryDecision.Action == RecoveryBoundaryAction.ReconfigureHeldBoundary)
+                {
+                    if (currentPlan is null)
+                        throw new InvalidOperationException("LOGO! steht am Completion-Hold, aber es existiert kein nächster VE-Plan.");
+
+                    var recoveryJob = new JobParameters(checkpoint.JobId, machine.ArticleNumber, machine.ToolNumber,
+                        machine.ActiveCavities, currentPlan.TargetParts, currentPlan.TargetCycles, ValvePulseMs,
+                        currentPlan.HoldAfterVeNumber);
+                    await _fleet.UpdateVeTargetAsync(machineNumber, recoveryJob, pauseCounting: true);
+                    _scheduledCompletionHolds[machineNumber] = currentPlan.HoldAfterVeNumber;
+                    snapshot = await ConfirmCompletionHoldReleasedAsync(machineNumber, checkpoint.JobId, machine.ActiveCavities, currentPlan.HoldAfterVeNumber);
+                    await _database.AddEventAsync(machineNumber, "RECOVERY_BOUNDARY_RECONFIGURED",
+                        $"Offline erreichter Grenzhalt VE {checkpointHold} unter Pause neu konfiguriert: Ziel {currentPlan.TargetParts} Teile, nächster Hold VE {currentPlan.HoldAfterVeNumber}. HoldActive ist bestätigt gelöst.");
+                }
+                else
+                {
+                    _scheduledCompletionHolds[machineNumber] = snapshot.HoldAfterVeNumberEcho;
+                }
+
+                if (boundaryDecision.Action == RecoveryBoundaryAction.FinalHeldBoundary)
+                {
                     _scheduledCompletionHolds.Remove(machineNumber);
                     _manualVeReconfigurationPending.Remove(machineNumber);
                     await DeleteLiveOrderCheckpointAsync(machineNumber);
                     await _database.AddEventAsync(machineNumber, "RECOVERY_JOB_COMPLETED",
-                        $"Auftrag {machine.OrderNumber} war beim Wiederanlauf bereits vollständig. LOGO-Zählung wurde bestätigt pausiert; fehlende Offline-VE-Zeitstempel wurden nicht erfunden.");
+                        $"Auftrag {machine.OrderNumber} war beim Wiederanlauf bereits vollständig und steht am bestätigten finalen Completion-Hold. Fehlende Offline-VE-Zeitstempel wurden nicht erfunden.");
                     _startupRecoveryMachines.Remove(machineNumber);
                     continue;
                 }
@@ -175,6 +191,26 @@ public sealed partial class MainViewModel
         }
 
         return errors;
+    }
+
+    private async Task<LogoSnapshot> ConfirmCompletionHoldReleasedAsync(
+        int machineNumber,
+        uint expectedJobId,
+        ushort expectedCavities,
+        ushort expectedHoldAfterVeNumber)
+    {
+        var snapshot = await _fleet.ReadSnapshotAsync(machineNumber);
+        if (snapshot.JobIdEcho != expectedJobId)
+            throw new InvalidOperationException($"JobIdEcho {snapshot.JobIdEcho} entspricht nach Rekonfiguration nicht Soll {expectedJobId}.");
+        if (snapshot.ActiveCavitiesEcho != expectedCavities)
+            throw new InvalidOperationException($"Kavitäten-Echo {snapshot.ActiveCavitiesEcho} entspricht nach Rekonfiguration nicht Soll {expectedCavities}.");
+        if (snapshot.HoldAfterVeNumberEcho != expectedHoldAfterVeNumber)
+            throw new InvalidOperationException($"HoldAfterVE-Echo {snapshot.HoldAfterVeNumberEcho} entspricht nach Rekonfiguration nicht Soll {expectedHoldAfterVeNumber}.");
+        if ((snapshot.StatusWord & ModbusRegisterMap.StatusCompletionHoldArmed) == 0)
+            throw new InvalidOperationException("CompletionHoldArmed ist nach Rekonfiguration nicht aktiv.");
+        if ((snapshot.StatusWord & ModbusRegisterMap.StatusCompletionHoldActive) != 0)
+            throw new InvalidOperationException("CompletionHoldActive wurde durch die bestätigte Rekonfiguration nicht gelöst.");
+        return snapshot;
     }
 
     private async Task PersistPendingActivationAsync(

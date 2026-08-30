@@ -117,7 +117,48 @@ public sealed class ActiveOrderRecoveryTests
             Snapshot(jobId: 0, totalCycles: 0, currentParts: 0, completedVes: 0, statusWord: ModbusRegisterMap.StatusAutomaticEnabled)));
     }
 
-    private static LogoSnapshot Snapshot(uint jobId, uint totalCycles, uint currentParts, ushort completedVes, ushort statusWord) => new(
+    [Fact]
+    public void RecoveryBoundary_RequiresReconfigurationAtHeldBoundary()
+    {
+        var snapshot = Snapshot(jobId: 1, totalCycles: 100, currentParts: 0, completedVes: 10,
+            statusWord: ModbusRegisterMap.StatusCompletionHoldActive | ModbusRegisterMap.StatusCompletionHoldArmed, holdAfterVe: 10);
+        var decision = RecoveryBoundaryPolicy.Decide(snapshot, checkpointHold: 10, plannedHold: 11, orderCompleted: false);
+        Assert.Equal(RecoveryBoundaryAction.ReconfigureHeldBoundary, decision.Action);
+    }
+
+    [Fact]
+    public void RecoveryBoundary_RejectsPassedHoldWithoutLocalStop()
+    {
+        var snapshot = Snapshot(jobId: 1, totalCycles: 110, currentParts: 0, completedVes: 11,
+            statusWord: ModbusRegisterMap.StatusCompletionHoldArmed, holdAfterVe: 10);
+        var decision = RecoveryBoundaryPolicy.Decide(snapshot, checkpointHold: 10, plannedHold: 12, orderCompleted: false);
+        Assert.Equal(RecoveryBoundaryAction.Reject, decision.Action);
+        Assert.Contains("überschritten", decision.Error);
+    }
+
+    [Fact]
+    public void RecoveryBoundary_FinalOrderRequiresActiveFinalHold()
+    {
+        var held = Snapshot(jobId: 1, totalCycles: 100, currentParts: 0, completedVes: 10,
+            statusWord: ModbusRegisterMap.StatusCompletionHoldActive | ModbusRegisterMap.StatusCompletionHoldArmed, holdAfterVe: 10);
+        Assert.Equal(RecoveryBoundaryAction.FinalHeldBoundary,
+            RecoveryBoundaryPolicy.Decide(held, 10, 10, orderCompleted: true).Action);
+
+        var notHeld = held with { StatusWord = ModbusRegisterMap.StatusCompletionHoldArmed };
+        Assert.Equal(RecoveryBoundaryAction.Reject,
+            RecoveryBoundaryPolicy.Decide(notHeld, 10, 10, orderCompleted: true).Action);
+    }
+
+    [Fact]
+    public void RecoveryBoundary_AllowsUpdatedHoldEchoMatchingCurrentPlan()
+    {
+        var snapshot = Snapshot(jobId: 1, totalCycles: 50, currentParts: 128, completedVes: 5,
+            statusWord: ModbusRegisterMap.StatusCompletionHoldArmed, holdAfterVe: 8);
+        var decision = RecoveryBoundaryPolicy.Decide(snapshot, checkpointHold: 7, plannedHold: 8, orderCompleted: false);
+        Assert.Equal(RecoveryBoundaryAction.ContinuePaused, decision.Action);
+    }
+
+    private static LogoSnapshot Snapshot(uint jobId, uint totalCycles, uint currentParts, ushort completedVes, ushort statusWord, ushort holdAfterVe = 0) => new(
         CurrentParts: currentParts,
         TotalCycles: totalCycles,
         CurrentVeNumber: 1,
@@ -132,7 +173,7 @@ public sealed class ActiveOrderRecoveryTests
         ErrorCode: 0,
         LastCompletionReason: VeCompletionReason.Unknown,
         ReadAtUtc: DateTime.UtcNow,
-        HoldAfterVeNumberEcho: 0,
+        HoldAfterVeNumberEcho: holdAfterVe,
         JobIdEcho: jobId);
 
     private static ActiveOrderCheckpoint CreateCheckpoint() => new(

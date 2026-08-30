@@ -25,14 +25,14 @@ public sealed class MachineFleetService : IAsyncDisposable
     public static MachineCommunicationDiagnostics? GetGlobalCommunicationDiagnostics(int machineNumber) =>
         GlobalDiagnostics.TryGetValue(machineNumber, out var diagnostics) ? diagnostics : null;
 
-    public async Task StartAsync(IEnumerable<MachineConfiguration> configurations)
+    public async Task StartAsync(IEnumerable<MachineConfiguration> configurations, bool publishSnapshots = true)
     {
         await StopAsync();
         _cts = new CancellationTokenSource();
 
         foreach (var configuration in configurations.Where(c => c.Enabled))
         {
-            var session = new Session(configuration);
+            var session = new Session(configuration, publishSnapshots);
             _sessions[configuration.MachineNumber] = session;
             UpdateGlobalDiagnostics(session);
             _workers.Add(Task.Run(() => PollLoopAsync(session, _cts.Token), _cts.Token));
@@ -79,9 +79,26 @@ public sealed class MachineFleetService : IAsyncDisposable
             session.LastMessage = null;
             session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
             UpdateGlobalDiagnostics(session);
-            SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(machineNumber, snapshot));
             PublishConnection(session, ConnectionState.Online, null);
             return snapshot;
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
+    }
+
+    public async Task SetSnapshotPublishingEnabledAsync(
+        int machineNumber,
+        bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        var session = GetSession(machineNumber);
+        await session.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            session.SnapshotPublishingEnabled = enabled;
+            UpdateGlobalDiagnostics(session);
         }
         finally
         {
@@ -372,7 +389,8 @@ public sealed class MachineFleetService : IAsyncDisposable
                     session.LastMessage = null;
                     session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
                     UpdateGlobalDiagnostics(session);
-                    SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
+                    if (session.SnapshotPublishingEnabled)
+                        SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
                     PublishConnection(session, ConnectionState.Online, null);
                 }
                 finally
@@ -418,7 +436,8 @@ public sealed class MachineFleetService : IAsyncDisposable
         session.LastMessage = null;
         session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
         UpdateGlobalDiagnostics(session);
-        SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
+        if (session.SnapshotPublishingEnabled)
+            SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
     }
 
     private Session GetSession(int machineNumber)
@@ -475,16 +494,18 @@ public sealed class MachineFleetService : IAsyncDisposable
         private ushort _heartbeat;
         private bool _commandSequenceSynchronized;
 
-        public Session(MachineConfiguration configuration)
+        public Session(MachineConfiguration configuration, bool snapshotPublishingEnabled)
         {
             Configuration = configuration;
             Client = new LogoModbusClient(configuration);
+            SnapshotPublishingEnabled = snapshotPublishingEnabled;
         }
 
         public MachineConfiguration Configuration { get; }
         public LogoModbusClient Client { get; }
         public SemaphoreSlim Gate { get; } = new(1, 1);
         public bool PollingEnabled { get; set; } = true;
+        public bool SnapshotPublishingEnabled { get; set; }
         public ConnectionState LastState { get; set; } = ConnectionState.Offline;
         public bool ConnectionStatePublishedOnline { get; set; }
         public LogoSnapshot? LastSnapshot { get; set; }

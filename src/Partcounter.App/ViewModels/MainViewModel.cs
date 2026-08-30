@@ -259,7 +259,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
             foreach (var machine in Machines)
                 machine.ConnectionState = ConnectionState.Offline;
 
-            await _fleet.StartAsync(Machines.Select(m => m.Configuration));
+            await _fleet.StartAsync(Machines.Select(m => m.Configuration), publishSnapshots: false);
 
             var recoveryErrors = await ReconcilePendingLiveOrdersAsync();
             if (recoveryErrors.Count > 0)
@@ -271,12 +271,23 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
                 return;
             }
 
-            foreach (var machine in Machines.Where(m => m.IsTemporarilyDisabled))
-                await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
-
             var recoveredCount = _startupRecoveryMachines.Count;
             _startupRecoveryMachines.Clear();
             IsSimulationMode = false;
+
+            foreach (var machine in Machines)
+            {
+                if (machine.IsTemporarilyDisabled)
+                {
+                    await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
+                    await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
+                }
+                else
+                {
+                    await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: true);
+                }
+            }
+
             StatusMessage = recoveredCount > 0
                 ? $"Echtbetrieb aktiv: {recoveredCount} wiederhergestellte(r) Auftrag/Aufträge mit JobId/Kavitäten/Hold gegen die LOGO! verifiziert und absichtlich PAUSIERT. Fortsetzen muss je Maschine bewusst erfolgen."
                 : "Echtbetrieb aktiv: Partcounter verbindet parallel mit allen freigegebenen LOGO!-Stationen. Protocol V3 wird zwingend geprüft.";
@@ -351,7 +362,10 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
         if (!IsSimulationMode)
         {
             if (wasTemporarilyDisabled)
+            {
                 await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: true);
+                await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
+            }
 
             var liveJobId = JobInstanceIdFactory.Create();
             _activeJobIds[machine.Configuration.MachineNumber] = liveJobId;
@@ -379,6 +393,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
             try
             {
                 await _fleet.SendJobAsync(machine.Configuration.MachineNumber, job);
+                await ConfirmCompletionHoldReleasedAsync(machine.Configuration.MachineNumber, job.JobId, article.ActiveCavities, firstPlan.HoldAfterVeNumber);
             }
             catch (Exception ex)
             {
@@ -401,6 +416,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
 
         machine.StartOrder(article, order, OrderTargetQuantity);
         _scheduledCompletionHolds[machine.Configuration.MachineNumber] = firstPlan.HoldAfterVeNumber;
+        if (!IsSimulationMode && wasTemporarilyDisabled)
+            await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: true);
         SelectedMachine = machine;
 
         StatusMessage =
@@ -572,9 +589,16 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
                 if (disable && machine.OrderState == ProductionOrderState.Running)
                     await _fleet.PauseCountingAsync(machine.Configuration.MachineNumber);
 
-                await _fleet.SetMachinePollingEnabledAsync(
-                    machine.Configuration.MachineNumber,
-                    enabled: !disable);
+                if (disable)
+                {
+                    await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
+                    await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
+                }
+                else
+                {
+                    await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: true);
+                    await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: true);
+                }
             }
 
             machine.SetTemporarilyDisabled(disable);
@@ -702,6 +726,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
                 resetPlan.HoldAfterVeNumber);
 
             await _fleet.SendJobAsync(machine.Configuration.MachineNumber, resetJob);
+            await ConfirmCompletionHoldReleasedAsync(machine.Configuration.MachineNumber, resetJob.JobId, machine.ActiveCavities, resetPlan.HoldAfterVeNumber);
             machine.ResetCounters();
             _scheduledCompletionHolds[machine.Configuration.MachineNumber] = resetPlan.HoldAfterVeNumber;
             _manualVeReconfigurationPending.Remove(machine.Configuration.MachineNumber);
@@ -1009,6 +1034,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
         {
             await _fleet.UpdateVeTargetAsync(machineNumber, nextJob, pauseCounting: true);
             _scheduledCompletionHolds[machineNumber] = nextPlan.HoldAfterVeNumber;
+            await ConfirmCompletionHoldReleasedAsync(machineNumber, nextJob.JobId, machine.ActiveCavities, nextPlan.HoldAfterVeNumber);
             _manualVeReconfigurationPending.Remove(machineNumber);
             if (machine.OrderState == ProductionOrderState.Running)
                 await _fleet.ResumeCountingAsync(machineNumber);
@@ -1114,6 +1140,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
         {
             await _fleet.UpdateVeTargetAsync(machineNumber, nextJob, pauseCounting: true);
             _scheduledCompletionHolds[machineNumber] = nextPlan.HoldAfterVeNumber;
+            await ConfirmCompletionHoldReleasedAsync(machineNumber, nextJob.JobId, machine.ActiveCavities, nextPlan.HoldAfterVeNumber);
             if (machine.OrderState == ProductionOrderState.Running)
                 await _fleet.ResumeCountingAsync(machineNumber);
         }
