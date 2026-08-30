@@ -1,0 +1,26 @@
+name: Apply R001.25 mTLS lifetime fix
+
+on:
+  push:
+    branches: [ r001.25-final-hardening ]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ contains(github.event.head_commit.message, '[apply-mtls]') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python scripts/fix_r00125_mtls_lifetime.py
+      - name: Commit fix
+        shell: pwsh
+        run: |
+          git config user.name "partcounter-ci"
+          git config user.email "partcounter-ci@users.noreply.github.com"
+          git add src/Partcounter.App/Services/AlsIntegrationService.cs src/Partcounter.App/Services/ProAlphaIntegrationService.cs
+          git commit -m "fix: keep mTLS client certificate alive for request lifetime [mtls-applied]"
+          git push origin HEAD:r001.25-final-hardening
