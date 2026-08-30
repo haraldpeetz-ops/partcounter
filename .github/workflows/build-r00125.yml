@@ -2,7 +2,7 @@ name: Build Partcounter R001.25
 
 on:
   push:
-    branches: [ r001.25-final-hardening, main ]
+    branches: [ r001.25-final-hardening, main, 'hotfix/**' ]
   workflow_dispatch:
 
 jobs:
