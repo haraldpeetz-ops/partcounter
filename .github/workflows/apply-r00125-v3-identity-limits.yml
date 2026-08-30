@@ -19,7 +19,7 @@ jobs:
 
       - name: Apply recovery hold and snapshot isolation hardening
         shell: pwsh
-        run: python tools/apply_r00125_recovery_hold_isolation.py
+        run: python tools/run_r00125_recovery_hold_isolation.py
 
       - name: Commit hardened product source
         shell: pwsh
