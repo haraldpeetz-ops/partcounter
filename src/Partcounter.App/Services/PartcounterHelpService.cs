@@ -26,7 +26,7 @@ public sealed record HelpTopic(
 
 public sealed class PartcounterHelpService
 {
-    private const string ResourceSuffix = "PARTCOUNTER_HILFE_R001_19.md";
+    private const string ResourceSuffix = "PARTCOUNTER_HILFE_R001_25.md";
     private IReadOnlyList<HelpTopic>? _topics;
 
     public IReadOnlyList<HelpTopic> Topics => _topics ??= LoadTopics();
