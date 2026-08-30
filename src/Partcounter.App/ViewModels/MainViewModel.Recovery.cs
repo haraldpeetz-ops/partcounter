@@ -7,6 +7,7 @@ public sealed partial class MainViewModel
 {
     private ActiveOrderRecoveryService? _orderRecovery;
     private readonly Dictionary<int, ActiveOrderCheckpoint> _liveOrderCheckpoints = new();
+    private readonly Dictionary<int, uint> _activeJobIds = new();
     private readonly HashSet<int> _startupRecoveryMachines = new();
 
     private ActiveOrderRecoveryService OrderRecovery =>
@@ -35,6 +36,7 @@ public sealed partial class MainViewModel
 
             machine.RestoreRecoveredOrder(checkpoint);
             _liveOrderCheckpoints[checkpoint.MachineNumber] = checkpoint;
+            _activeJobIds[checkpoint.MachineNumber] = checkpoint.JobId;
             _startupRecoveryMachines.Add(checkpoint.MachineNumber);
             if (checkpoint.ScheduledHoldAfterVeNumber > 0)
                 _scheduledCompletionHolds[checkpoint.MachineNumber] = checkpoint.ScheduledHoldAfterVeNumber;
@@ -73,6 +75,7 @@ public sealed partial class MainViewModel
                         await _database.AddEventAsync(machineNumber, "RECOVERY_PENDING_START_NOT_ACTIVE",
                             $"Pending-Auftrag {checkpoint.OrderNumber} (JobId {checkpoint.JobId}) wurde nicht aktiv; LOGO! ist nachweislich leer/inaktiv. Checkpoint wird verworfen.");
                         await DeleteLiveOrderCheckpointAsync(machineNumber);
+                        _activeJobIds.Remove(machineNumber);
                         _scheduledCompletionHolds.Remove(machineNumber);
                         _manualVeReconfigurationPending.Remove(machineNumber);
                         machine.ClearRecoveredOrder();
@@ -179,12 +182,13 @@ public sealed partial class MainViewModel
         ArticleDefinition article,
         string orderNumber,
         uint orderTargetQuantity,
-        VeBoundaryPlan firstPlan)
+        VeBoundaryPlan firstPlan,
+        uint jobId)
     {
         var checkpoint = new ActiveOrderCheckpoint(
             machine.Configuration.MachineNumber,
             orderNumber,
-            StableUInt32(orderNumber),
+            jobId,
             article.ArticleNumber,
             article.Description,
             article.ToolNumber,
@@ -216,7 +220,7 @@ public sealed partial class MainViewModel
         var checkpoint = new ActiveOrderCheckpoint(
             machineNumber,
             machine.OrderNumber,
-            StableUInt32(machine.OrderNumber),
+            GetActiveJobId(machine),
             machine.ArticleNumber,
             machine.ArticleDescription,
             machine.ToolNumber,
@@ -245,5 +249,19 @@ public sealed partial class MainViewModel
         await OrderRecovery.InitializeAsync();
         await OrderRecovery.DeleteAsync(machineNumber);
         _liveOrderCheckpoints.Remove(machineNumber);
+        _activeJobIds.Remove(machineNumber);
+    }
+
+    private uint GetActiveJobId(MachineState machine)
+    {
+        var machineNumber = machine.Configuration.MachineNumber;
+        if (_activeJobIds.TryGetValue(machineNumber, out var jobId) && jobId != 0)
+            return jobId;
+        if (_liveOrderCheckpoints.TryGetValue(machineNumber, out var checkpoint) && checkpoint.JobId != 0)
+        {
+            _activeJobIds[machineNumber] = checkpoint.JobId;
+            return checkpoint.JobId;
+        }
+        throw new InvalidOperationException($"{machine.DisplayName}: keine eindeutige aktive JobId vorhanden; Modbus-Auftragsänderung wird gesperrt.");
     }
 }

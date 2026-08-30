@@ -172,6 +172,9 @@ public sealed class LogoModbusClient : IAsyncDisposable
         if (job.ActiveCavities is < 1 or > 64)
             throw new ArgumentOutOfRangeException(nameof(job), "Active cavities must be between 1 and 64.");
 
+        if (!JobInstanceIdFactory.IsLogoWordSafe(job.JobId))
+            throw new ArgumentOutOfRangeException(nameof(job), "JobId must be nonzero and each 16-bit word must stay in the LOGO analog-safe range 0..32767.");
+
         if (job.TargetPartsPerVe == 0)
             throw new ArgumentOutOfRangeException(nameof(job), "Target parts per VE must be greater than zero.");
 

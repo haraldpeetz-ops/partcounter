@@ -353,10 +353,21 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
             if (wasTemporarilyDisabled)
                 await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: true);
 
-            await PersistPendingActivationAsync(machine, article, order, OrderTargetQuantity, firstPlan);
+            var liveJobId = JobInstanceIdFactory.Create();
+            _activeJobIds[machine.Configuration.MachineNumber] = liveJobId;
+            try
+            {
+                await PersistPendingActivationAsync(machine, article, order, OrderTargetQuantity, firstPlan, liveJobId);
+            }
+            catch (Exception ex)
+            {
+                _activeJobIds.Remove(machine.Configuration.MachineNumber);
+                StatusMessage = $"Auftrag nicht gestartet: Recovery-Checkpoint konnte vor dem LOGO!-Schreiben nicht sicher gespeichert werden: {ex.Message}";
+                return;
+            }
 
             var job = new JobParameters(
-                StableUInt32(order),
+                liveJobId,
                 article.ArticleNumber,
                 article.ToolNumber,
                 article.ActiveCavities,
@@ -473,7 +484,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
                         machine.ActiveCavities);
 
                     var recoveryJob = new JobParameters(
-                        StableUInt32(machine.OrderNumber),
+                        GetActiveJobId(machine),
                         machine.ArticleNumber,
                         machine.ToolNumber,
                         machine.ActiveCavities,
@@ -681,7 +692,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
         try
         {
             var resetJob = new JobParameters(
-                StableUInt32(machine.OrderNumber),
+                GetActiveJobId(machine),
                 machine.ArticleNumber,
                 machine.ToolNumber,
                 machine.ActiveCavities,
@@ -985,7 +996,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
         }
 
         var nextJob = new JobParameters(
-            StableUInt32(machine.OrderNumber),
+            GetActiveJobId(machine),
             machine.ArticleNumber,
             machine.ToolNumber,
             machine.ActiveCavities,
@@ -1090,7 +1101,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
         }
 
         var nextJob = new JobParameters(
-            StableUInt32(machine.OrderNumber),
+            GetActiveJobId(machine),
             machine.ArticleNumber,
             machine.ToolNumber,
             machine.ActiveCavities,
