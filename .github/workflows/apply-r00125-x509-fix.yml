@@ -1,0 +1,26 @@
+name: Apply R001.25 X509 migration
+
+on:
+  push:
+    branches: [ r001.25-final-hardening ]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ contains(github.event.head_commit.message, '[apply-x509]') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python scripts/fix_r00125_x509.py
+      - name: Commit migration
+        shell: pwsh
+        run: |
+          git config user.name "partcounter-ci"
+          git config user.email "partcounter-ci@users.noreply.github.com"
+          git add src/Partcounter.App/Services/AlsIntegrationService.cs src/Partcounter.App/Services/ProAlphaIntegrationService.cs src/Partcounter.App/Services/PartcounterUpdateService.cs
+          git commit -m "fix: migrate certificate loading for .NET 10 [x509-applied]"
+          git push origin HEAD:r001.25-final-hardening
