@@ -1,86 +1,10 @@
-name: Bootstrap Partcounter R001.25 Hardening
+name: Bootstrap Partcounter R001.25 Hardening (retired)
 
 on:
-  push:
-    branches: [ r001.25-final-hardening ]
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
-  harden-build-validate:
-    if: ${{ !contains(github.event.head_commit.message, '[hardening-applied]') }}
-    runs-on: windows-latest
-    timeout-minutes: 40
+  retired:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Apply R001.25 core hardening
-        run: python scripts/apply_r00125_core.py
-
-      - name: Apply R001.25 docs and tests
-        run: python scripts/apply_r00125_docs_tests.py
-
-      - name: Remove generated permanent workflow before bot commit
-        shell: pwsh
-        run: Remove-Item .github/workflows/build-r00125.yml -Force -ErrorAction SilentlyContinue
-
-      - name: Commit hardened source
-        shell: pwsh
-        run: |
-          git config user.name "partcounter-ci"
-          git config user.email "partcounter-ci@users.noreply.github.com"
-          git add -A
-          if (-not (git diff --cached --quiet)) {
-            git commit -m "R001.25: apply final hardening [hardening-applied] [skip ci]"
-            git push origin HEAD:r001.25-final-hardening
-          }
-
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Restore
-        run: dotnet restore Partcounter.sln
-
-      - name: Build Release - warnings are errors
-        run: dotnet build Partcounter.sln -c Release --no-restore
-
-      - name: Unit and regression tests
-        run: dotnet test tests/Partcounter.Tests/Partcounter.Tests.csproj -c Release --no-build --logger "trx;LogFileName=R00125-bootstrap.trx"
-
-      - name: Publish portable folder
-        run: dotnet publish src/Partcounter.App/Partcounter.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/Partcounter_R001_25_Portable_Folder_win-x64
-
-      - name: Real WPF simulation stress test
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts/Validation_R001_25 | Out-Null
-          $exe=(Resolve-Path artifacts/Partcounter_R001_25_Portable_Folder_win-x64/Partcounter.exe).Path
-          $report=(Join-Path (Resolve-Path artifacts/Validation_R001_25).Path STRESS_REPORT_R001_25.txt)
-          $p=Start-Process $exe -ArgumentList '--stress-smoke',"--stress-report=$report" -PassThru
-          if(-not $p.WaitForExit(360000)){try{$p.Kill($true)}catch{};throw 'Stress timeout'}
-          Get-Content $report
-          if($p.ExitCode -ne 0 -or -not (Select-String $report -Pattern 'Ergebnis: PASS' -Quiet)){throw 'Stress failed'}
-
-      - name: Multi-resolution layout test
-        shell: pwsh
-        run: |
-          $exe=(Resolve-Path artifacts/Partcounter_R001_25_Portable_Folder_win-x64/Partcounter.exe).Path
-          $report=(Join-Path (Resolve-Path artifacts/Validation_R001_25).Path LAYOUT_REPORT_R001_25.txt)
-          $p=Start-Process $exe -ArgumentList '--layout-smoke',"--layout-report=$report" -PassThru
-          if(-not $p.WaitForExit(300000)){try{$p.Kill($true)}catch{};throw 'Layout timeout'}
-          Get-Content $report
-          if($p.ExitCode -ne 0 -or -not (Select-String $report -Pattern 'Ergebnis: PASS' -Quiet)){throw 'Layout failed'}
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: R00125_Bootstrap_Validation
-          path: |
-            artifacts/Validation_R001_25
-            tests/Partcounter.Tests/TestResults
-          retention-days: 30
+      - run: echo "R001.25 source hardening has already been applied. Use build-r00125.yml for validation."
