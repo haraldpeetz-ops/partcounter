@@ -26,7 +26,7 @@ public sealed record HelpTopic(
 
 public sealed class PartcounterHelpService
 {
-    private const string ResourceSuffix = "PARTCOUNTER_HILFE_R001_25.md";
+    private const string ResourceMarker = "PARTCOUNTER_HILFE_R001_25";
     private IReadOnlyList<HelpTopic>? _topics;
 
     public IReadOnlyList<HelpTopic> Topics => _topics ??= LoadTopics();
@@ -61,16 +61,29 @@ public sealed class PartcounterHelpService
     private static IReadOnlyList<HelpTopic> LoadTopics()
     {
         var assembly = Assembly.GetExecutingAssembly();
-        var resource = assembly.GetManifestResourceNames()
-            .FirstOrDefault(name => name.EndsWith(ResourceSuffix, StringComparison.OrdinalIgnoreCase));
-        if (resource is null)
+        var resources = assembly.GetManifestResourceNames()
+            .Where(name => name.Contains(ResourceMarker, StringComparison.OrdinalIgnoreCase)
+                           && name.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (resources.Count == 0)
             return Array.Empty<HelpTopic>();
 
-        using var stream = assembly.GetManifestResourceStream(resource);
-        if (stream is null)
+        var documents = new List<string>(resources.Count);
+        foreach (var resource in resources)
+        {
+            using var stream = assembly.GetManifestResourceStream(resource);
+            if (stream is null)
+                continue;
+            using var reader = new StreamReader(stream);
+            documents.Add(reader.ReadToEnd());
+        }
+
+        if (documents.Count == 0)
             return Array.Empty<HelpTopic>();
-        using var reader = new StreamReader(stream);
-        var text = reader.ReadToEnd().Replace("\r\n", "\n");
+
+        var text = string.Join("\n\n", documents).Replace("\r\n", "\n");
         var lines = text.Split('\n');
         var result = new List<HelpTopic>();
 
@@ -89,6 +102,10 @@ public sealed class PartcounterHelpService
         {
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title))
                 return;
+
+            if (result.Any(topic => string.Equals(topic.Id, id, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException($"Doppelte Hilfe-Themen-ID in R001.25: {id}");
+
             var bodyText = string.Join(Environment.NewLine, body).Trim();
             result.Add(new HelpTopic(
                 id,
