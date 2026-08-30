@@ -1,0 +1,34 @@
+name: Apply R001.25 V3 identity limits
+
+on:
+  push:
+    branches: [ r001.25-final-hardening ]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-v3-identity:
+    if: contains(github.event.head_commit.message, '[apply-v3-identity]')
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply V3 identity and limit hardening
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; p=Path('tools/apply_r00125_v3_identity_limits.py'); s=p.read_text(encoding='utf-8'); bad='text = replace_once(text, \"public void ProtocolV3_BoundaryContractIsAdditive()\", \"public void ProtocolV3_BoundaryContractIsAdditive()\", \"protocol test marker\")\n'; p.write_text(s.replace(bad, ''), encoding='utf-8')"
+          python tools/apply_r00125_v3_identity_limits.py
+
+      - name: Commit hardened product source
+        shell: pwsh
+        run: |
+          git config user.name "partcounter-ci"
+          git config user.email "partcounter-ci@users.noreply.github.com"
+          git add src tests docs
+          if (git diff --cached --quiet) { throw 'No product changes generated.' }
+          git commit -m "fix: harden V3 identity, limits and boundary fail-safe [v3-identity-applied]"
+          git push
