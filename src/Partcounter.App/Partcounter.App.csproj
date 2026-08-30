@@ -16,11 +16,11 @@
 
   <ItemGroup>
     <PackageReference Include="NModbus" Version="3.0.83" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="ZXing.Net" Version="0.16.11" />
     <PackageReference Include="ClosedXML" Version="0.105.1" />
-    <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.0" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+    <PackageReference Include="ExcelNumberFormat" Version="1.1.0" />
   </ItemGroup>
 
   <ItemGroup>
