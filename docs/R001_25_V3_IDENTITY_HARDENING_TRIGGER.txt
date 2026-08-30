@@ -1,1 +1,1 @@
-One-shot trigger for the V3 identity/limit hardening runner. Retry after adapting the existing CompletionHoldArmed validation. Remove after successful application.
+One-shot trigger for the focused Protocol V3 JobId echo hardening. Remove after successful application.
