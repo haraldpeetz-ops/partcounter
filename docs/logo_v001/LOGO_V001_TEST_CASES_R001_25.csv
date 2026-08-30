@@ -1,0 +1,61 @@
+TestId;TestName;Precondition;Action;ExpectedLOGO;ExpectedPartcounter;PassCriteria
+T01;Protocol V3 handshake;LOGO RUN Modbus server port502 ProtocolV3;Connect Partcounter controlled real mode;HR20/VW38=3 heartbeat changes;Machine Online no protocol mismatch;Online and HR20 exactly3
+T02;Reject V2 LOGO;LOGO reports Protocol2;Connect R001.25;Connection rejected no commands processed;Machine remains offline/fault with protocol message;No production command sent to V2
+T03;4 cavities VE20;Cavities4 TargetParts20 TargetCycles5;Generate exactly5 positive I1 edges;One completion Q1 pulse VW56=5 VW72=4;VE actual20;Exactly one VE and one valve pulse
+T04;64 cavities VE1000;Cavities64 TargetParts1000 TargetCycles16;Generate16 I1 edges;VW56=16 VW72=64;VE actual1024 overfill24;Correct cavity overfill calculation
+T05;No double count long I1;Valid running job;Hold I1 HIGH2s then LOW;CurrentVECycles +1 only;Parts +cavities once;No repeated count while HIGH
+T06;Pause blocks count;Running job I1 LOW;Send Pause and Ack then3 edges;No cycle increment;Order paused;Counters unchanged
+T07;Resume with I1 HIGH;Pause active I1 HIGH;Send Resume without lowering I1;No immediate phantom cycle;No phantom parts;Only next LOW-HIGH edge counts
+T08;Automatic completion snapshot;Valid job near target;Generate final edge;Last cycles/cavities/number/reason captured before reset;History reflects exact completion;Snapshot remains stable after current counter reset
+T09;Manual VE nonempty;Running job after3 cycles paused by PC;Send ManualVE new sequence;One completion reason2 one Q1 pulse;One manual history row;Exactly one manual completion
+T10;Manual VE empty;Current cycles0;Request manual VE;No completion no Q1;No history row;Empty VE cannot be created
+T11;New job reset exactly once;Old counters nonzero;Send ResetJob with new sequence;All job counters reset once and JobId latched;New order starts at zero;No second reset while same sequence remains
+T12;Command retry lost response;Ability to interrupt response after LOGO processed command;Send one-shot then drop response reconnect retry same sequence;Ack already equals expected so action not repeated;PC validates existing ack;Exactly one reset/manual action
+T13;Command Ack timeout;LOGO does not update Ack;Send command;No false success;Operation fails after bounded retry;PC state not advanced as confirmed
+T14;LOGO ErrorCode rejection;Force controlled invalid config/error;Send parameter command;Ack may update but ErrorCode nonzero;PC treats command as failed;No local success state
+T15;Cavities echo mismatch;Controlled test echo differs;Send parameter command;Ack sequence but wrong HR31;PC rejects confirmation;No job locally accepted
+T16;Hold echo mismatch;Controlled test HR38 differs;Send parameter command;Ack sequence but wrong hold echo;PC rejects confirmation;No job locally accepted
+T17;JobId echo mismatch;Controlled test HR39/40 differs;Send parameter command;Ack sequence but wrong JobId;PC rejects confirmation;No job locally accepted
+T18;Sequence wrap;Ack32767;Send next sequence1;NewCommand detected Ack1;Command accepted;Wrap reliable
+T19;Heartbeat wrap;Heartbeat near32767;Allow wrap;Changes continue through1;No false permanent stale;Diagnostic recovers
+T20;PC heartbeat stale autonomous full VE;Running before critical hold;Disconnect network >5s and generate cycles;Status bit5=1 but valid full VE counting continues;PC offline;No cycle loss due solely to PC outage
+T21;Local VE during PC outage;Running before critical hold;Disconnect and finish full VE;LOGO snapshot/Q1/completion update locally;Unavailable until reconnect;Local VE changer operates once
+T22;CompletionHold armed;HoldAfterVE greater CompletedVEs;Read status;V41.6=1 V41.7=0;PC sees planned hold echo;Armed status correct
+T23;CompletionHold activates at boundary;HoldAfterVE=N with VE N about to complete;Generate final cycle of VE N;CompletedVEs reachesN and V41.7 becomes1 before next count accepted;PC detects boundary;No cycle accepted into next VE while active
+T24;Hold rejects next fast cycle;CompletionHoldActive1;Generate rapid additional I1 edges before PC poll;CurrentVECycles stays0 TotalCycles unchanged;PC may not have polled yet;Zero leakage cycles across boundary
+T25;Hold reconfiguration;At active hold with remaining order;PC sends next target same JobId future Hold and pause;HR38/39/40 echo new values Ack confirms;PC then Resume;Counting only restarts after confirmed config and resume
+T26;Final hold;Last VE reaches final HoldAfterVE;Complete last VE;HoldActive1 and no next cycle;Order completes;Production stops at planned end
+T27;Partial final VE;Order has smaller remainder;Reach previous boundary;LOGO holds then receives smaller TargetCycles and new final Hold;PC shows final target;Effective cavity rounding documented
+T28;Cavity overfill boundary;64 cavities order where effective VE changes remaining quantity;Run planned sequence;Hold occurs at boundary from effective production not naive VE division;PC/LOGO remain aligned;No stale target continuation
+T29;Hold comparator equality;CompletedVEs one below hold;Increment completion to exactly hold;Comparator with On=-1 Off=-1 sets active on equality;Status bit7=1;Equality behavior proven
+T30;Hold update clears active;HoldActive at completed=N;While paused write future Hold>N and ack;B045 clears and B046 arms;PC still paused until Resume;No count until explicit Resume
+T31;Valve minimum;ValvePulse10Ms5;Trigger completion;Q1 about50ms;VE completes;Measured within agreed tolerance
+T32;Valve standard;ValvePulse10Ms75;Trigger completion;Q1 about750ms;VE completes;Measured within agreed tolerance
+T33;Valve maximum;ValvePulse10Ms500;Trigger completion;Q1 about5000ms;VE completes;Measured within agreed tolerance
+T34;Invalid cavities;Controlled values0 and65;Attempt config;ConfigValid false/error;PC normal path blocks values;No count or valve
+T35;Invalid target cycles;Controlled0 and32768;Attempt config;ConfigValid false/error;PC normal path blocks;No count or valve
+T36;Invalid hold zero;Controlled active job HoldAfterVE0;Attempt config;ConfigValid false and Ready false;PC normal planner never sends zero;No active production with undefined boundary
+T37;JobId word range;Controlled invalid word >32767;Attempt config;ConfigValid false or command rejected;PC generator never sends invalid word;No ambiguous signed LOGO identity
+T38;999999 total-cycle ceiling;Order near maximum;Run/validate planning;LOGO counter remains <=999999;PC accepts only within limit;No counter overflow
+T39;Over-limit order;PC-side planned order >999999 LOGO cycles;Attempt start;No LOGO write;PC rejects and requests segmentation;Prestart capacity gate works
+T40;PendingActivation power/network loss before ack;PC persisted pending token then communication becomes uncertain;Restart Partcounter;LOGO identity is checked;No new job allowed until ambiguity resolved
+T41;PendingActivation not active and LOGO proven idle;Stored pending but LOGO has JobId0 cycles0 parts0 completed0 autooff;Start recovery;Pending discarded with audit event;Machine returns available safely
+T42;PendingActivation mismatch with nonidle LOGO;Stored pending but LOGO not provably idle;Start recovery;No discard no resume;Recovery error and machine blocked;No unsafe overwrite
+T43;Partcounter restart active job;Real job in progress;Close/restart Partcounter then activate real mode;LOGO JobId/cavities verified LOGO paused snapshot reread;Order reconstructed PAUSED;No automatic resume
+T44;Restart while offline VEs advanced;PC checkpoint older than LOGO CompletedVEs;Restart/reconcile;LOGO counters accepted after identity checks;PC logs offline progress without invented timestamps;No duplicate completion rows fabricated
+T45;Restart at completion hold;LOGO HoldActive at boundary when PC restarts;Restart/reconcile;Identity verified and hold remains active;Order restored paused;Next VE cannot count until replan/resume
+T46;Restart with JobId mismatch;Checkpoint A LOGO reports B;Activate recovery;LOGO not accepted as same job;Echtbetrieb activation fails;No automatic reset/overwrite
+T47;Same visible order number reused;Complete/end first instance then start same order number again;New JobId high/low differs and echoes;PC treats as new production instance;No confusion with prior recovery identity
+T48;Manual VE uncertain restart;Manual request pending when PC restarts;Reconcile;If completion provable reason2 then replan otherwise pending remains locked;Resume blocked until unique resolution
+T49;Reconnect sequence sync;After outage reconnect before new command;Read Ack first;Local sequence synchronized;No unintended reset;No spurious one-shot
+T50;20 repeated VEs;Stable setup;Run20 automatic VEs including at least one configured hold/release;One completion and pulse each;20 consistent records;No missing/duplicate events
+T51;1000-cycle endurance;Stable setup;Generate1000 valid I1 edges;TotalCycles exactly1000;PC display consistent;Zero lost/doubled cycles
+T52;LOGO power cycle outputs safe;Controlled nonproduction setup;Cycle LOGO power;Q1 starts OFF no unintended motion;PC reports reconnect/recovery state;No spontaneous valve pulse
+T53;LOGO power cycle retentivity;Defined retentive blocks configured;Cycle power during paused known job;Ack JobId Hold counters behave per approved design;PC only resumes after identity/recovery checks;Retentivity documented and accepted
+T54;Optional I2 disabled;M01 no validated sensor;Run multiple VEs;No Error10 due to open I2;Normal operation;Disabled option cannot block production
+T55;Safety independence;Machine safety system available;Perform approved safety test;Partcounter/standard LOGO cannot bypass safety;No unsafe claim/control;Safety remains independently validated
+T56;Real label print;Printer configured;Complete VE;One original label printed and immutable snapshot stored;VE history/label status correct;Physical label readable and matches data
+T57;Label reprint;Existing printed VE;Use Reprint;No process counter change;Reprint journal entry created;Original snapshot contents reused
+T58;WLAN outage before critical boundary;Job has several full VEs before hold;Remove WLAN;LOGO continues only until preplanned hold;PC offline;Autonomy retained without crossing stale target
+T59;WLAN restore at hold;LOGO stopped at hold;Restore WLAN;PC validates identity/hold reconfigures and requires resume;No spontaneous count from reconnect alone
+T60;M01 final acceptance;All mandatory T01-T59 applicable tests documented;Review signatures/results;No unresolved critical deviation;Commissioning record complete;M01 may become reference only after explicit acceptance
