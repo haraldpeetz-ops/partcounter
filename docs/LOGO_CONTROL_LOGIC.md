@@ -1,18 +1,35 @@
-# Siemens LOGO! – Partcounter V2 Steuerlogik
+# Siemens LOGO! – Partcounter Protocol V3 Steuerlogik
 
-**Partcounter Revision:** R001.7  
+**Partcounter Revision:** R001.25  
 **LOGO!-Programm:** `Partcounter_LOGO_V001`  
-**Protokoll:** Modbus V2
+**Protokoll:** Modbus TCP Protocol V3
 
-Dieses Dokument beschreibt die verbindliche Sollfunktion der standardisierten LOGO!-Steuerung. Die detaillierte I/O-, VM-, Merker- und Blockzuordnung steht in `PARTCOUNTER_LOGO_V001_IMPLEMENTATION.md`.
+Dieses Dokument beschreibt die verbindliche Sollfunktion der LOGO!-Applikationslogik für Partcounter R001.25. Die normative Registerbelegung steht in `MODBUS_REGISTER_MAP.md`. PC-Software und LOGO!-Programm müssen denselben V3-Stand verwenden.
 
-## Grundprinzip
+## 1. Systemgrenze
 
-Die LOGO! zählt Maschinenzyklen lokal und löst den Verpackungswechsel lokal aus. Der PC liefert Auftragsparameter, berechnet Teilemengen aus den Zykluswerten und visualisiert den Zustand. Ein kurzer PC-, LAN- oder WLAN-Ausfall darf keinen Zyklus und keinen fälligen VE-Wechsel verlieren.
+Die LOGO! zählt Maschinenzyklen lokal und löst den Verpackungswechsel lokal aus. Der PC liefert Auftragsparameter, verwaltet Auftragsidentität/Recovery, berechnet Teilemengen aus den Zykluswerten, dokumentiert VEs und visualisiert den Zustand.
 
-## Hardwaregerechte Zählung
+Ein PC-/LAN-/WLAN-Ausfall darf gleichartige Voll-VE nicht künstlich stoppen. An einer vorab geplanten kritischen VE-Grenze blockiert die LOGO! jedoch lokal weitere Zählimpulse, bis Partcounter die nächste Zielkonfiguration bestätigt hat.
 
-Die LOGO! führt keine Multiplikation `Zyklen × Kavitäten` aus. Stattdessen werden die nativen Zykluszähler übertragen:
+Partcounter/LOGO ist **keine Safety-Steuerung**. Not-Halt, Schutztüren und sichere Bewegungsfreigaben verbleiben vollständig im Maschinen-Sicherheitskreis.
+
+## 2. I/O-Standard
+
+| Signal | Richtung | Funktion |
+|---|---|---|
+| I1 | Eingang | gültiger Zyklus-/Auswurfimpuls 24 V DC |
+| I2 | Eingang | optionale Endlage VE-Wechsler |
+| I3 | Eingang | optionale lokale Quittierung |
+| Q1 | Ausgang | Ansteuerung Koppelrelais / Pneumatikventil VE-Wechsler |
+| Q2 | Ausgang | optionale Wechselanzeige |
+| Q3 | Ausgang | optionale Sammelstörung |
+
+Q1 soll im industriellen Aufbau ein geeignetes 24-V-Koppelrelais ansteuern; das Ventil wird über den Relaiskontakt geschaltet. Spulenstrom, Absicherung und Freilauf-/Suppressorbeschaltung sind anhand der realen Hardware zu dimensionieren.
+
+## 3. Hardwaregerechte Zählung
+
+Die LOGO! führt keine Teilemultiplikation aus. Sie stellt native Zykluswerte bereit:
 
 ```text
 CurrentVECycles
@@ -27,284 +44,265 @@ CurrentParts            = CurrentVECycles × ActiveCavitiesEcho
 LastCompletedVEQuantity = LastCompletedVECycles × LastCompletedCavities
 ```
 
-Für Partcounter V2 gelten bewusst folgende Grenzen:
+Freigegebene Grenzen:
+- Target/CurrentVECycles: 1…32767 je VE.
+- TotalCycles: 0…999999 je LOGO!-Auftrag.
+- VE-Nummern und Sequenzen: maximal 32767.
 
-- `CurrentVECycles` / `TargetCyclesPerVE`: 1…32767 je VE
-- `TotalCycles`: 0…999999 je LOGO!-Auftrag
-- CommandSequence / CompletionSequence / Heartbeats: 1…32767, danach Wrap auf 1
+Aufträge oberhalb dieser Grenzen werden PC-seitig vor Start abgewiesen und müssen segmentiert werden.
 
-Die VE-Grenze von 32767 ermöglicht einen sicheren Snapshot des abgeschlossenen VE-Zykluswertes innerhalb der LOGO!-16-Bit-Analogwelt, während der Gesamtzykluszähler als nativer DWord-Zähler genutzt wird.
+## 4. Zyklusflanke und CountGate
 
-## I/O-Standard
-
-| Signal | Richtung | Funktion |
-|---|---|---|
-| I1 | Eingang | gültiger Zyklus-/Auswurfimpuls |
-| I2 | Eingang | optionale Endlage VE-Wechsler |
-| I3 | Eingang | optionale Handquittierung |
-| Q1 | Ausgang | Pneumatikventil VE-Wechsler |
-| Q2 | Ausgang | optionale Wechselanzeige |
-| Q3 | Ausgang | optionale Sammelstörung |
-
-## Zyklusflanke und Zählfreigabe
-
-Der reale Zyklusimpuls wird zuerst mit einem `AND mit Flankenauswertung` auf genau einen LOGO!-Programmdurchlauf reduziert. Erst danach wird dieser Puls mit den Betriebsfreigaben verknüpft:
+I1 wird zuerst auf eine **positive Flanke** reduziert. Erst dieser One-Shot wird durch die Betriebsbedingungen geführt.
 
 ```text
+I1
+ ↓ positive Flanke
 CycleEdge
-AND AutomaticEnabled
-AND NOT PauseCounting
-AND NOT VeChangeActive
-        ↓
+ AND AutomaticEnabled
+ AND NOT PauseCounting
+ AND NOT TargetReached
+ AND NOT ValvePulseActive
+ AND ConfigValid
+ AND NOT CompletionHoldActive
+ ↓
 CountPulse
 ```
 
-Diese Reihenfolge verhindert einen falschen Zählimpuls, wenn beispielsweise eine Pause aufgehoben wird, während I1 noch HIGH ist.
+`CountPulse` speist gleichzeitig `CurrentVECycles.Cnt` und `TotalCycles.Cnt`.
 
-## Dynamischer Zielzykluswert
+Die Flankenauswertung vor allen Gates verhindert einen künstlichen Zählerimpuls, wenn eine Sperre aufgehoben wird, während I1 noch HIGH ist.
 
-`TargetCyclesPerVE` liegt als DWord auf HR10/HR11 bzw. VD18 und wird per Parameter-VM-Mapping direkt dem `On Threshold` des VE-Zählerblocks zugeordnet.
+## 5. Dynamischer VE-Zielwert
+
+`TargetCyclesPerVE` wird über HR10/HR11 als `VD18` bereitgestellt und dem On-Threshold des VE-Zählers zugeordnet.
 
 ```text
 TargetCyclesPerVE = ceil(TargetPartsPerVE / ActiveCavities)
 ```
 
-Die PC-Anwendung ist der einzige freigegebene schreibende Modbus-Client. Eine Änderung von VD18 während einer laufenden VE ist unzulässig. Partcounter überträgt einen neuen VE-Zielwert nur unmittelbar nach einem VE-Abschluss bei `CurrentVECycles = 0` oder beim Start eines neuen Auftrags.
+Partcounter berücksichtigt die dadurch mögliche Kavitäten-Überfüllung bereits in der Auftragsplanung.
 
-Beispiel:
+## 6. Neuer Auftrag / technische Produktionsinstanz
+
+Ein realer Auftrag besitzt zwei verschiedene Identitäten:
+- sichtbare Auftragsnummer aus Bedienung/ERP;
+- technische, zufällige `JobId` als konkrete Produktionsinstanz.
+
+Partcounter persistiert vor dem ersten LOGO-Schreibvorgang einen `PendingActivation`-Recovery-Checkpoint. Erst wenn dieser sicher in SQLite gespeichert ist, darf der Auftrag an die LOGO! gesendet werden.
+
+Der Starttelegramm enthält mindestens:
+- ProtocolVersion = 3,
+- neue CommandSequence,
+- ResetJob-Bit,
+- ActiveCavities,
+- TargetPartsPerVE,
+- TargetCyclesPerVE,
+- ValvePulse10Ms,
+- JobId,
+- HoldAfterVeNumber.
+
+Bei gültigem ResetJob setzt die LOGO! die lokalen Auftragszähler auf den definierten Startzustand und übernimmt die neue JobId. Danach wird `AckSequence = CommandSequence` gesetzt.
+
+## 7. CommandSequence / AckSequence
+
+One-Shot-Befehle werden nur verarbeitet, wenn:
 
 ```text
-VE-Soll 1000
-Kavitäten 64
-TargetCyclesPerVE = 16
-Effektive VE = 1024 Teile
+CommandSequence != AckSequence
 ```
 
-## Neuer Auftrag
-
-Ein neuer Auftrag wird nur mit neuer CommandSequence und gesetztem Reset-Bit übernommen. PC-seitig werden vor dem Modbus-Schreiben geprüft:
-
-- ProtocolVersion = 2
-- ActiveCavities = 1…64
-- TargetPartsPerVE > 0
-- TargetCyclesPerVE = 1…32767
-- ValvePulseMs = 50…5000 ms
-- ValvePulseMs ist durch 10 teilbar
-
-Bei einem gültigen neuen Auftrag:
+Die Ungleichheit muss auch beim Wrap 32767 → 1 erkannt werden. Nach der Verarbeitung:
 
 ```text
-CurrentVECycles = 0
-TotalCycles = 0
-CurrentVENumber = 1
-CompletedVEs = 0
-Pause = 0
 AckSequence = CommandSequence
 ```
 
-## Zykluszählung
+Der PC verwendet bei einem Retry **denselben** Sequenzwert. Dadurch darf ein bereits bearbeiteter Reset oder manueller VE-Wechsel nicht ein zweites Mal ausgelöst werden, nur weil die TCP-Antwort verloren ging.
 
-Bei jedem freigegebenen `CountPulse`:
+Partcounter akzeptiert einen Parameterbefehl erst nach:
+1. passender AckSequence,
+2. ErrorCode = 0,
+3. ActiveCavitiesEcho = Soll,
+4. HoldAfterVeNumberEcho = Soll,
+5. JobIdEcho = Soll.
 
-```text
-CurrentVECycles += 1
-TotalCycles += 1
-```
+## 8. Automatischer VE-Abschluss
 
-Der automatische Abschluss wird über die Einschaltgrenze des VE-Zählers ausgelöst:
+Der VE-Zähler erreicht den dynamischen On-Threshold. Nach kurzer Stabilisierung wird genau ein `CompletionPulse` erzeugt.
 
-```text
-CurrentVECycles >= TargetCyclesPerVE
-```
-
-## Dynamische letzte VE eines Produktionsauftrags
-
-Ist die Restmenge kleiner als die Standard-VE-Menge, überträgt Partcounter nach Abschluss der vorherigen VE eine neue Zielzykluszahl, ohne den Gesamtauftrag zurückzusetzen:
+Vor dem VE-Zählerreset müssen gespeichert werden:
 
 ```text
-TargetPartsPerVE  = Restmenge
-TargetCyclesPerVE = ceil(Restmenge / ActiveCavities)
-CommandResetJob   = 0
-neue CommandSequence
+LastCompletedVECycles
+LastCompletedCavities
+LastCompletedVENumber
+LastCompletionReason = 1
+CompletedVEs += 1
+CompletionSequence += 1
 ```
 
-Gesamtzähler, VE-Nummer und abgeschlossene VEs bleiben erhalten.
+Anschließend wird der VE-Wechslerimpuls ausgeführt und der aktuelle VE-Zähler zurückgesetzt. `CompletionSequence` ändert sich exakt einmal pro abgeschlossener VE.
 
-## Automatischer VE-Abschluss
+## 9. Deterministischer Completion-Hold
 
-Die positive Flanke des VE-Zählerausgangs erzeugt genau einen `CompletionPulse`. Vor dem Reset von `CurrentVECycles` müssen die Abschlussdaten gespeichert werden:
+Protocol V3 führt `HoldAfterVeNumber` ein. Dieser Grenzpunkt wird **vorab** in der LOGO! gespeichert.
+
+Grundregel:
 
 ```text
-LastCompletedVECycles = CurrentVECycles
-LastCompletedCavities = ActiveCavities
-LastCompletedVENumber = CurrentVENumber
-LastCompletionReason  = 1
-CompletedVEs         += 1
-CompletionSequence   += 1
+CompletionHoldArmed  = HoldAfterVeNumber > CompletedVEs
+CompletionHoldActive = HoldAfterVeNumber > 0
+                       AND CompletedVEs >= HoldAfterVeNumber
 ```
 
-Der Zyklusstand wird mit einem Analog-Watchdog als Sample-and-Hold gespeichert: Die positive Flanke von `CompletionPulse` übernimmt den aktuellen Zählerstand als gespeicherten Vergleichswert `Aen`. Dieser Wert wird auf VW56 ausgegeben. Erst ein nachgelagerter kurzer Resetimpuls löscht anschließend den VE-Zähler.
+Wenn `CompletionHoldActive = 1`, muss `CountGate` lokal geschlossen bleiben. Ein nachfolgender I1-Puls darf nicht mehr in die nächste VE eingehen.
 
-Danach:
+Damit können gleichartige Voll-VE autonom laufen. Erst an einem echten Zielwechsel oder Auftragsende entsteht eine lokale Haltegrenze.
 
+Beispiel:
 ```text
-VeChangeActive = 1
-Q1 = 1 für konfigurierte Impulszeit
-Q1 = 0
-CurrentVENumber += 1
-CurrentVECycles = 0
-VeChangeActive = 0
+9500 Teile Auftrag
+1000 Teile Standard-VE
+8 Kavitäten
+
+VE 1…9 autonom
+nach VE 9 Completion-Hold
+PC bestätigt Rest-VE-Konfiguration
+Resume
+VE 10 läuft
+nach VE 10 finaler Hold
 ```
 
-`CompletionSequence` erhöht sich exakt einmal pro fertiger VE und springt nach 32767 wieder auf 1.
+Wichtig: Dieser Completion-Hold ist eine **Applikationsverriegelung**, keine Safety-Funktion.
 
-## Manueller VE-Wechsel
+## 10. Neuparametrierung an der Grenze
 
-Ein manueller Wechsel wird nur ausgeführt bei:
+Wenn der PC eine CompletionSequence an der geplanten Grenze erkennt:
+1. HoldActive prüfen.
+2. nächste VE aus Restmenge und Kavitäten berechnen.
+3. neue Zielparameter mit gleicher JobId und neuem Hold schreiben.
+4. Ack, ErrorCode, Kavitäten-, Hold- und JobId-Echo prüfen.
+5. erst danach ResumeCounting senden und bestätigen lassen.
 
-```text
-NewCommand
-AND ManualVeChangeBit
-AND CurrentVECycles > 0
-```
+Bei jeder Unklarheit bleibt die Zählung gesperrt und Partcounter protokolliert einen Recovery-/Boundary-Fehler.
 
-Er verwendet denselben Abschlussablauf, jedoch:
+## 11. Manueller VE-Wechsel
+
+Der manuelle Wechsel wird nur mit neuer CommandSequence und nichtleerem CurrentVECycles ausgeführt. Partcounter pausiert vor dem manuellen Wechsel und lässt die Zählung bis zur eindeutigen Completion-/Neuplanungsbestätigung gesperrt.
+
+Der Abschluss verwendet denselben Snapshot-/Ventil-/Resetpfad wie der automatische Abschluss, aber:
 
 ```text
 LastCompletionReason = 2
 ```
 
-Ein manueller Wechsel bei leerer VE wird nicht ausgeführt, der Befehl wird aber als bearbeitet quittiert.
+Ein manueller Wechsel darf bei Retry derselben CommandSequence nicht doppelt ausgelöst werden.
 
-## Persistenz des CompletionReason
-
-Der aktuelle Grund 1/2 wird zunächst als analoger Kandidat erzeugt und mit einem zweiten Analog-Watchdog bei `CompletionPulse` gespeichert. Dadurch bleibt `LastCompletionReason` nach dem One-Shot-Ereignis bis zum nächsten VE-Abschluss stabil auf HR36 verfügbar.
-
-Dasselbe Prinzip wird für `LastCompletedCavities` verwendet: Die beim Abschluss aktive Kavitätenzahl wird mit `CompletionPulse` gespeichert und auf HR37 ausgegeben.
-
-## Ventilimpuls
-
-Die Bedienoberfläche arbeitet in Millisekunden. Auf HR7 wird ein Wert in festen 10-ms-Einheiten übertragen:
+## 12. Ventilimpuls
 
 ```text
 ValvePulse10Ms = ValvePulseMs / 10
 ```
 
-Beispiel:
+Zulässig: 50…5000 ms in 10-ms-Schritten. Während des Impulses ist `CountGate` gesperrt.
 
-```text
-750 ms → HR7 = 75
-```
+Der reale Q1-Impuls sowie die pneumatische Bewegung werden an M01 gemessen und abgenommen.
 
-Der LOGO!-Zeitbaustein verwendet fest die Zeitbasis 10 ms und erhält seinen Zeitwert per Parameter-VM-Mapping aus VW12. Zulässig sind 50…5000 ms in 10-ms-Schritten.
+## 13. Heartbeat
 
-Während der Ventilimpuls aktiv ist, ist die Zykluszählung gesperrt.
+- PC schreibt HR12 zyklisch 1…32767 und wrappt auf 1.
+- LOGO! schreibt HR34 zyklisch 1…32767 und wrappt auf 1.
+- Ein stehender PC-Heartbeat setzt `PcHeartbeatStale`.
+- Heartbeat stale stoppt normale Voll-VE **nicht**.
+- Ein bereits geplanter Completion-Hold bleibt unabhängig vom PC-Heartbeat wirksam.
 
-## Pause / Fortsetzen
+## 14. StatusWord
 
-`CommandPauseCounting` mit neuer CommandSequence setzt das Pause-Latch. Eine neue Sequenz mit `Automatic enabled`, aber ohne Pause-Bit, löscht es wieder.
-
-Während Pause:
-
-- keine Zykluszählung,
-- kein automatischer Abschluss durch neue Zyklusflanken,
-- Kommunikation, Heartbeat und Status bleiben aktiv.
-
-## CommandSequence / AckSequence
-
-Befehlswerte liegen im Bereich 1…32767. Nach 32767 folgt wieder 1.
-
-Ein Befehl ist neu, wenn `CommandSequence != AckSequence`. Da die LOGO!-Analogkomparatoren Differenzen bewerten, wird Ungleichheit symmetrisch erkannt:
-
-```text
-CmdGreaterAck = CommandSequence - AckSequence > 0
-AckGreaterCmd = AckSequence - CommandSequence > 0
-NewCommand    = CmdGreaterAck OR AckGreaterCmd
-```
-
-Damit wird auch der Wrap 32767 → 1 erkannt.
-
-Nach Bearbeitung:
-
-```text
-AckSequence = CommandSequence
-```
-
-Partcounter liest nach PC-Neustart oder Erstverbindung zunächst `AckSequence`, synchronisiert seinen lokalen Sequenzstand und sendet erst danach den nächsten Befehl. Dadurch kann der erste Befehl nach einem Neustart nicht als altes Duplikat verloren gehen.
-
-## Heartbeats
-
-- PC schreibt zyklisch Werte 1…32767 in HR12 und springt danach auf 1.
-- LOGO! schreibt zyklisch Werte 1…32767 in HR34 und springt danach auf 1.
-- Entscheidend ist die Änderung des Wertes innerhalb des Diagnosefensters, nicht die numerische Differenz.
-- Ein stehender PC-Heartbeat setzt das Statusbit `PcHeartbeatStale`.
-- Ein stehender PC-Heartbeat stoppt **nicht** die lokale Zählung oder einen fälligen VE-Wechsel.
-
-## StatusWord HR21
-
-| Bit | Maske | Bedeutung |
-|---:|---:|---|
-| 0 | 0x0001 | LOGO bereit |
-| 1 | 0x0002 | Automatik aktiv |
-| 2 | 0x0004 | VE-Wechsel aktiv |
-| 3 | 0x0008 | Alarm |
-| 4 | 0x0010 | Zykluseingang aktiv |
-| 5 | 0x0020 | PC-Heartbeat steht |
-
-## Fehlercodes
-
-| Code | Bedeutung |
+| Bit | Bedeutung |
 |---:|---|
-| 0 | kein Fehler |
-| 1 | falsche Protokollversion |
-| 2 | Kavitätenzahl außerhalb 1–64 |
-| 3 | TargetPartsPerVE = 0 |
-| 4 | TargetCyclesPerVE außerhalb 1–32767 |
-| 5 | Ventilimpuls außerhalb 50–5000 ms bzw. kein 10-ms-Raster |
-| 10 | optionale Wechsler-Endlage nicht rechtzeitig erreicht |
-| 30 | interner ungültiger Ablaufzustand |
+| 0 | Ready |
+| 1 | AutomaticEnabled |
+| 2 | VE-Wechslerimpuls aktiv |
+| 3 | Alarm |
+| 4 | I1 aktiv |
+| 5 | PC Heartbeat stale |
+| 6 | CompletionHoldArmed |
+| 7 | CompletionHoldActive |
 
-## Optionaler Endlagentest
+## 15. JobId- und Parameter-Echos
 
-Wenn I2 physisch vorhanden und freigegeben ist, startet nach dem Ventilimpuls ein Überwachungsfenster. Wird die erwartete Endlage nicht rechtzeitig erreicht, setzt die LOGO! `ErrorCode = 10`, Alarmstatus und optional Q3. Weitere automatische Wechsel werden gesperrt, bis die Störung kontrolliert quittiert wurde.
+Die LOGO! muss die übernommenen Auftragswerte stabil zurückmelden:
+- ActiveCavitiesEcho → HR31,
+- HoldAfterVeNumberEcho → HR38,
+- JobIdEcho High/Low → HR39/HR40.
 
-Diese Funktion wird erst aktiviert, nachdem die reale Mechanik und das Endlagensignal an der Testmaschine validiert wurden.
+Das Echo darf nicht aus dem kurzfristigen PC-Telegramm stammen, sondern muss den tatsächlich für die lokale Ablaufsteuerung übernommenen Zustand repräsentieren.
 
-## Kommunikationsausfall
+## 16. PC-/Partcounter-Neustart
 
-Bei stehendem PC-Heartbeat fährt die LOGO! mit den zuletzt gültigen Parametern weiter:
+Offene Echtaufträge werden persistent gespeichert. Nach Neustart:
+1. Partcounter lädt sie ausschließlich PAUSIERT.
+2. Echtbetrieb muss bewusst aktiviert werden.
+3. LOGO-Snapshot wird gelesen.
+4. JobIdEcho und Kavitäten werden gegen den Checkpoint geprüft.
+5. bekannte LOGO-Instanz wird nochmals kontrolliert pausiert.
+6. Snapshot wird erneut gelesen.
+7. Zähler/VE/Hold werden rekonstruiert.
+8. Auftrag bleibt PAUSIERT.
+9. Bediener entscheidet über Resume.
 
-- Zyklusimpulse zählen,
-- VE-Zähler fortsetzen,
-- bei Zielzyklen lokal wechseln,
-- LastCompleted-Daten aktualisieren,
-- CompletionSequence erhöhen.
+Bei `PendingActivation` darf ein Checkpoint nur verworfen werden, wenn die LOGO! nachweislich keinen aktiven Produktionszustand besitzt. Eine unklare Identität sperrt die neue Beauftragung dieser Maschine.
 
-Nach Wiederkehr liest Partcounter den aktuellen Zustand und synchronisiert den Leitstand.
+## 17. PC-/Netzwerkausfall während Produktion
 
-## LOGO!-Neustart
+Ohne PC dürfen bis zum bereits programmierten Hold weiterlaufen:
+- I1-Zählung,
+- CurrentVECycles,
+- TotalCycles,
+- automatische VE-Abschlüsse,
+- VE-Wechslerimpulse,
+- Abschluss-Snapshots,
+- CompletionSequence.
 
-Ein LOGO!-Spannungsausfall wird ausdrücklich anders behandelt als ein PC-/WLAN-Ausfall:
+Erreicht die LOGO! `HoldAfterVeNumber`, bleibt die folgende Zählung lokal blockiert. Dadurch wird ein veraltetes Sollziel nicht unbemerkt weiterproduziert.
 
-- Q1 muss beim Start AUS sein.
-- Es darf keine selbsttätige Bewegung allein aus einem alten Ausgangszustand entstehen.
-- Zählerretentivität und Wiederanlauf werden an der ersten Maschine real geprüft.
-- Erst nach erfolgreichem Power-Cycle-Test wird das Wiederanlaufkonzept freigegeben.
+## 18. LOGO!-Power-Cycle
 
-## Pneumatik / Safety
+Ein LOGO!-Spannungsausfall ist gesondert zu behandeln:
+- Q1 muss beim Wiederanlauf AUS sein.
+- Keine selbsttätige Bewegung aus altem Ausgangszustand.
+- Retentivität von Zählern, AckSequence, JobId, Hold und Abschlussdaten wird an M01 real geprüft.
+- Bei nicht eindeutigem Zustand bleibt die Produktionsfreigabe gesperrt.
 
-Partcounter und die Standard-LOGO! sind keine Sicherheitssteuerung. Not-Halt, Schutztür, Maschinenfreigaben und sonstige Safety-Funktionen verbleiben vollständig im dafür vorgesehenen sicheren Steuerungssystem.
+## 19. ErrorCode
 
-## Betriebsgrenzen Partcounter V2
+Freigegebene Codes:
+- 0: kein Fehler,
+- 1: Protocol-Version falsch,
+- 2: Kavitäten ungültig,
+- 3: Teileziel ungültig,
+- 4: Zielzyklen ungültig,
+- 5: Ventilimpuls ungültig,
+- 10: optionale Wechsler-Endlage Timeout,
+- 30: interner Ablaufzustand ungültig.
 
-- Kavitäten: 1…64
-- Zyklen pro VE: 1…32767
-- Gesamtzyklen pro LOGO!-Auftrag: bis 999999
-- VE-Abschlüsse pro LOGO!-Auftrag: bis 32767
-- Ventilimpuls: 50…5000 ms in 10-ms-Schritten
+Neue Codes dürfen nur synchron in LOGO-Engineering, PC-Code und Testmatrix eingeführt werden.
 
-Größere Produktionslose müssen in mehrere LOGO!-Aufträge segmentiert werden, solange kein erweitertes Zählkonzept freigegeben ist.
+## 20. Abnahmeregel
 
-## Inbetriebnahme
+Software-CI beweist nicht die reale LOGO-Scanreihenfolge oder die physische Ventilwirkung. Vor Produktionsfreigabe von M01 müssen mindestens real geprüft werden:
+- I1 positive Flanke,
+- CountGate-Sperren,
+- High-/Low-Word-Reihenfolge,
+- Command/Ack-Retry,
+- Reset-One-Shot,
+- manueller VE-Wechsel ohne Doppelimpuls,
+- HoldAfterVeNumber und HoldActive im selben Abschlussablauf,
+- verlorene PC-Verbindung vor/nach einer Grenz-VE,
+- Partcounter-Neustart mit aktivem Auftrag,
+- LOGO-Power-Cycle,
+- Q1/Koppelrelais/Ventil,
+- Teil-VE und Auftragsende.
 
-Die erste reale Station wird ausschließlich anhand von `COMMISSIONING_TEST_PROTOCOL_R001_7.md` freigegeben. Insbesondere werden Zyklusflanken, Modbus-DWord-Reihenfolge, Sequenz-Wrap, Heartbeat-Wrap, Ventilzeit, Kommunikationsausfall, Power-Cycle und Etikettierung real geprüft.
+Erst nach bestandenem M01-Protokoll wird R001.25 von „Production Release Candidate“ zur „Production Baseline“.
