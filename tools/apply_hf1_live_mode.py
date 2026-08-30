@@ -155,9 +155,4 @@ project = project.replace("<FileVersion>0.1.25.0</FileVersion>", "<FileVersion>0
 project = project.replace("<InformationalVersion>0.1.25-r001.25-final-hardening</InformationalVersion>", "<InformationalVersion>0.1.25-r001.25-hf1-live-mode</InformationalVersion>")
 csproj.write_text(project, encoding="utf-8")
 
-workflow = root / ".github/workflows/build-r00125.yml"
-wf = workflow.read_text(encoding="utf-8")
-wf = wf.replace("branches: [ r001.25-final-hardening, main ]", "branches: [ r001.25-final-hardening, main, 'hotfix/**' ]")
-workflow.write_text(wf, encoding="utf-8")
-
-print("R001.25 HF1 live-mode patch applied.")
+print("R001.25 HF1 live-mode product patch applied.")
