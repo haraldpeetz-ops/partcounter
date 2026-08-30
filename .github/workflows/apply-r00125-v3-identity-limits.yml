@@ -43,8 +43,8 @@ jobs:
             if (Test-Path $file) { git rm -- $file }
           }
 
-          $remainingBuilds = Get-ChildItem '.github/workflows' -File -Filter 'build-r001*.yml' | Select-Object -ExpandProperty Name
-          if (@($remainingBuilds).Count -ne 1 -or $remainingBuilds[0] -ne 'build-r00125.yml') {
+          $remainingBuilds = @(Get-ChildItem '.github/workflows' -File -Filter 'build-r001*.yml' | Select-Object -ExpandProperty Name)
+          if ($remainingBuilds.Count -ne 1 -or $remainingBuilds[0] -ne 'build-r00125.yml') {
             throw "Unexpected remaining revision build workflows: $($remainingBuilds -join ', ')"
           }
 
