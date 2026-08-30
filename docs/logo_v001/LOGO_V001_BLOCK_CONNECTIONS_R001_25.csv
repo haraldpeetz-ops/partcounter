@@ -1,0 +1,112 @@
+Network;Block;BlockType;SignalName;InputOrParameter;SourceOrValue;OutputDestination;PurposeOrImportantSetting
+1;B001;AND with edge evaluation;CycleEdge;IN1;I1;B002.IN1;Positive edge must be evaluated before all gates
+2;B002;AND;CountGate;IN1;B001.Q;B003.Cnt|B004.Cnt;Pass one cycle pulse
+2;B002;AND;CountGate;IN2;NI1 AutomaticEnabled;B003.Cnt|B004.Cnt;Automatic command bit0 required
+2;B002;AND;CountGate;IN3 inverted;NI5 PauseCounting;B003.Cnt|B004.Cnt;Pause blocks counting
+2;B002;AND;CountGate;IN4 inverted;B003.Q TargetReached;B003.Cnt|B004.Cnt;Prevent overcount after target
+2;B002;AND;CountGate;IN5 inverted;B014.Q ValveActive;B003.Cnt|B004.Cnt;No count during changer pulse
+2;B002;AND;CountGate;IN6;ConfigValid;B003.Cnt|B004.Cnt;Invalid parameter set blocks counting
+2;B002;AND;CountGate;IN7 inverted;B045.Q CompletionHoldActive;B003.Cnt|B004.Cnt;Protocol V3 local boundary blocks next cycle before PC poll
+3;B003;Up/Down counter;CurrentVECycles;Cnt;B002.Q;VD42 via parameter mapping;Counts cycles of current VE
+3;B003;Up/Down counter;CurrentVECycles;Dir;CONST_0;;Count upwards
+3;B003;Up/Down counter;CurrentVECycles;R;B016.Q OR B025.Q;;Reset after VE snapshot or new job
+3;B003;Up/Down counter;CurrentVECycles;OnThreshold;VD18 parameter mapping;B003.Q;TargetCyclesPerVE from PC
+3;B003;Up/Down counter;CurrentVECycles;Counter;parameter mapping VD42;;Returned HR22/HR23
+4;B004;Up/Down counter;TotalCycles;Cnt;B002.Q;VD46 via parameter mapping;Overall cycles in current job max999999
+4;B004;Up/Down counter;TotalCycles;R;B025.Q;;Reset only for new job
+4;B004;Up/Down counter;TotalCycles;Counter;parameter mapping VD46;;Returned HR24/HR25
+5;B005;On-delay;AutoReachedStable;Trg;B003.Q;B006.IN1;Wait50ms so mapped count is stable
+5;B005;On-delay;AutoReachedStable;T;50ms;B006.IN1;B002 blocks further counting while target reached
+5;B006;AND with edge evaluation;AutoCompletionPulse;IN1;B005.Q;B009.IN1;One automatic completion pulse
+6;B007;Analog threshold trigger;CurrentVeNonZero;Ax;NAI10 VW44;B008.IN3;Q true when current VE cycles >=1
+6;B007;Analog threshold trigger;CurrentVeNonZero;On;1;B008.IN3;Reject manual completion of empty VE
+6;B008;AND;ManualCompletionPulse;IN1;B024.Q NewCommand;B009.IN2;One-shot command qualification
+6;B008;AND;ManualCompletionPulse;IN2;NI3 ManualVEChangeBit;B009.IN2;Command bit2
+6;B008;AND;ManualCompletionPulse;IN3;B007.Q;B009.IN2;Current VE must contain cycles
+6;B008;AND;ManualCompletionPulse;IN4;ConfigValid;B009.IN2;Configuration must be valid
+7;B009;OR;CompletionPulse;IN1;B006.Q;B010.En|B012.En|B013.En|B014.Trg|B017.Cnt;Automatic completion
+7;B009;OR;CompletionPulse;IN2;B008.Q;B010.En|B012.En|B013.En|B014.Trg|B017.Cnt;Manual completion
+8;B010;Analog watchdog;LastCompletedCycles;En;B009.Q;VW56 via Aen mapping;Sample before reset
+8;B010;Analog watchdog;LastCompletedCycles;Ax;NAI10 VW44;VW56 via Aen mapping;Last completed cycle count low word
+8;CONST0;Analog constant/output;LastCyclesHigh;Value;0;NAQ4 VW54;High word remains0 for max32767 VE cycles
+8;B011;Analog multiplexer;CompletionReasonCandidate;S1;B008.Q;B012.Ax;Select2 for manual otherwise1
+8;B011;Analog multiplexer;CompletionReasonCandidate;V1/V3;1;B012.Ax;Automatic reason
+8;B011;Analog multiplexer;CompletionReasonCandidate;V2/V4;2;B012.Ax;Manual reason
+8;B012;Analog watchdog;LastCompletionReason;En;B009.Q;VW70 via Aen mapping;Store reason until next completion
+8;B012;Analog watchdog;LastCompletionReason;Ax;B011.AQ;VW70 via Aen mapping;1 auto 2 manual
+8;B013;Analog watchdog;LastCompletedCavities;En;B009.Q;VW72 via Aen mapping;Store cavities at completion
+8;B013;Analog watchdog;LastCompletedCavities;Ax;NAI3 VW6;VW72 via Aen mapping;Needed to reconstruct last VE quantity
+9;B014A;Analog amplifier;ValveTimeReference;Ax;NAI6 VW12;B014.T;Gain1 offset0
+9;B014;Wiping relay;ValvePulse;Trg;B009.Q;Q1|NQ3|B015.Trg;Output duration controlled by VW12 in10ms units
+9;B014;Wiping relay;ValvePulse;T;B014A actual value;Q1;Allowed5..500 equals50..5000ms
+10;B015;On-delay;ResetAfterSnapshot;Trg;B014.Q;B016.IN1;20ms after valve starts
+10;B015;On-delay;ResetAfterSnapshot;T;20ms;B016.IN1;Snapshot has already been taken
+10;B016;AND with edge evaluation;ResetCurrentVEPulse;IN1;B015.Q;B003.R;Exactly one current-VE reset
+11;B017;Up/Down counter;CompletedVEs;Cnt;B009.Q;VD80 parameter mapping;One count per completion
+11;B017;Up/Down counter;CompletedVEs;R;B025.Q;;Reset for new job
+11;B017;Up/Down counter;CompletedVEs;Counter;parameter mapping VD80;;Scratch low word read through NAI12 VW82
+11;B018;Analog amplifier;CurrentVENumber;Ax;NAI12 VW82;NAQ2 VW50;Gain1 offset+1
+11;B019;Analog amplifier;CompletedVEsOut;Ax;NAI12 VW82;NAQ3 VW52;Gain1 offset0
+11;B020;Analog amplifier;LastCompletedVENumber;Ax;NAI12 VW82;NAQ6 VW62;Gain1 offset0
+11;B021;Analog amplifier;CompletionSequence;Ax;NAI12 VW82;NAQ7 VW64;Changes exactly once per completed VE
+12;B022;Analog comparator;CmdGreaterAck;Ax;NAI2 VW2;B024.IN1;Gain1 offset0 On0 Off0 Q when Cmd>Ack
+12;B022;Analog comparator;CmdGreaterAck;Ay;NAI11 VW58;B024.IN1;Forward sequence compare
+12;B023;Analog comparator;AckGreaterCmd;Ax;NAI11 VW58;B024.IN2;Gain1 offset0 On0 Off0 Q when Ack>Cmd
+12;B023;Analog comparator;AckGreaterCmd;Ay;NAI2 VW2;B024.IN2;Reverse compare detects inequality including wrap
+12;B024;OR;NewCommand;IN1;B022.Q;B025.IN1|B008.IN1|B027.En|B028.IN1;New command if sequences differ
+12;B024;OR;NewCommand;IN2;B023.Q;B025.IN1|B008.IN1|B027.En|B028.IN1;New command if sequences differ
+12;B025;AND;ResetJobPulse;IN1;B024.Q;B003.R|B004.R|B017.R;One-shot only with new sequence
+12;B025;AND;ResetJobPulse;IN2;NI2 ResetJobBit;B003.R|B004.R|B017.R;Command bit1
+12;B027;Analog watchdog;AckSequenceStore;En;B024.Q;VW58 via Aen mapping;Acknowledge processed new command
+12;B027;Analog watchdog;AckSequenceStore;Ax;NAI2 VW2;VW58 via Aen mapping;Stores latest CommandSequence
+13;B028;AND;AcknowledgeAlarmPulse;IN1;B024.Q;AlarmLatch.Reset;Qualified by new sequence
+13;B028;AND;AcknowledgeAlarmPulse;IN2;NI4 AcknowledgeAlarmBit;AlarmLatch.Reset;Command bit3
+14;B032;Symmetrical pulse generator;LogoHeartbeatClock;Time;0.5s high /0.5s low;B033.Cnt;Approx one counter increment per second
+14;B033;Up/Down counter;LogoHeartbeatCounter;Cnt;positive edge B032;VD84 parameter mapping;Scratch heartbeat
+14;B033;Up/Down counter;LogoHeartbeatCounter;R;B034.Q;;Wrap/reset before range exceeds protocol range
+14;B033;Up/Down counter;LogoHeartbeatCounter;OnThreshold;32766;B034.IN1;Wrap trigger
+14;B034;AND with edge evaluation;HeartbeatWrap;IN1;B033.Q;B033.R;Single reset pulse
+14;B035;Analog amplifier;LogoHeartbeatOut;Ax;NAI13 VW86;NAQ8 VW66;Gain1 offset+1 gives visible range starting at1
+15;B036;Analog comparator;PcHeartbeatGreater;Ax;NAI9 VW22;B038.IN1;Compare current PC heartbeat with stored
+15;B036;Analog comparator;PcHeartbeatGreater;Ay;NAI14 VW88;B038.IN1;Q when Ax>Ay
+15;B037;Analog comparator;StoredHeartbeatGreater;Ax;NAI14 VW88;B038.IN2;Reverse comparison
+15;B037;Analog comparator;StoredHeartbeatGreater;Ay;NAI9 VW22;B038.IN2;Detect wrap and all changes
+15;B038;OR;PcHeartbeatChanged;IN1;B036.Q;B039.En|B040.Trg;Any heartbeat change
+15;B038;OR;PcHeartbeatChanged;IN2;B037.Q;B039.En|B040.Trg;Any heartbeat change
+15;B039;Analog watchdog;PcHeartbeatStore;En;B038.Q;VW88 via Aen mapping;Stores most recently observed heartbeat
+15;B039;Analog watchdog;PcHeartbeatStore;Ax;NAI9 VW22;VW88 via Aen mapping;Internal only
+15;B040;Off-delay;PcHeartbeatAlive;Trg;B038.Q;NQ6 through inversion;T=5s
+15;B040;Off-delay;PcHeartbeatAlive;T;5s;NQ6 through inversion;Heartbeat stale is diagnostic only
+16;B041;Analog multiplexer/constant;ProtocolVersionConst;Values;3/3/3/3;NAQ1 VW38;Constant protocol version3
+16;B042;Analog amplifier;CavitiesEcho;Ax;NAI3 VW6;NAQ5 VW60;Gain1 offset0 accepted cavities echo
+17;NAI15;Network analog input;HoldAfterVeNumber;LocalVM;VW24;B043.Ax|B044.Ay|B046.Ax|NAQ10;Protocol V3 hold target
+17;NAI16;Network analog input;JobIdHigh;LocalVM;VW14;NAQ11;Production instance high word
+17;NAI17;Network analog input;JobIdLow;LocalVM;VW16;NAQ12;Production instance low word
+18;B043;Analog comparator;HoldConfigured;Ax;NAI15 VW24;B045.IN1;Gain1 offset0 On0 Off0 Q when Hold>0
+18;B043;Analog comparator;HoldConfigured;Ay;CONST_0;B045.IN1;Reject zero hold from armed/active logic
+18;B044;Analog comparator;HoldDueOrPassed;Ax;NAI12 VW82 CompletedVEs;B045.IN2;Configure gain1 offset0 On=-1 Off=-1 so integer Ax-Ay>=0 sets Q
+18;B044;Analog comparator;HoldDueOrPassed;Ay;NAI15 VW24;B045.IN2;CompletedVEs compared with HoldAfterVeNumber
+18;B045;AND;CompletionHoldActive;IN1;B043.Q;B002.IN7 inverted|NQ8;Hold configured
+18;B045;AND;CompletionHoldActive;IN2;B044.Q;B002.IN7 inverted|NQ8;CompletedVEs reached/passed hold
+18;B046;Analog comparator;CompletionHoldArmed;Ax;NAI15 VW24;NQ7;Gain1 offset0 On0 Off0 Q when Hold>CompletedVEs
+18;B046;Analog comparator;CompletionHoldArmed;Ay;NAI12 VW82 CompletedVEs;NQ7;Armed until boundary is reached
+19;NAQ10;Network analog output;HoldAfterVeNumberEcho;Source;NAI15 VW24;VW74 HR38;Echo accepted local hold target
+19;NAQ11;Network analog output;JobIdEchoHigh;Source;NAI16 VW14;VW76 HR39;Echo accepted production instance high word
+19;NAQ12;Network analog output;JobIdEchoLow;Source;NAI17 VW16;VW78 HR40;Echo accepted production instance low word
+20;NQ1;Network output;Ready;LocalVM;V41.0;;ConfigValid AND NOT Alarm
+20;NQ2;Network output;AutomaticActive;LocalVM;V41.1;;NI1 AutomaticEnabled
+20;NQ3;Network output;VEChangeActive;LocalVM;V41.2;;B014.Q
+20;NQ4;Network output;Alarm;LocalVM;V41.3;;AlarmLatch
+20;NQ5;Network output;CycleInputActive;LocalVM;V41.4;;I1 raw
+20;NQ6;Network output;PcHeartbeatStale;LocalVM;V41.5;;NOT B040.Q diagnostic only
+20;NQ7;Network output;CompletionHoldArmed;LocalVM;V41.6;;B046.Q
+20;NQ8;Network output;CompletionHoldActive;LocalVM;V41.7;;B045.Q
+21;ConfigValid;Composite validation;Protocol;Condition;NAI1 VW0 equals3;B002.IN6|B008.IN4|NQ1;Protocol V3 mandatory
+21;ConfigValid;Composite validation;Cavities;Condition;1<=NAI3<=64;B002.IN6|B008.IN4|NQ1;Cavity range
+21;ConfigValid;Composite validation;TargetCyclesHigh;Condition;NAI7 VW18 equals0;B002.IN6|B008.IN4|NQ1;Released cycle range uses low word only
+21;ConfigValid;Composite validation;TargetCyclesLow;Condition;1<=NAI8<=32767;B002.IN6|B008.IN4|NQ1;VE cycle range
+21;ConfigValid;Composite validation;ValvePulse;Condition;5<=NAI6<=500;B002.IN6|B008.IN4|NQ1;50..5000ms
+21;ConfigValid;Composite validation;TargetParts;Condition;VD8 not zero;B002.IN6|B008.IN4|NQ1;Part target must be nonzero
+21;ConfigValid;Composite validation;HoldAfterVE;Condition;1<=NAI15<=32767;B002.IN6|B008.IN4|NQ1;Every active real job has deterministic hold
+21;ConfigValid;Composite validation;JobIdLow;Condition;1<=NAI17<=32767;B002.IN6|B008.IN4|NQ1;Unique production instance must be nonzero
+21;ConfigValid;Composite validation;JobIdHigh;Condition;0<=NAI16<=32767;B002.IN6|B008.IN4|NQ1;Positive LOGO analog range
