@@ -1,1 +1,1 @@
-One-shot trigger for R001.25 restart recovery hardening. Remove during final cleanup.
+One-shot trigger for the R001.25 restart recovery safety guard. Remove during final cleanup.
