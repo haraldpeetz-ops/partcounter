@@ -134,6 +134,14 @@ jobs:
             'docs/JOB_INSTANCE_ID_R001_25.md'
           )
 
+          $currentNotice = @(
+            'CURRENT ENGINEERING SET - R001.25 / PROTOCOL V3',
+            '=================================================',
+            'Only the files in this Engineering folder are current build/commissioning guidance for this package.',
+            'Historical R001.8/R001.24 documents remain available in Git history/repository, but are intentionally not shipped here.',
+            'Real M01 hardware acceptance remains mandatory before Production Baseline status.'
+          )
+
           function Copy-CurrentEngineering([string]$target) {
             $engineering = Join-Path $target 'Engineering'
             $logo = Join-Path $engineering 'LOGO_V001'
@@ -145,67 +153,59 @@ jobs:
             Copy-Item 'docs/logo_v001/*R001_25*' $logo -Force
             Copy-Item 'docs/logo_v001/README_R001_25.md' $logo -Force
             Copy-Item 'artifacts/Validation_R001_25/*.txt' $engineering -Force
-
-            @'
-            CURRENT ENGINEERING SET - R001.25 / PROTOCOL V3
-            =================================================
-            Only the files in this Engineering folder are current build/commissioning guidance for this package.
-            Historical R001.8/R001.24 documents remain available in Git history/repository, but are intentionally not shipped here.
-            Real M01 hardware acceptance remains mandatory before Production Baseline status.
-            '@ | Set-Content -LiteralPath (Join-Path $engineering 'CURRENT_ENGINEERING_SET.txt') -Encoding UTF8
+            $currentNotice | Set-Content -LiteralPath (Join-Path $engineering 'CURRENT_ENGINEERING_SET.txt') -Encoding UTF8
           }
 
           Copy-CurrentEngineering 'artifacts/Partcounter_R001_25_Portable_Folder_win-x64'
           Copy-CurrentEngineering 'artifacts/Partcounter_R001_25_SingleFile_win-x64'
 
-          New-Item -ItemType Directory -Force -Path 'artifacts/Engineering_R001_25' | Out-Null
           $standalone = 'artifacts/Engineering_R001_25'
           $logoStandalone = Join-Path $standalone 'LOGO_V001'
-          New-Item -ItemType Directory -Force -Path $logoStandalone | Out-Null
+          New-Item -ItemType Directory -Force -Path $standalone, $logoStandalone | Out-Null
           Copy-Item 'README.md' (Join-Path $standalone 'PROJECT_README.md') -Force
           foreach ($doc in $currentDocs) { Copy-Item $doc $standalone -Force }
           Copy-Item 'src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_25*.md' $standalone -Force
           Copy-Item 'docs/logo_v001/*R001_25*' $logoStandalone -Force
           Copy-Item 'docs/logo_v001/README_R001_25.md' $logoStandalone -Force
           Copy-Item 'artifacts/Validation_R001_25/*.txt' $standalone -Force
-          @'
-          CURRENT ENGINEERING SET - R001.25 / PROTOCOL V3
-          =================================================
-          This artifact intentionally contains only the current release-candidate engineering set.
-          Historical revision documents are retained in Git, not mixed into the commissioning package.
-          '@ | Set-Content -LiteralPath (Join-Path $standalone 'CURRENT_ENGINEERING_SET.txt') -Encoding UTF8
+          @(
+            'CURRENT ENGINEERING SET - R001.25 / PROTOCOL V3',
+            '=================================================',
+            'This artifact intentionally contains only the current release-candidate engineering set.',
+            'Historical revision documents are retained in Git, not mixed into the commissioning package.'
+          ) | Set-Content -LiteralPath (Join-Path $standalone 'CURRENT_ENGINEERING_SET.txt') -Encoding UTF8
 
       - name: Add start instructions
         shell: pwsh
         run: |
-          @'
-          PARTCOUNTER R001.25 - PRODUCTION RELEASE CANDIDATE
-          ==================================================
-
-          Industrial hardening baseline:
-          - .NET 10 LTS
-          - compiler warnings fail the build
-          - NuGet security audit is mandatory
-          - LOGO! Modbus TCP Protocol V3
-          - confirmed CommandSequence/AckSequence handshake with same-sequence retry
-          - ErrorCode + cavities + HoldAfterVE + JobId echo validation
-          - deterministic LOGO-side CompletionHold prevents boundary leakage cycles
-          - unique persisted production JobId per real order activation
-          - PendingActivation protects uncertain command outcomes
-          - 24/7 restart recovery restores real jobs PAUSED and never auto-resumes
-          - process-wide serialized SQLite writers
-          - 24/7 daily backup check every 30 minutes
-          - productive order source is exclusively ARBURG ALS or proALPHA
-          - DPAPI protected secrets and hardened X509/mTLS path
-          - unit/regression tests plus WPF stress and multi-resolution layout gates
-
-          IMPORTANT:
-          This package is a software Production Release Candidate.
-          Production Baseline status still requires successful real M01 hardware acceptance.
-
-          Data: %LOCALAPPDATA%\Partcounter
-          Current engineering: Engineering\
-          '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_25_SingleFile_win-x64/START_HINWEIS.txt
+          @(
+            'PARTCOUNTER R001.25 - PRODUCTION RELEASE CANDIDATE',
+            '==================================================',
+            '',
+            'Industrial hardening baseline:',
+            '- .NET 10 LTS',
+            '- compiler warnings fail the build',
+            '- NuGet security audit is mandatory',
+            '- LOGO! Modbus TCP Protocol V3',
+            '- confirmed CommandSequence/AckSequence handshake with same-sequence retry',
+            '- ErrorCode + cavities + HoldAfterVE + JobId echo validation',
+            '- deterministic LOGO-side CompletionHold prevents boundary leakage cycles',
+            '- unique persisted production JobId per real order activation',
+            '- PendingActivation protects uncertain command outcomes',
+            '- 24/7 restart recovery restores real jobs PAUSED and never auto-resumes',
+            '- process-wide serialized SQLite writers',
+            '- 24/7 daily backup check every 30 minutes',
+            '- productive order source is exclusively ARBURG ALS or proALPHA',
+            '- DPAPI protected secrets and hardened X509/mTLS path',
+            '- unit/regression tests plus WPF stress and multi-resolution layout gates',
+            '',
+            'IMPORTANT:',
+            'This package is a software Production Release Candidate.',
+            'Production Baseline status still requires successful real M01 hardware acceptance.',
+            '',
+            'Data: %LOCALAPPDATA%\Partcounter',
+            'Current engineering: Engineering\'
+          ) | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_25_SingleFile_win-x64/START_HINWEIS.txt
           Copy-Item artifacts/Partcounter_R001_25_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_25_Portable_Folder_win-x64/START_HINWEIS.txt
 
       - name: Create standardized update package
