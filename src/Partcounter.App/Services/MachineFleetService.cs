@@ -193,7 +193,7 @@ public sealed class MachineFleetService : IAsyncDisposable
             await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
             var sequence = session.NextCommandSequence();
             await ExecuteConfirmedCommandAsync(session, sequence,
-                token => session.Client.SendCommandAsync(sequence, (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandManualVeChange), token),
+                token => session.Client.SendCommandAsync(sequence, (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandPauseCounting | ModbusRegisterMap.CommandManualVeChange), token),
                 $"manueller VE-Wechsel an {session.Configuration.Name}", null, cancellationToken);
             UpdateGlobalDiagnostics(session);
         }

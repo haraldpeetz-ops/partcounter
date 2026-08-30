@@ -49,6 +49,24 @@ public sealed class VeBoundaryPolicyTests
     }
 
     [Fact]
+    public void ManualPartialVe_ReplansNextSafeBoundary()
+    {
+        var plan = VeBoundaryPolicy.Plan(2, 512, 2500, 1000, 64);
+        Assert.Equal((uint)1000, plan.TargetParts);
+        Assert.Equal((uint)16, plan.TargetCycles);
+        Assert.Equal((ushort)2, plan.HoldAfterVeNumber);
+    }
+
+    [Fact]
+    public void ManualCompletionAtBoundary_ReplansPartialFollowingVe()
+    {
+        var plan = VeBoundaryPolicy.Plan(3, 1536, 2500, 1000, 64);
+        Assert.Equal((uint)964, plan.TargetParts);
+        Assert.Equal((uint)16, plan.TargetCycles);
+        Assert.Equal((ushort)3, plan.HoldAfterVeNumber);
+    }
+
+    [Fact]
     public void LogoTotalCycleLimit_IsRejectedBeforeOrderStart()
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>

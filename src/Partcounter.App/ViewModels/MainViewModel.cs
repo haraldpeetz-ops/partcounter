@@ -16,6 +16,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly MachineFleetService _fleet = new();
     private readonly DispatcherTimer _simulationTimer;
     private readonly Dictionary<int, ushort> _scheduledCompletionHolds = new();
+    private readonly HashSet<int> _manualVeReconfigurationPending = new();
 
     private bool _isSimulationMode = true;
     private bool _showIdleMachines;
@@ -401,6 +402,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
+        if (_manualVeReconfigurationPending.Contains(machine.Configuration.MachineNumber))
+        {
+            StatusMessage = "Fortsetzen gesperrt: Ein manueller VE-Wechsel ist noch nicht eindeutig abgeschlossen und neu geplant.";
+            return;
+        }
+
         try
         {
             if (!IsSimulationMode)
@@ -465,6 +472,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
             machine.EndOrder();
             _scheduledCompletionHolds.Remove(machine.Configuration.MachineNumber);
+            _manualVeReconfigurationPending.Remove(machine.Configuration.MachineNumber);
             StatusMessage =
                 $"{machine.DisplayName}: Auftrag {machine.OrderNumber} beendet bei {machine.OrderProducedQuantity:N0} / {machine.OrderTargetQuantity:N0} Teilen.";
             await _database.AddEventAsync(machine.Configuration.MachineNumber, "JOB_ENDED", StatusMessage);
@@ -530,14 +538,39 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
+        var machineNumber = machine.Configuration.MachineNumber;
+        if (_manualVeReconfigurationPending.Contains(machineNumber))
+        {
+            StatusMessage = $"{machine.DisplayName}: Ein manueller VE-Wechsel wartet bereits auf eindeutige Abschluss-/Neuplanungsbestätigung.";
+            return;
+        }
+
+        var pauseConfirmed = false;
         try
         {
-            await _fleet.SendManualVeChangeAsync(machine.Configuration.MachineNumber);
-            StatusMessage = $"Manueller VE-Wechsel an {machine.DisplayName} angefordert.";
+            await _fleet.PauseCountingAsync(machineNumber);
+            pauseConfirmed = true;
+            _manualVeReconfigurationPending.Add(machineNumber);
+
+            await _fleet.SendManualVeChangeAsync(machineNumber);
+            StatusMessage = $"{machine.DisplayName}: Manueller VE-Wechsel bestätigt angefordert. Zählung bleibt bis zur Neuplanung gesperrt.";
+            await _database.AddEventAsync(machineNumber, "MANUAL_VE_CHANGE_ARMED", StatusMessage);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"VE-Wechsel fehlgeschlagen: {ex.Message}";
+            if (pauseConfirmed)
+            {
+                if (machine.OrderState == ProductionOrderState.Running)
+                    machine.PauseOrder();
+
+                StatusMessage = $"{machine.DisplayName}: Manueller VE-Wechsel nicht eindeutig bestätigt. Zählung bleibt gesperrt; Abschluss abwarten oder kontrolliert zurücksetzen. {ex.Message}";
+                await _database.AddEventAsync(machineNumber, "MANUAL_VE_CHANGE_UNCERTAIN", StatusMessage);
+            }
+            else
+            {
+                StatusMessage = $"{machine.DisplayName}: Manueller VE-Wechsel nicht gestartet, weil die Zählpause nicht bestätigt wurde. {ex.Message}";
+                await _database.AddEventAsync(machineNumber, "MANUAL_VE_CHANGE_REJECTED", StatusMessage);
+            }
         }
     }
 
@@ -566,6 +599,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             machine.ResetCounters();
             _scheduledCompletionHolds[machine.Configuration.MachineNumber] = resetPlan.HoldAfterVeNumber;
+            _manualVeReconfigurationPending.Remove(machine.Configuration.MachineNumber);
             StatusMessage = $"{machine.DisplayName}: Auftragszähler zurückgesetzt.";
             return;
         }
@@ -585,6 +619,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             await _fleet.SendJobAsync(machine.Configuration.MachineNumber, resetJob);
             machine.ResetCounters();
             _scheduledCompletionHolds[machine.Configuration.MachineNumber] = resetPlan.HoldAfterVeNumber;
+            _manualVeReconfigurationPending.Remove(machine.Configuration.MachineNumber);
             StatusMessage = $"Reset an {machine.DisplayName} gesendet; Grenzhalt nach VE {resetPlan.HoldAfterVeNumber:N0} bestätigt.";
         }
         catch (Exception ex)
@@ -730,10 +765,21 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         var initialStatus = AutoPrintLabels ? "Pending" : "Disabled";
         var atHeldBoundary = false;
         string? boundaryError = null;
+        var expectedManualReconfiguration = !IsSimulationMode &&
+                                            e.Reason == VeCompletionReason.Manual &&
+                                            _manualVeReconfigurationPending.Contains(machine.Configuration.MachineNumber);
 
         if (!IsSimulationMode)
         {
-            (atHeldBoundary, boundaryError) = await PrecheckRealVeBoundaryAsync(machine, e);
+            if (e.Reason == VeCompletionReason.Manual && !expectedManualReconfiguration)
+            {
+                boundaryError = "Unerwarteter manueller VE-Abschluss ohne zuvor bestätigte Zählpause.";
+                await EnterBoundaryFailSafeAsync(machine, boundaryError);
+            }
+            else if (!expectedManualReconfiguration)
+            {
+                (atHeldBoundary, boundaryError) = await PrecheckRealVeBoundaryAsync(machine, e);
+            }
         }
 
         var record = new PackagingUnitRecord(
@@ -777,6 +823,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 return;
             }
 
+            if (!IsSimulationMode && expectedManualReconfiguration)
+            {
+                await ContinueAfterManualVeChangeAsync(machine, e);
+                StatusMessage = machine.OrderState == ProductionOrderState.Completed
+                    ? $"{machine.DisplayName}: Manueller VE-Abschluss {e.VeNumber} protokolliert; Auftrag abgeschlossen und Zählung bleibt gesperrt."
+                    : $"{machine.DisplayName}: Manueller VE-Abschluss {e.VeNumber} protokolliert; nächste VE {machine.CurrentVeTargetParts:N0} Teile sicher neu geplant.";
+                return;
+            }
+
             if (!IsSimulationMode && atHeldBoundary)
                 await ContinueAfterHeldBoundaryAsync(machine, e);
 
@@ -790,6 +845,78 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 machine.PauseOrder();
             StatusMessage = $"VE-Abschluss/Sicherheitsgrenze nicht vollständig verarbeitet: {ex.Message}";
         }
+    }
+
+    private async Task ContinueAfterManualVeChangeAsync(MachineState machine, VeCompletedEventArgs e)
+    {
+        var machineNumber = machine.Configuration.MachineNumber;
+
+        if (machine.OrderState == ProductionOrderState.Completed)
+        {
+            await _fleet.PauseCountingAsync(machineNumber);
+            _scheduledCompletionHolds.Remove(machineNumber);
+            _manualVeReconfigurationPending.Remove(machineNumber);
+            await _database.AddEventAsync(machineNumber, "MANUAL_VE_FINAL",
+                $"Auftrag {machine.OrderNumber}: manueller Abschluss VE {e.VeNumber}; Auftrag vollständig, Zählpause bestätigt.");
+            return;
+        }
+
+        if (!machine.IsActiveOrder || machine.CurrentVeTargetParts == 0)
+        {
+            const string reason = "Nach manuellem VE-Wechsel ist kein gültiges nächstes VE-Ziel vorhanden.";
+            await EnterBoundaryFailSafeAsync(machine, reason);
+            throw new InvalidOperationException(reason);
+        }
+
+        VeBoundaryPlan nextPlan;
+        try
+        {
+            nextPlan = VeBoundaryPolicy.Plan(
+                machine.CurrentVeNumber,
+                machine.OrderProducedQuantity,
+                machine.OrderTargetQuantity,
+                machine.TargetPartsPerVe,
+                machine.ActiveCavities);
+        }
+        catch (Exception ex)
+        {
+            await EnterBoundaryFailSafeAsync(machine, $"Neuplanung nach manuellem VE-Wechsel fehlgeschlagen: {ex.Message}");
+            throw;
+        }
+
+        if (nextPlan.TargetParts != machine.CurrentVeTargetParts)
+        {
+            var reason = $"Planungsabweichung nach manuellem VE-Wechsel: MachineState {machine.CurrentVeTargetParts}, Grenzplan {nextPlan.TargetParts} Teile.";
+            await EnterBoundaryFailSafeAsync(machine, reason);
+            throw new InvalidOperationException(reason);
+        }
+
+        var nextJob = new JobParameters(
+            StableUInt32(machine.OrderNumber),
+            machine.ArticleNumber,
+            machine.ToolNumber,
+            machine.ActiveCavities,
+            nextPlan.TargetParts,
+            nextPlan.TargetCycles,
+            ValvePulseMs,
+            nextPlan.HoldAfterVeNumber);
+
+        try
+        {
+            await _fleet.UpdateVeTargetAsync(machineNumber, nextJob, pauseCounting: true);
+            _scheduledCompletionHolds[machineNumber] = nextPlan.HoldAfterVeNumber;
+            _manualVeReconfigurationPending.Remove(machineNumber);
+            if (machine.OrderState == ProductionOrderState.Running)
+                await _fleet.ResumeCountingAsync(machineNumber);
+        }
+        catch (Exception ex)
+        {
+            await EnterBoundaryFailSafeAsync(machine, $"Neuplanung/Freigabe nach manuellem VE-Wechsel fehlgeschlagen: {ex.Message}");
+            throw;
+        }
+
+        await _database.AddEventAsync(machineNumber, "MANUAL_VE_RECONFIGURED",
+            $"Nach manuellem Abschluss VE {e.VeNumber}: Ziel {nextPlan.TargetParts} Teile; nächster Hold VE {nextPlan.HoldAfterVeNumber}.");
     }
 
     private async Task<(bool AtHeldBoundary, string? Error)> PrecheckRealVeBoundaryAsync(
