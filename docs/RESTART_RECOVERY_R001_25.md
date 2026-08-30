@@ -35,3 +35,9 @@ War ein manueller VE-Wechsel pending und die LOGO! zeigt über `CompletedVEs` pl
 
 ## Freigabegrenze
 CI prüft Persistenz, Rekonstruktion und Doppel-Completion-Schutz. Die reale Wiederanlaufwirkung wird zusätzlich an M01 mit echtem Partcounter-Abbruch/Neustart und LOGO!-Weiterlauf abgenommen.
+
+
+## Unklare Auftragsübernahme
+Wenn ein realer Auftragswrite wegen Verbindungsabbruch nicht eindeutig bestätigt werden kann, bleibt `PendingActivation` absichtlich erhalten. Partcounter darf auf dieser Maschine keinen neuen Auftrag starten, weil die LOGO! den Write möglicherweise bereits verarbeitet hat. Der Recovery-Abgleich entscheidet später anhand von `JobIdEcho`.
+
+Ein Pending-Checkpoint mit abweichender JobId wird nur dann automatisch verworfen, wenn die LOGO! **nachweislich leer/inaktiv** ist: JobIdEcho=0, TotalCycles=0, CurrentParts=0, CompletedVEs=0 und AutomaticEnabled=0. Jeder andere fremde oder unklare LOGO!-Zustand blockiert die Echtbetriebsaktivierung.

@@ -305,6 +305,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
             return;
         }
 
+        if (HasUnresolvedPendingActivation(SelectedMachine))
+        {
+            StatusMessage = $"{SelectedMachine.DisplayName}: Neue Beauftragung gesperrt. Ein vorheriger Echtauftrag ist wegen verlorener/fehlender Modbus-Bestätigung noch als PendingActivation offen. Nach Wiederherstellung der Verbindung Partcounter neu starten und den Recovery-Abgleich ausführen.";
+            return;
+        }
+
         if (SelectedMachine.IsActiveOrder)
         {
             StatusMessage = $"{SelectedMachine.DisplayName}: Es läuft bereits ein Auftrag. Bitte zuerst pausieren/beenden.";
@@ -376,9 +382,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
                     }
                 }
 
-                await DeleteLiveOrderCheckpointAsync(machine.Configuration.MachineNumber);
-                StatusMessage = $"Auftrag nicht übernommen – LOGO!-Protocol-V3-Übertragung fehlgeschlagen: {ex.Message}";
-                await _database.AddEventAsync(machine.Configuration.MachineNumber, "MODBUS_WRITE_ERROR", ex.Message);
+                StatusMessage = $"Auftrag nicht eindeutig übernommen – LOGO!-Protocol-V3-Bestätigung fehlgeschlagen: {ex.Message} PendingActivation bleibt gespeichert; auf dieser Maschine wird keine neue Beauftragung zugelassen, bis der Recovery-Abgleich den realen LOGO!-Zustand eindeutig geklärt hat.";
+                await _database.AddEventAsync(machine.Configuration.MachineNumber, "MODBUS_WRITE_UNCERTAIN", StatusMessage);
                 return;
             }
         }

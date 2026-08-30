@@ -15,6 +15,10 @@ public sealed partial class MainViewModel
     private bool IsPendingStartupRecovery(MachineState machine) =>
         IsSimulationMode && _startupRecoveryMachines.Contains(machine.Configuration.MachineNumber);
 
+    private bool HasUnresolvedPendingActivation(MachineState machine) =>
+        _liveOrderCheckpoints.TryGetValue(machine.Configuration.MachineNumber, out var checkpoint) &&
+        checkpoint.Phase == ActiveOrderCheckpointPhase.PendingActivation;
+
     private async Task LoadPendingLiveOrderRecoveryAsync()
     {
         await OrderRecovery.InitializeAsync();
@@ -61,11 +65,13 @@ public sealed partial class MainViewModel
 
                 if (snapshot.JobIdEcho != checkpoint.JobId)
                 {
-                    if (checkpoint.Phase == ActiveOrderCheckpointPhase.PendingActivation)
+                    if (checkpoint.Phase == ActiveOrderCheckpointPhase.PendingActivation &&
+                        RecoveryIdentityPolicy.IsProvablyIdleForPendingActivation(snapshot))
                     {
-                        // Crash before a verifiable LOGO activation: no matching job exists.
+                        // The pending PC command is definitely not active and the LOGO reports no
+                        // autonomous production state. Only in this proven-idle case may we discard it.
                         await _database.AddEventAsync(machineNumber, "RECOVERY_PENDING_START_NOT_ACTIVE",
-                            $"Pending-Auftrag {checkpoint.OrderNumber} (JobId {checkpoint.JobId}) ist in der LOGO! nicht aktiv; Checkpoint wird verworfen, ohne einen fremden Auftrag zu verändern.");
+                            $"Pending-Auftrag {checkpoint.OrderNumber} (JobId {checkpoint.JobId}) wurde nicht aktiv; LOGO! ist nachweislich leer/inaktiv. Checkpoint wird verworfen.");
                         await DeleteLiveOrderCheckpointAsync(machineNumber);
                         _scheduledCompletionHolds.Remove(machineNumber);
                         _manualVeReconfigurationPending.Remove(machineNumber);
@@ -74,7 +80,10 @@ public sealed partial class MainViewModel
                         continue;
                     }
 
-                    throw new InvalidOperationException($"JobIdEcho {snapshot.JobIdEcho} != Recovery-JobId {checkpoint.JobId}.");
+                    var pendingHint = checkpoint.Phase == ActiveOrderCheckpointPhase.PendingActivation
+                        ? " PendingActivation darf nicht verworfen werden, weil die LOGO! nicht eindeutig leer/inaktiv ist."
+                        : string.Empty;
+                    throw new InvalidOperationException($"JobIdEcho {snapshot.JobIdEcho} != Recovery-JobId {checkpoint.JobId}.{pendingHint}");
                 }
 
                 if (snapshot.ActiveCavitiesEcho != checkpoint.ActiveCavities)

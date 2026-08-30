@@ -103,6 +103,38 @@ public sealed class ActiveOrderRecoveryTests
         Assert.Equal((uint)452, machine.CurrentVeTargetParts);
     }
 
+    [Fact]
+    public void PendingActivation_IsDiscardableOnlyForProvablyIdleLogo()
+    {
+        var idle = Snapshot(jobId: 0, totalCycles: 0, currentParts: 0, completedVes: 0, statusWord: 0);
+        Assert.True(RecoveryIdentityPolicy.IsProvablyIdleForPendingActivation(idle));
+
+        Assert.False(RecoveryIdentityPolicy.IsProvablyIdleForPendingActivation(
+            Snapshot(jobId: 999, totalCycles: 0, currentParts: 0, completedVes: 0, statusWord: 0)));
+        Assert.False(RecoveryIdentityPolicy.IsProvablyIdleForPendingActivation(
+            Snapshot(jobId: 0, totalCycles: 1, currentParts: 64, completedVes: 0, statusWord: 0)));
+        Assert.False(RecoveryIdentityPolicy.IsProvablyIdleForPendingActivation(
+            Snapshot(jobId: 0, totalCycles: 0, currentParts: 0, completedVes: 0, statusWord: ModbusRegisterMap.StatusAutomaticEnabled)));
+    }
+
+    private static LogoSnapshot Snapshot(uint jobId, uint totalCycles, uint currentParts, ushort completedVes, ushort statusWord) => new(
+        CurrentParts: currentParts,
+        TotalCycles: totalCycles,
+        CurrentVeNumber: 1,
+        CompletedVes: completedVes,
+        LastCompletedVeQuantity: 0,
+        StatusWord: statusWord,
+        AcknowledgedCommandSequence: 0,
+        ActiveCavitiesEcho: 1,
+        LastCompletedVeNumber: 0,
+        CompletionSequence: 0,
+        LogoHeartbeat: 1,
+        ErrorCode: 0,
+        LastCompletionReason: VeCompletionReason.Unknown,
+        ReadAtUtc: DateTime.UtcNow,
+        HoldAfterVeNumberEcho: 0,
+        JobIdEcho: jobId);
+
     private static ActiveOrderCheckpoint CreateCheckpoint() => new(
         MachineNumber: 1,
         OrderNumber: "AUF-RECOVERY-001",
