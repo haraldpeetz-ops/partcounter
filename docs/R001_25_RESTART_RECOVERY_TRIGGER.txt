@@ -1,1 +1,1 @@
-Validation marker for the corrected R001.25 24/7 restart recovery hardening. Remove during final cleanup.
+One-shot trigger for R001.25 recovery snapshot isolation and held-boundary release proof. Remove during final cleanup.
