@@ -1,1 +1,0 @@
-Validation marker for the applied R001.25 manual VE fail-safe hardening. Remove during final cleanup.
