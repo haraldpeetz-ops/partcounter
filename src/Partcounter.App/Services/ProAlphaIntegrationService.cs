@@ -317,7 +317,7 @@ public sealed class ProAlphaIntegrationService
         {
             var path = Environment.ExpandEnvironmentVariables(settings.ClientCertificatePath.Trim());
             var contentType = X509Certificate2.GetCertContentType(path);
-            using var certificate = contentType == X509ContentType.Pfx
+            var certificate = contentType == X509ContentType.Pfx
                 ? X509CertificateLoader.LoadPkcs12FromFile(
                     path,
                     settings.ClientCertificatePassword ?? string.Empty,

@@ -226,7 +226,7 @@ public sealed class AlsIntegrationService
                 throw new FileNotFoundException("ALS-Clientzertifikat nicht gefunden.", certificatePath);
 
             var contentType = X509Certificate2.GetCertContentType(certificatePath);
-            using var certificate = contentType == X509ContentType.Pfx
+            var certificate = contentType == X509ContentType.Pfx
                 ? X509CertificateLoader.LoadPkcs12FromFile(
                     certificatePath,
                     settings.ClientCertificatePassword ?? string.Empty,
