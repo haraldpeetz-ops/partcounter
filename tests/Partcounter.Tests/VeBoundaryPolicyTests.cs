@@ -53,7 +53,8 @@ public sealed class VeBoundaryPolicyTests
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
             VeBoundaryPolicy.Plan(1, 0, 1_000_000, 1000, 1));
-        Assert.Contains("999.999", ex.Message);
+        Assert.Contains("überschreitet die freigegebene Grenze", ex.Message);
+        Assert.Contains("Auftrag segmentieren", ex.Message);
     }
 
     [Fact]
