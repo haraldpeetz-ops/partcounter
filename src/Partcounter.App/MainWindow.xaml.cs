@@ -123,7 +123,7 @@ public partial class MainWindow : Window
 
             _lastAllowedTab = MainTabs.Items.OfType<TabItem>().FirstOrDefault(t => !_protectedTabs.ContainsKey(t));
 
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
             {
                 AttachMachineContextMenus();
                 LocateVersionStatusTextBlock();
@@ -336,7 +336,7 @@ public partial class MainWindow : Window
     }
 
     private void OnAdminAccessStateChanged(object? sender, EventArgs e) =>
-        Dispatcher.BeginInvoke(new Action(RefreshAdminUi));
+        _ = Dispatcher.BeginInvoke(new Action(RefreshAdminUi));
 
     private void RefreshAdminUi()
     {
@@ -416,12 +416,12 @@ public partial class MainWindow : Window
     }
 
     private void OnVisibleMachinesChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(AttachMachineContextMenus));
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(AttachMachineContextMenus));
 
     private void OnMachineContainerStatusChanged(object? sender, EventArgs e)
     {
         if (MachineItemsControl.ItemContainerGenerator.Status == GeneratorStatus.ContainersGenerated)
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(AttachMachineContextMenus));
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(AttachMachineContextMenus));
     }
 
     private void AttachMachineContextMenus()
@@ -490,7 +490,7 @@ public partial class MainWindow : Window
 
         _viewModel.SelectedMachine = machine;
 
-        Dispatcher.BeginInvoke(
+        _ = Dispatcher.BeginInvoke(
             DispatcherPriority.Loaded,
             new Action(() =>
             {
@@ -512,7 +512,7 @@ public partial class MainWindow : Window
 
         if (machine is not null)
         {
-            Dispatcher.BeginInvoke(
+            _ = Dispatcher.BeginInvoke(
                 DispatcherPriority.Loaded,
                 new Action(() => BringMachineIntoFocus(machine)));
         }

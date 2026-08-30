@@ -24,7 +24,7 @@ public sealed class LabelTemplateService
         _databasePath = Path.Combine(baseDirectory, "partcounter.db");
     }
 
-    private string ConnectionString => $"Data Source={_databasePath};Cache=Shared";
+    private string ConnectionString => SqliteWriteCoordinator.BuildConnectionString(_databasePath);
 
     public static IReadOnlyList<LabelDataToken> AvailableTokens { get; } = new List<LabelDataToken>
     {
@@ -137,11 +137,11 @@ public sealed class LabelTemplateService
             : template.AssignedArticleNumber.Trim();
         template.AssignedArticleNumber = assignedArticle;
 
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
-        await using var transaction = await connection.BeginTransactionAsync();
+        await SqliteWriteCoordinator.ExecuteAsync(_databasePath, async connection =>
+        {
+            await using var transaction = await connection.BeginTransactionAsync();
 
-        if (template.IsDefault)
+            if (template.IsDefault)
         {
             var clearDefault = connection.CreateCommand();
             clearDefault.Transaction = (SqliteTransaction)transaction;
@@ -190,7 +190,8 @@ public sealed class LabelTemplateService
         command.Parameters.AddWithValue("$updated", template.UpdatedAtUtc.ToString("O"));
         await command.ExecuteNonQueryAsync();
 
-        await transaction.CommitAsync();
+            await transaction.CommitAsync();
+        });
     }
 
     public async Task DeleteTemplateAsync(string id)
@@ -204,12 +205,13 @@ public sealed class LabelTemplateService
         if (deleting is null)
             return;
 
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
-        var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM LabelTemplates WHERE Id=$id;";
-        command.Parameters.AddWithValue("$id", id);
-        await command.ExecuteNonQueryAsync();
+        await SqliteWriteCoordinator.ExecuteAsync(_databasePath, async connection =>
+        {
+            var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM LabelTemplates WHERE Id=$id;";
+            command.Parameters.AddWithValue("$id", id);
+            await command.ExecuteNonQueryAsync();
+        });
 
         if (deleting.IsDefault)
         {

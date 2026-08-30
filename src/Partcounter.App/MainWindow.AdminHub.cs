@@ -336,7 +336,7 @@ public partial class MainWindow
         }
 
         var displayName = tag["PartcounterAdminAlias:".Length..];
-        Dispatcher.BeginInvoke(
+        _ = Dispatcher.BeginInvoke(
             DispatcherPriority.Loaded,
             new Action(() => OpenAdministrationSection(displayName)));
     }
@@ -383,11 +383,11 @@ public partial class MainWindow
     private void OnAdminHubViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(ViewModels.MainViewModel.IsSimulationMode) or nameof(ViewModels.MainViewModel.SystemStatusText))
-            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(RefreshAdminHubState));
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(RefreshAdminHubState));
     }
 
     private void OnAdminHubAccessStateChanged(object? sender, EventArgs e) =>
-        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(RefreshAdminHubState));
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(RefreshAdminHubState));
 
     private void RefreshAdminHubState()
     {

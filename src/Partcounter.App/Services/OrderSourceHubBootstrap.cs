@@ -9,9 +9,8 @@ namespace Partcounter.Services;
 
 public sealed class OrderSourceHubBootstrap
 {
-    private const string ActiveSourceSettingKey = "OrderSource.Active";
-    private const string AlsSource = "ARBURG ALS";
-    private const string ProAlphaSource = "proALPHA";
+    private const string AlsSource = OrderSourceCoordinator.AlsDisplayName;
+    private const string ProAlphaSource = OrderSourceCoordinator.ProAlphaDisplayName;
     private static readonly Dictionary<MainWindow, OrderSourceHubBootstrap> Instances = new();
 
     private readonly MainWindow _window;
@@ -124,8 +123,8 @@ public sealed class OrderSourceHubBootstrap
         alsTab.Content = root;
         alsTab.Header = "Auftragsquellen · ARBURG ALS / proALPHA";
 
-        var active = await _database.GetSettingAsync(ActiveSourceSettingKey);
-        active = string.Equals(active, ProAlphaSource, StringComparison.OrdinalIgnoreCase) ? ProAlphaSource : AlsSource;
+        var activeKind = await OrderSourceCoordinator.GetActiveAsync(_database);
+        var active = activeKind == OrderSourceKind.ProAlpha ? ProAlphaSource : AlsSource;
         activeCombo.SelectedItem = active;
         innerTabs.SelectedItem = active == ProAlphaSource ? proAlphaInner : alsInner;
         status.Text = $"Führend: {active}";
@@ -133,7 +132,7 @@ public sealed class OrderSourceHubBootstrap
         activeCombo.SelectionChanged += async (_, _) =>
         {
             var selected = activeCombo.SelectedItem?.ToString() == ProAlphaSource ? ProAlphaSource : AlsSource;
-            await _database.SetSettingAsync(ActiveSourceSettingKey, selected);
+            await OrderSourceCoordinator.SetActiveAsync(_database, selected == ProAlphaSource ? OrderSourceKind.ProAlpha : OrderSourceKind.ArburgAls);
             status.Text = $"Führend: {selected}";
             innerTabs.SelectedItem = selected == ProAlphaSource ? proAlphaInner : alsInner;
         };

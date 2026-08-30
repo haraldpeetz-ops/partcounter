@@ -141,7 +141,7 @@ public static class AdaptiveUiService
         if (window.Dispatcher.HasShutdownStarted || window.Dispatcher.HasShutdownFinished)
             return;
 
-        window.Dispatcher.BeginInvoke(
+        _ = window.Dispatcher.BeginInvoke(
             DispatcherPriority.ApplicationIdle,
             new Action(() => NormalizeWindow(window)));
     }

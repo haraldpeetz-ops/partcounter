@@ -51,7 +51,7 @@ public sealed class LabelReprintBootstrap
             _mainNotifier.PropertyChanged += OnMainPropertyChanged;
             await _service.InitializeAsync();
 
-            _window.Dispatcher.BeginInvoke(
+            _ = _window.Dispatcher.BeginInvoke(
                 DispatcherPriority.ApplicationIdle,
                 new Action(() =>
                 {
@@ -389,11 +389,11 @@ public sealed class LabelReprintBootstrap
     {
         if (e.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
         {
-            _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(UpdateRevisionUi));
+            _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(UpdateRevisionUi));
         }
         else if (e.PropertyName == nameof(MainViewModel.LabelPrinterName) && _selectedRecord is not null)
         {
-            _window.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(UpdateSelectionUi));
+            _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(UpdateSelectionUi));
         }
     }
 

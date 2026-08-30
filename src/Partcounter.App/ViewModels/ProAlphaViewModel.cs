@@ -197,6 +197,7 @@ public sealed class ProAlphaViewModel : INotifyPropertyChanged, IDisposable
     private async Task LoadOrdersAsync(bool userInitiated)
     {
         if (_isLoading || !Settings.Enabled) return;
+        if (!userInitiated && !await OrderSourceCoordinator.IsActiveAsync(_database, OrderSourceKind.ProAlpha)) return;
         _isLoading = true;
         try
         {
@@ -215,6 +216,11 @@ public sealed class ProAlphaViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task ApplySelectedOrderAsync()
     {
+        if (!await OrderSourceCoordinator.IsActiveAsync(_database, OrderSourceKind.ProAlpha))
+        {
+            StatusText = "proALPHA ist nicht die führende Auftragsquelle. Unter Administration → Auftragsquellen zuerst proALPHA aktivieren.";
+            return;
+        }
         var order = SelectedOrder;
         if (order is null) { StatusText = "Bitte zuerst einen proALPHA-Auftrag auswählen."; return; }
         var machine = ResolveMachine(order);

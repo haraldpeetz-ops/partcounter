@@ -1,29 +1,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>Partcounter</AssemblyName>
     <RootNamespace>Partcounter</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.1.24</Version>
-    <FileVersion>0.1.24.0</FileVersion>
-    <InformationalVersion>0.1.24-r001.24-adaptive-ui-logo-guide</InformationalVersion>
+    <Version>0.1.25</Version>
+    <FileVersion>0.1.25.0</FileVersion>
+    <InformationalVersion>0.1.25-r001.25-final-hardening</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="NModbus" Version="3.0.83" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.30" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
     <PackageReference Include="ZXing.Net" Version="0.16.11" />
     <PackageReference Include="ClosedXML" Version="0.105.1" />
-    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Help\PARTCOUNTER_HILFE_R001_19.md" />
+    <EmbeddedResource Include="Help\PARTCOUNTER_HILFE_R001_25.md" />
     <Resource Include="Help\Screenshots\*.png" />
     <Resource Include="Help\Screenshots\*.jpg" />
     <Resource Include="Help\Screenshots\*.jpeg" />

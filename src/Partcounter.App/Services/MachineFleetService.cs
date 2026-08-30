@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Collections.Concurrent;
 using Partcounter.Models;
 
@@ -9,6 +10,10 @@ public sealed record MachineConnectionEventArgs(int MachineNumber, ConnectionSta
 public sealed class MachineFleetService : IAsyncDisposable
 {
     private static readonly ConcurrentDictionary<int, MachineCommunicationDiagnostics> GlobalDiagnostics = new();
+
+    private const int CommandAckTimeoutMs = 3_000;
+    private const int CommandRetryCount = 3;
+    private const int CommandRetryDelayMs = 150;
 
     private readonly Dictionary<int, Session> _sessions = new();
     private readonly List<Task> _workers = new();
@@ -71,13 +76,13 @@ public sealed class MachineFleetService : IAsyncDisposable
             await EnsureConnectedAsync(session, cancellationToken);
             await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
             var sequence = session.NextCommandSequence();
-            await session.Client.WriteJobAsync(
-                job,
+            await ExecuteConfirmedCommandAsync(
+                session,
                 sequence,
-                automaticMode: true,
-                resetJob: true,
-                pauseCounting: false,
-                cancellationToken: cancellationToken);
+                token => session.Client.WriteJobAsync(job, sequence, true, true, false, token),
+                $"Auftrag an {session.Configuration.Name}",
+                job.ActiveCavities,
+                cancellationToken);
             UpdateGlobalDiagnostics(session);
         }
         finally
@@ -99,13 +104,13 @@ public sealed class MachineFleetService : IAsyncDisposable
             await EnsureConnectedAsync(session, cancellationToken);
             await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
             var sequence = session.NextCommandSequence();
-            await session.Client.WriteJobAsync(
-                job,
+            await ExecuteConfirmedCommandAsync(
+                session,
                 sequence,
-                automaticMode: true,
-                resetJob: false,
-                pauseCounting: pauseCounting,
-                cancellationToken: cancellationToken);
+                token => session.Client.WriteJobAsync(job, sequence, true, false, pauseCounting, token),
+                $"VE-Zielupdate an {session.Configuration.Name}",
+                job.ActiveCavities,
+                cancellationToken);
             UpdateGlobalDiagnostics(session);
         }
         finally
@@ -122,10 +127,10 @@ public sealed class MachineFleetService : IAsyncDisposable
         {
             await EnsureConnectedAsync(session, cancellationToken);
             await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
-            await session.Client.SendCommandAsync(
-                session.NextCommandSequence(),
-                (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandPauseCounting),
-                cancellationToken);
+            var sequence = session.NextCommandSequence();
+            await ExecuteConfirmedCommandAsync(session, sequence,
+                token => session.Client.SendCommandAsync(sequence, (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandPauseCounting), token),
+                $"Zählpause an {session.Configuration.Name}", null, cancellationToken);
             UpdateGlobalDiagnostics(session);
         }
         finally
@@ -142,10 +147,10 @@ public sealed class MachineFleetService : IAsyncDisposable
         {
             await EnsureConnectedAsync(session, cancellationToken);
             await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
-            await session.Client.SendCommandAsync(
-                session.NextCommandSequence(),
-                ModbusRegisterMap.CommandEnableAutomatic,
-                cancellationToken);
+            var sequence = session.NextCommandSequence();
+            await ExecuteConfirmedCommandAsync(session, sequence,
+                token => session.Client.SendCommandAsync(sequence, ModbusRegisterMap.CommandEnableAutomatic, token),
+                $"Zählfreigabe an {session.Configuration.Name}", null, cancellationToken);
             UpdateGlobalDiagnostics(session);
         }
         finally
@@ -182,10 +187,10 @@ public sealed class MachineFleetService : IAsyncDisposable
         {
             await EnsureConnectedAsync(session, cancellationToken);
             await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
-            await session.Client.SendCommandAsync(
-                session.NextCommandSequence(),
-                (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandManualVeChange),
-                cancellationToken);
+            var sequence = session.NextCommandSequence();
+            await ExecuteConfirmedCommandAsync(session, sequence,
+                token => session.Client.SendCommandAsync(sequence, (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandManualVeChange), token),
+                $"manueller VE-Wechsel an {session.Configuration.Name}", null, cancellationToken);
             UpdateGlobalDiagnostics(session);
         }
         finally
@@ -202,16 +207,100 @@ public sealed class MachineFleetService : IAsyncDisposable
         {
             await EnsureConnectedAsync(session, cancellationToken);
             await EnsureCommandSequenceSynchronizedAsync(session, cancellationToken);
-            await session.Client.SendCommandAsync(
-                session.NextCommandSequence(),
-                (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandResetJob),
-                cancellationToken);
+            var sequence = session.NextCommandSequence();
+            await ExecuteConfirmedCommandAsync(session, sequence,
+                token => session.Client.SendCommandAsync(sequence, (ushort)(ModbusRegisterMap.CommandEnableAutomatic | ModbusRegisterMap.CommandResetJob), token),
+                $"Auftragsreset an {session.Configuration.Name}", null, cancellationToken);
             UpdateGlobalDiagnostics(session);
         }
         finally
         {
             session.Gate.Release();
         }
+    }
+
+    private async Task<LogoSnapshot> ExecuteConfirmedCommandAsync(
+        Session session,
+        ushort expectedSequence,
+        Func<CancellationToken, Task> send,
+        string operation,
+        ushort? expectedCavities,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastError = null;
+        for (var attempt = 1; attempt <= CommandRetryCount; attempt++)
+        {
+            try
+            {
+                await EnsureConnectedAsync(session, cancellationToken);
+                var beforeSend = await session.Client.ReadSnapshotAsync(cancellationToken);
+                session.LastSnapshot = beforeSend;
+                if (beforeSend.AcknowledgedCommandSequence == expectedSequence)
+                    return ValidateAcknowledgement(session, beforeSend, expectedSequence, operation, expectedCavities);
+
+                await send(cancellationToken);
+                return await WaitForCommandAcknowledgementAsync(session, expectedSequence, operation, expectedCavities, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                session.LastMessage = $"{operation}: Versuch {attempt}/{CommandRetryCount} fehlgeschlagen: {ex.Message}";
+                session.Client.Disconnect();
+                PublishConnection(session, ConnectionState.Offline, session.LastMessage);
+                if (attempt < CommandRetryCount)
+                    await Task.Delay(CommandRetryDelayMs * attempt, cancellationToken);
+            }
+        }
+        throw new InvalidOperationException($"{operation} wurde von der LOGO! nach {CommandRetryCount} Versuchen nicht bestätigt.", lastError);
+    }
+
+    private async Task<LogoSnapshot> WaitForCommandAcknowledgementAsync(
+        Session session,
+        ushort expectedSequence,
+        string operation,
+        ushort? expectedCavities,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.ElapsedMilliseconds < CommandAckTimeoutMs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var snapshot = await session.Client.ReadSnapshotAsync(cancellationToken);
+            session.LastSnapshot = snapshot;
+            session.LastMessage = null;
+            UpdateGlobalDiagnostics(session);
+            if (snapshot.AcknowledgedCommandSequence == expectedSequence)
+            {
+                var validated = ValidateAcknowledgement(session, snapshot, expectedSequence, operation, expectedCavities);
+                PublishConnection(session, ConnectionState.Online, null);
+                return validated;
+            }
+            await Task.Delay(75, cancellationToken);
+        }
+        throw new TimeoutException($"{operation}: LOGO!-AckSequence {expectedSequence} wurde innerhalb von {CommandAckTimeoutMs} ms nicht bestätigt.");
+    }
+
+    private static LogoSnapshot ValidateAcknowledgement(
+        Session session,
+        LogoSnapshot snapshot,
+        ushort expectedSequence,
+        string operation,
+        ushort? expectedCavities)
+    {
+        if (snapshot.AcknowledgedCommandSequence != expectedSequence)
+            throw new InvalidOperationException($"{operation}: erwartete AckSequence {expectedSequence}, empfangen {snapshot.AcknowledgedCommandSequence}.");
+        if (snapshot.ErrorCode != ModbusRegisterMap.ErrorNone)
+            throw new InvalidOperationException($"{operation}: LOGO! hat den Befehl mit ErrorCode {snapshot.ErrorCode} abgelehnt.");
+        if (expectedCavities.HasValue && snapshot.ActiveCavitiesEcho != expectedCavities.Value)
+            throw new InvalidOperationException($"{operation}: Kavitäten-Echo {snapshot.ActiveCavitiesEcho} entspricht nicht Soll {expectedCavities.Value}.");
+        session.LastSnapshot = snapshot;
+        session.LastMessage = null;
+        UpdateGlobalDiagnostics(session);
+        return snapshot;
     }
 
     private async Task PollLoopAsync(Session session, CancellationToken cancellationToken)
@@ -224,7 +313,7 @@ public sealed class MachineFleetService : IAsyncDisposable
             {
                 try
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(750), cancellationToken);
+                    await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -266,7 +355,7 @@ public sealed class MachineFleetService : IAsyncDisposable
 
             try
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(750), cancellationToken);
+                await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
             }
             catch (OperationCanceledException)
             {

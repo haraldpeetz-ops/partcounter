@@ -28,7 +28,7 @@ public sealed class SupportCenterBootstrap
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        _window.Dispatcher.BeginInvoke(
+        _ = _window.Dispatcher.BeginInvoke(
             DispatcherPriority.ContextIdle,
             new Action(AttachButton));
     }

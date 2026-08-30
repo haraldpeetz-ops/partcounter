@@ -328,7 +328,7 @@ public sealed class SupportCenterWindow : Window
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
-            Dispatcher.BeginInvoke(new Action(RefreshOperatingMode));
+            _ = Dispatcher.BeginInvoke(new Action(RefreshOperatingMode));
     }
 
     private void OnClosed(object? sender, EventArgs e)

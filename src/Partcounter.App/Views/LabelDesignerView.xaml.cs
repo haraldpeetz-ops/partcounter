@@ -53,13 +53,13 @@ public partial class LabelDesignerView : UserControl
     {
         if (_dragRow is not null)
             return;
-        Dispatcher.BeginInvoke(new Action(RefreshCanvas));
+        _ = Dispatcher.BeginInvoke(new Action(RefreshCanvas));
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(LabelDesignerViewModel.SelectedElement) && _dragRow is null)
-            Dispatcher.BeginInvoke(new Action(RefreshCanvas));
+            _ = Dispatcher.BeginInvoke(new Action(RefreshCanvas));
     }
 
     private void RefreshCanvas()

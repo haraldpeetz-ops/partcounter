@@ -36,13 +36,13 @@ public sealed class ProfessionalHelpBootstrap
             _mainNotifier.PropertyChanged += OnMainPropertyChanged;
         }
 
-        _window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(UpdateRevisionUi));
+        _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(UpdateRevisionUi));
     }
 
     private void OnMainPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
-            _window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(UpdateRevisionUi));
+            _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(UpdateRevisionUi));
     }
 
     private void UpdateRevisionUi()

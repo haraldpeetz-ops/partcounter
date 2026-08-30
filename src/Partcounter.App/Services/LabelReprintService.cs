@@ -10,7 +10,7 @@ public sealed class LabelReprintService
     private readonly LabelTemplateService _templates = new();
     private readonly LabelPrintSnapshotService _snapshots = new();
 
-    private string ConnectionString => $"Data Source={_database.DatabasePath};Cache=Shared";
+    private string ConnectionString => SqliteWriteCoordinator.BuildConnectionString(_database.DatabasePath);
 
     public async Task InitializeAsync()
     {
@@ -38,6 +38,9 @@ public sealed class LabelReprintService
 
             CREATE INDEX IF NOT EXISTS IX_LabelReprintJournal_PackagingUnitId
                 ON LabelReprintJournal(PackagingUnitId, Id DESC);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS UX_LabelReprintJournal_Number
+                ON LabelReprintJournal(PackagingUnitId, ReprintNumber);
             """;
         await command.ExecuteNonQueryAsync();
         await EnsureColumnAsync(connection, "LabelReprintJournal", "LayoutSource", "TEXT NOT NULL DEFAULT ''");
@@ -53,7 +56,7 @@ public sealed class LabelReprintService
 
         var normalizedPrinter = (printerName ?? string.Empty).Trim();
         var normalizedReason = string.IsNullOrWhiteSpace(reason) ? "Nicht angegeben" : reason.Trim();
-        var reprintNumber = await GetNextReprintNumberAsync(record.Id);
+        var reprintNumber = 0;
         var attemptedAtUtc = DateTime.UtcNow;
 
         var snapshot = await _snapshots.LoadSnapshotAsync(record.Id);
@@ -88,16 +91,14 @@ public sealed class LabelReprintService
                 : "Der Druckauftrag konnte nicht an die Windows-Druckerwarteschlange übergeben werden. Druckername, Queue und Treiber prüfen.";
         }
 
-        await AddJournalEntryAsync(new LabelReprintJournalEntry(
-            0,
+        reprintNumber = await AddJournalEntryAsync(
             record.Id,
-            reprintNumber,
             attemptedAtUtc,
             normalizedPrinter,
             normalizedReason,
             successful,
             errorMessage,
-            layoutSource));
+            layoutSource);
 
         var eventMessage = successful
             ? $"Nachdruck #{reprintNumber} für VE-ID {record.Id}; VE {record.VeNumber}; Auftrag {record.OrderNumber}; Artikel {record.ArticleNumber}; Drucker {normalizedPrinter}; Grund: {normalizedReason}; Layout: {layoutSource}."
@@ -182,27 +183,39 @@ public sealed class LabelReprintService
         return Convert.ToInt32(await command.ExecuteScalarAsync() ?? 1);
     }
 
-    private async Task AddJournalEntryAsync(LabelReprintJournalEntry entry)
-    {
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
-        var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT INTO LabelReprintJournal
-                (PackagingUnitId, ReprintNumber, PrintedAtUtc, PrinterName, Reason, Successful, ErrorMessage, LayoutSource)
-            VALUES
-                ($id, $number, $time, $printer, $reason, $successful, $error, $layout);
-            """;
-        command.Parameters.AddWithValue("$id", entry.PackagingUnitId);
-        command.Parameters.AddWithValue("$number", entry.ReprintNumber);
-        command.Parameters.AddWithValue("$time", entry.PrintedAtUtc.ToString("O"));
-        command.Parameters.AddWithValue("$printer", entry.PrinterName);
-        command.Parameters.AddWithValue("$reason", entry.Reason);
-        command.Parameters.AddWithValue("$successful", entry.Successful ? 1 : 0);
-        command.Parameters.AddWithValue("$error", entry.ErrorMessage ?? string.Empty);
-        command.Parameters.AddWithValue("$layout", entry.LayoutSource ?? string.Empty);
-        await command.ExecuteNonQueryAsync();
-    }
+    private Task<int> AddJournalEntryAsync(
+        string packagingUnitId,
+        DateTime attemptedAtUtc,
+        string printerName,
+        string reason,
+        bool successful,
+        string errorMessage,
+        string layoutSource) =>
+        _database.ExecuteExclusiveWriteAsync(async connection =>
+        {
+            var next = connection.CreateCommand();
+            next.CommandText = "SELECT COALESCE(MAX(ReprintNumber), 0) + 1 FROM LabelReprintJournal WHERE PackagingUnitId=$id;";
+            next.Parameters.AddWithValue("$id", packagingUnitId);
+            var reprintNumber = Convert.ToInt32(await next.ExecuteScalarAsync() ?? 1);
+
+            var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO LabelReprintJournal
+                    (PackagingUnitId, ReprintNumber, PrintedAtUtc, PrinterName, Reason, Successful, ErrorMessage, LayoutSource)
+                VALUES
+                    ($id, $number, $time, $printer, $reason, $successful, $error, $layout);
+                """;
+            command.Parameters.AddWithValue("$id", packagingUnitId);
+            command.Parameters.AddWithValue("$number", reprintNumber);
+            command.Parameters.AddWithValue("$time", attemptedAtUtc.ToString("O"));
+            command.Parameters.AddWithValue("$printer", printerName);
+            command.Parameters.AddWithValue("$reason", reason);
+            command.Parameters.AddWithValue("$successful", successful ? 1 : 0);
+            command.Parameters.AddWithValue("$error", errorMessage ?? string.Empty);
+            command.Parameters.AddWithValue("$layout", layoutSource ?? string.Empty);
+            await command.ExecuteNonQueryAsync();
+            return reprintNumber;
+        });
 
     private static async Task EnsureColumnAsync(
         SqliteConnection connection,

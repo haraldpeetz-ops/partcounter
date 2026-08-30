@@ -18,6 +18,8 @@ public sealed class ProductionReadinessBootstrap
     private TextBlock? _lastBackupText;
     private INotifyPropertyChanged? _viewModelNotifier;
     private DispatcherTimer? _settingsScrollTimer;
+    private DispatcherTimer? _dailyBackupTimer;
+    private bool _dailyBackupCheckRunning;
 
     private ProductionReadinessBootstrap(MainWindow window) => _window = window;
 
@@ -48,7 +50,7 @@ public sealed class ProductionReadinessBootstrap
                 notifier.PropertyChanged += OnViewModelPropertyChanged;
             }
 
-            _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+            _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
             {
                 AttachProductionReadinessPanel();
                 NormalizeRevisionLabels();
@@ -59,7 +61,8 @@ public sealed class ProductionReadinessBootstrap
 
             await Task.Delay(400);
             var automaticBackup = await _service.EnsureDailyBackupAsync();
-            _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+            StartDailyBackupTimer();
+            _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
             {
                 RefreshLastBackupText();
                 if (_statusText is not null)
@@ -72,7 +75,7 @@ public sealed class ProductionReadinessBootstrap
         }
         catch (Exception ex)
         {
-            _window.Dispatcher.BeginInvoke(new Action(() =>
+            _ = _window.Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (_statusText is not null)
                     _statusText.Text = $"Automatische Datensicherung konnte nicht ausgeführt werden: {ex.Message}";
@@ -89,16 +92,53 @@ public sealed class ProductionReadinessBootstrap
             _settingsScrollTimer.Stop();
             _settingsScrollTimer = null;
         }
+        if (_dailyBackupTimer is not null)
+        {
+            _dailyBackupTimer.Stop();
+            _dailyBackupTimer = null;
+        }
         _window.Loaded -= OnLoaded;
         _window.Closed -= OnClosed;
         Instances.Remove(_window);
+    }
+
+    private void StartDailyBackupTimer()
+    {
+        _dailyBackupTimer ??= new DispatcherTimer(
+            TimeSpan.FromMinutes(30),
+            DispatcherPriority.Background,
+            async (_, _) => await CheckDailyBackupAsync(),
+            _window.Dispatcher);
+        _dailyBackupTimer.Start();
+    }
+
+    private async Task CheckDailyBackupAsync()
+    {
+        if (_dailyBackupCheckRunning) return;
+        _dailyBackupCheckRunning = true;
+        try
+        {
+            var created = await _service.EnsureDailyBackupAsync();
+            RefreshLastBackupText();
+            if (created is not null && _statusText is not null)
+                _statusText.Text = $"Automatische Tagessicherung erstellt und geprüft: {created}";
+        }
+        catch (Exception ex)
+        {
+            if (_statusText is not null)
+                _statusText.Text = $"Automatische Tagessicherung fehlgeschlagen: {ex.Message}";
+        }
+        finally
+        {
+            _dailyBackupCheckRunning = false;
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
         {
-            _window.Dispatcher.BeginInvoke(DispatcherPriority.SystemIdle, new Action(() =>
+            _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.SystemIdle, new Action(() =>
             {
                 NormalizeRevisionLabels();
                 UpdateVersionBadge();

@@ -116,7 +116,7 @@ public sealed class LiveCommissioningBootstrap
         {
             // ProductionReadinessBootstrap still normalizes legacy R001.15 labels. Queue at the
             // same low priority after its handler so R001.16 remains the final visible revision.
-            _window.Dispatcher.BeginInvoke(
+            _ = _window.Dispatcher.BeginInvoke(
                 DispatcherPriority.SystemIdle,
                 new Action(UpdateRevisionUi));
         }

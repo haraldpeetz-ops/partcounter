@@ -16,6 +16,8 @@ public sealed class PartcounterUpdateManifest
     public string Architecture { get; set; } = "win-x64";
     public string PayloadRoot { get; set; } = "payload/";
     public string ReleaseNotes { get; set; } = string.Empty;
+    public bool RequireAuthenticode { get; set; }
+    public string PublisherCertificateThumbprint { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; }
 }
 
@@ -138,8 +140,11 @@ public sealed class PartcounterUpdateService
         Directory.CreateDirectory(backup);
 
         await ExtractPayloadAsync(package.PackagePath, package.Manifest.PayloadRoot, staging, cancellationToken);
-        if (!File.Exists(Path.Combine(staging, "Partcounter.exe")))
+        var stagedExe = Path.Combine(staging, "Partcounter.exe");
+        if (!File.Exists(stagedExe))
             throw new InvalidDataException("Staging enthält keine Partcounter.exe.");
+        if (package.Manifest.RequireAuthenticode)
+            VerifyAuthenticode(stagedExe, package.Manifest.PublisherCertificateThumbprint);
 
         var processPath = Environment.ProcessPath
             ?? throw new InvalidOperationException("Der aktuelle Programmpfad konnte nicht ermittelt werden.");
@@ -243,6 +248,21 @@ public sealed class PartcounterUpdateService
 
     private static string GetRelativePayloadName(string fullName, string root) =>
         fullName[root.Length..].TrimStart('/', '\\');
+
+    private static void VerifyAuthenticode(string executablePath, string expectedThumbprint)
+    {
+        var certificate = System.Security.Cryptography.X509Certificates.X509Certificate.CreateFromSignedFile(executablePath);
+        using var certificate2 = new System.Security.Cryptography.X509Certificates.X509Certificate2(certificate);
+        if (string.IsNullOrWhiteSpace(certificate2.Thumbprint))
+            throw new InvalidDataException("Das Update verlangt Authenticode, aber Partcounter.exe besitzt kein Signaturzertifikat.");
+        if (!string.IsNullOrWhiteSpace(expectedThumbprint))
+        {
+            var expected = expectedThumbprint.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
+            var actual = certificate2.Thumbprint.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
+            if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(actual), Encoding.ASCII.GetBytes(expected)))
+                throw new InvalidDataException("Das Signaturzertifikat des Updatepakets entspricht nicht dem freigegebenen Herausgeber.");
+        }
+    }
 
     private static void EnsureInstallDirectoryWritable()
     {

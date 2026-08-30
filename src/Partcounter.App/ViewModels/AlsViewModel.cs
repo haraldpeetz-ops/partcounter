@@ -231,6 +231,7 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
     private async Task LoadOrdersAsync(bool userInitiated)
     {
         if (_isLoading) return;
+        if (!userInitiated && !await OrderSourceCoordinator.IsActiveAsync(_database, OrderSourceKind.ArburgAls)) return;
         _isLoading = true;
         try
         {
@@ -309,6 +310,11 @@ public sealed class AlsViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task ApplySelectedOrderAsync()
     {
+        if (!await OrderSourceCoordinator.IsActiveAsync(_database, OrderSourceKind.ArburgAls))
+        {
+            StatusText = "ARBURG ALS ist nicht die führende Auftragsquelle. Unter Administration → Auftragsquellen zuerst ALS aktivieren.";
+            return;
+        }
         var order = SelectedOrder;
         if (order is null)
         {

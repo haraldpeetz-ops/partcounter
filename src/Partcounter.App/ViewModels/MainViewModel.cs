@@ -143,7 +143,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     }
 
     public string OperatingModeButtonText => IsSimulationMode ? "Echtbetrieb aktivieren" : "Simulation aktivieren";
-    public string SystemStatusText => IsSimulationMode ? "R001.5 · SIMULATION" : "R001.5 · ECHTBETRIEB MODBUS TCP";
+    public string SystemStatusText => IsSimulationMode ? AppVersionInfo.SimulationStatus : AppVersionInfo.ProductionStatus;
     public string DatabasePath => _database.DatabasePath;
     public string ActiveMachineSummary => $"{CompactMachines.Count} aktive Maschinen";
     public string SelectedMachineDisableButtonText => SelectedMachine?.IsTemporarilyDisabled == true
@@ -637,7 +637,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void FleetOnSnapshotReceived(object? sender, MachineSnapshotEventArgs e)
     {
-        Application.Current.Dispatcher.BeginInvoke(() =>
+        _ = Application.Current.Dispatcher.BeginInvoke(() =>
         {
             var machine = Machines.FirstOrDefault(m => m.Configuration.MachineNumber == e.MachineNumber);
             if (machine is null) return;
@@ -647,7 +647,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void FleetOnConnectionChanged(object? sender, MachineConnectionEventArgs e)
     {
-        Application.Current.Dispatcher.BeginInvoke(() =>
+        _ = Application.Current.Dispatcher.BeginInvoke(() =>
         {
             var machine = Machines.FirstOrDefault(m => m.Configuration.MachineNumber == e.MachineNumber);
             if (machine is null) return;
@@ -719,10 +719,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                         machine.RequiredCyclesPerVe,
                         ValvePulseMs);
 
+                    await _fleet.PauseCountingAsync(machine.Configuration.MachineNumber);
                     await _fleet.UpdateVeTargetAsync(
                         machine.Configuration.MachineNumber,
                         nextJob,
-                        machine.OrderState == ProductionOrderState.Paused);
+                        pauseCounting: true);
+                    if (machine.OrderState == ProductionOrderState.Running)
+                        await _fleet.ResumeCountingAsync(machine.Configuration.MachineNumber);
                 }
             }
 

@@ -7,7 +7,6 @@ namespace Partcounter.Services;
 public sealed class DatabaseService
 {
     private static readonly SemaphoreSlim InitializationGate = new(1, 1);
-    private static readonly SemaphoreSlim WriteGate = new(1, 1);
 
     public DatabaseService()
     {
@@ -23,7 +22,7 @@ public sealed class DatabaseService
     // SQLite supports many readers but only one writer at a time. The previous implementation allowed
     // many VE-completion callbacks to compete for the write lock. R001.23 deliberately serializes the
     // application's DatabaseService writes and gives SQLite a bounded busy timeout.
-    private string ConnectionString => $"Data Source={DatabasePath};Cache=Shared;Default Timeout=15;Pooling=True";
+    private string ConnectionString => SqliteWriteCoordinator.BuildConnectionString(DatabasePath);
 
     public async Task InitializeAsync()
     {
@@ -307,25 +306,14 @@ public sealed class DatabaseService
         await command.ExecuteNonQueryAsync();
     });
 
-    private async Task ExecuteWriteAsync(Func<SqliteConnection, Task> write)
-    {
-        await WriteGate.WaitAsync();
-        try
-        {
-            await using var connection = new SqliteConnection(ConnectionString);
-            await connection.OpenAsync();
-            await using (var busy = connection.CreateCommand())
-            {
-                busy.CommandText = "PRAGMA busy_timeout=15000; PRAGMA foreign_keys=ON;";
-                await busy.ExecuteNonQueryAsync();
-            }
-            await write(connection);
-        }
-        finally
-        {
-            WriteGate.Release();
-        }
-    }
+    private Task ExecuteWriteAsync(Func<SqliteConnection, Task> write) =>
+        SqliteWriteCoordinator.ExecuteAsync(DatabasePath, write);
+
+    public Task ExecuteExclusiveWriteAsync(Func<SqliteConnection, Task> write, CancellationToken cancellationToken = default) =>
+        SqliteWriteCoordinator.ExecuteAsync(DatabasePath, write, cancellationToken);
+
+    public Task<T> ExecuteExclusiveWriteAsync<T>(Func<SqliteConnection, Task<T>> write, CancellationToken cancellationToken = default) =>
+        SqliteWriteCoordinator.ExecuteAsync(DatabasePath, write, cancellationToken);
 
     private static async Task SeedMachinesAsync(SqliteConnection connection)
     {

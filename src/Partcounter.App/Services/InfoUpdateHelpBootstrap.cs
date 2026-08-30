@@ -54,7 +54,7 @@ public sealed class InfoUpdateHelpBootstrap
                 notifier.PropertyChanged += OnViewModelPropertyChanged;
             }
 
-            _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(async () =>
+            _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(async () =>
             {
                 AttachHeaderButtons();
                 await AttachUpdatePanelAsync();
@@ -82,7 +82,7 @@ public sealed class InfoUpdateHelpBootstrap
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
-            _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(UpdateVersionBadge));
+            _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(UpdateVersionBadge));
     }
 
     private void AttachHeaderButtons()

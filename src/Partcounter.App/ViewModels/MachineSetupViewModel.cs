@@ -65,29 +65,28 @@ public sealed class MachineSetupViewModel : INotifyPropertyChanged
         {
             Validate();
 
-            await using var connection = new SqliteConnection($"Data Source={_database.DatabasePath};Cache=Shared");
-            await connection.OpenAsync();
-            await using var transaction = await connection.BeginTransactionAsync();
-
-            foreach (var machine in Machines)
+            await _database.ExecuteExclusiveWriteAsync(async connection =>
             {
-                var command = connection.CreateCommand();
-                command.Transaction = (SqliteTransaction)transaction;
-                command.CommandText = """
-                    UPDATE Machines
-                    SET Name=$name, IpAddress=$ip, Port=$port, UnitId=$unit, Enabled=$enabled
-                    WHERE MachineNumber=$number;
-                    """;
-                command.Parameters.AddWithValue("$name", machine.Name.Trim());
-                command.Parameters.AddWithValue("$ip", machine.IpAddress.Trim());
-                command.Parameters.AddWithValue("$port", machine.Port);
-                command.Parameters.AddWithValue("$unit", machine.UnitId);
-                command.Parameters.AddWithValue("$enabled", machine.Enabled ? 1 : 0);
-                command.Parameters.AddWithValue("$number", machine.MachineNumber);
-                await command.ExecuteNonQueryAsync();
-            }
-
-            await transaction.CommitAsync();
+                await using var transaction = await connection.BeginTransactionAsync();
+                foreach (var machine in Machines)
+                {
+                    var command = connection.CreateCommand();
+                    command.Transaction = (SqliteTransaction)transaction;
+                    command.CommandText = """
+                        UPDATE Machines
+                        SET Name=$name, IpAddress=$ip, Port=$port, UnitId=$unit, Enabled=$enabled
+                        WHERE MachineNumber=$number;
+                        """;
+                    command.Parameters.AddWithValue("$name", machine.Name.Trim());
+                    command.Parameters.AddWithValue("$ip", machine.IpAddress.Trim());
+                    command.Parameters.AddWithValue("$port", machine.Port);
+                    command.Parameters.AddWithValue("$unit", machine.UnitId);
+                    command.Parameters.AddWithValue("$enabled", machine.Enabled ? 1 : 0);
+                    command.Parameters.AddWithValue("$number", machine.MachineNumber);
+                    await command.ExecuteNonQueryAsync();
+                }
+                await transaction.CommitAsync();
+            });
             StatusText =
                 "Maschinen-/Modbus-Konfiguration gespeichert. Partcounter neu starten, damit alle Kommunikationsworker die neuen Endpunkte verwenden.";
         }

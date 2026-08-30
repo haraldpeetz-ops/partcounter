@@ -45,7 +45,7 @@ public partial class CompactMonitorWindow : Window
         if (!IsVisible)
             ShowForMinimized();
 
-        Dispatcher.BeginInvoke(
+        _ = Dispatcher.BeginInvoke(
             DispatcherPriority.Loaded,
             new Action(() =>
             {

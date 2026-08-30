@@ -59,7 +59,7 @@ public sealed class CompanyBrandingBootstrap
 
             RefreshLogoUi();
             UpdateVersionBadge();
-            _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(UpdateVersionBadge));
+            _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(UpdateVersionBadge));
         }
         catch (Exception ex)
         {
@@ -81,11 +81,11 @@ public sealed class CompanyBrandingBootstrap
     private void OnMainViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
-            _window.Dispatcher.BeginInvoke(new Action(UpdateVersionBadge));
+            _ = _window.Dispatcher.BeginInvoke(new Action(UpdateVersionBadge));
     }
 
     private void OnBrandingChanged(object? sender, EventArgs e) =>
-        _window.Dispatcher.BeginInvoke(new Action(RefreshLogoUi));
+        _ = _window.Dispatcher.BeginInvoke(new Action(RefreshLogoUi));
 
     private void AttachHeaderLogo()
     {

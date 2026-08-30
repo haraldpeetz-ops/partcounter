@@ -94,7 +94,7 @@ public static partial class VersionUiService
 
         // SystemIdle läuft nach den älteren Loaded-/PropertyChanged-Bootstraps.
         // Damit gewinnt immer die zentrale, aus der Assembly gelesene Versionsquelle.
-        window.Dispatcher.BeginInvoke(
+        _ = window.Dispatcher.BeginInvoke(
             DispatcherPriority.SystemIdle,
             new Action(() => NormalizeWindow(window)));
     }
