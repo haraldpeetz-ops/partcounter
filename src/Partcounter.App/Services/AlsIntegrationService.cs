@@ -225,7 +225,16 @@ public sealed class AlsIntegrationService
             if (!File.Exists(certificatePath))
                 throw new FileNotFoundException("ALS-Clientzertifikat nicht gefunden.", certificatePath);
 
-            handler.ClientCertificates.Add(new X509Certificate2(certificatePath, settings.ClientCertificatePassword));
+            var contentType = X509Certificate2.GetCertContentType(certificatePath);
+            using var certificate = contentType == X509ContentType.Pfx
+                ? X509CertificateLoader.LoadPkcs12FromFile(
+                    certificatePath,
+                    settings.ClientCertificatePassword ?? string.Empty,
+                    X509KeyStorageFlags.EphemeralKeySet)
+                : X509CertificateLoader.LoadCertificateFromFile(certificatePath);
+            if (!certificate.HasPrivateKey)
+                throw new InvalidOperationException("Das ALS-Clientzertifikat enthält keinen privaten Schlüssel. Für mTLS ist eine PFX/P12-Datei mit privatem Schlüssel erforderlich.");
+            handler.ClientCertificates.Add(certificate);
         }
 
         using var client = new HttpClient(handler)

@@ -316,7 +316,16 @@ public sealed class ProAlphaIntegrationService
         if (!string.IsNullOrWhiteSpace(settings.ClientCertificatePath))
         {
             var path = Environment.ExpandEnvironmentVariables(settings.ClientCertificatePath.Trim());
-            handler.ClientCertificates.Add(new X509Certificate2(path, settings.ClientCertificatePassword));
+            var contentType = X509Certificate2.GetCertContentType(path);
+            using var certificate = contentType == X509ContentType.Pfx
+                ? X509CertificateLoader.LoadPkcs12FromFile(
+                    path,
+                    settings.ClientCertificatePassword ?? string.Empty,
+                    X509KeyStorageFlags.EphemeralKeySet)
+                : X509CertificateLoader.LoadCertificateFromFile(path);
+            if (!certificate.HasPrivateKey)
+                throw new InvalidOperationException("Das proALPHA-Clientzertifikat enthält keinen privaten Schlüssel. Für mTLS ist eine PFX/P12-Datei mit privatem Schlüssel erforderlich.");
+            handler.ClientCertificates.Add(certificate);
         }
 
         switch (settings.ProxyMode)

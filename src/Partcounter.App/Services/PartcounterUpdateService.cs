@@ -249,10 +249,22 @@ public sealed class PartcounterUpdateService
     private static string GetRelativePayloadName(string fullName, string root) =>
         fullName[root.Length..].TrimStart('/', '\\');
 
+    private static System.Security.Cryptography.X509Certificates.X509Certificate2 LoadAuthenticodeSigner(string executablePath)
+    {
+        var contentType = System.Security.Cryptography.X509Certificates.X509Certificate2.GetCertContentType(executablePath);
+        if (contentType != System.Security.Cryptography.X509Certificates.X509ContentType.Authenticode)
+            throw new InvalidDataException("Das Update verlangt Authenticode, aber Partcounter.exe ist nicht Authenticode-signiert.");
+
+        // .NET 10 has no non-obsolete LoadAuthenticodeSigner API. The .NET runtime maintainer
+        // recommends this narrowly scoped fallback after an explicit Authenticode content-type check.
+#pragma warning disable SYSLIB0057
+        return new System.Security.Cryptography.X509Certificates.X509Certificate2(executablePath);
+#pragma warning restore SYSLIB0057
+    }
+
     private static void VerifyAuthenticode(string executablePath, string expectedThumbprint)
     {
-        var certificate = System.Security.Cryptography.X509Certificates.X509Certificate.CreateFromSignedFile(executablePath);
-        using var certificate2 = new System.Security.Cryptography.X509Certificates.X509Certificate2(certificate);
+        using var certificate2 = LoadAuthenticodeSigner(executablePath);
         if (string.IsNullOrWhiteSpace(certificate2.Thumbprint))
             throw new InvalidDataException("Das Update verlangt Authenticode, aber Partcounter.exe besitzt kein Signaturzertifikat.");
         if (!string.IsNullOrWhiteSpace(expectedThumbprint))
