@@ -1,4 +1,4 @@
-name: Apply R001.25 recovery safety guard
+name: Apply R001.25 recovery compile fix
 
 on:
   push:
@@ -8,8 +8,8 @@ permissions:
   contents: write
 
 jobs:
-  apply-recovery-safety:
-    if: contains(github.event.head_commit.message, '[apply-recovery-safety]')
+  apply-recovery-compile-fix:
+    if: contains(github.event.head_commit.message, '[apply-recovery-compile-fix]')
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -17,16 +17,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Apply recovery identity safety fixes
+      - name: Apply recovery compile fix
         shell: pwsh
-        run: python tools/apply_r00125_recovery_safety_fix.py
+        run: python tools/apply_r00125_recovery_compile_fix.py
 
-      - name: Commit hardened product source
+      - name: Commit corrected product source
         shell: pwsh
         run: |
           git config user.name "partcounter-ci"
           git config user.email "partcounter-ci@users.noreply.github.com"
           git add src tests docs
           if (git diff --cached --quiet) { throw 'No product changes generated.' }
-          git commit -m "fix: preserve uncertain activation and reject foreign recovery state [recovery-safety-applied]"
+          git commit -m "fix: checkpoint VE recovery at the correct completion boundary [recovery-compile-fix]"
           git push
