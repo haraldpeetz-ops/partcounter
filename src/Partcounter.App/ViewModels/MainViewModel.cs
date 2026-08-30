@@ -247,50 +247,99 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
     {
         if (IsSimulationMode)
         {
-            var nonRecoveryOrders = Machines
-                .Where(m => m.IsActiveOrder && !_startupRecoveryMachines.Contains(m.Configuration.MachineNumber))
-                .ToList();
-            if (nonRecoveryOrders.Count > 0)
+            var activationPlan = OperatingModeActivationPolicy.Build(Machines, _startupRecoveryMachines);
+
+            if (activationPlan.DisabledRecoveryMachineNumbers.Count > 0)
             {
-                StatusMessage = "Betriebsartwechsel gesperrt: Simulationsaufträge zuerst kontrolliert beenden. Offene Echtaufträge aus dem Recovery-Store sind davon ausgenommen und werden beim Umschalten abgeglichen.";
+                var machines = string.Join(", ", activationPlan.DisabledRecoveryMachineNumbers.Select(n => $"M{n:00}"));
+                StatusMessage = $"Echtbetrieb NICHT aktiviert: Für {machines} liegt ein offener Echtbetrieb-Recovery-Auftrag vor, die Station ist aber in der Maschinen-/Modbus-Konfiguration administrativ deaktiviert. Station zuerst aktivieren und Partcounter neu starten.";
                 return;
+            }
+
+            if (activationPlan.LiveMachines.Count == 0)
+            {
+                StatusMessage = "Echtbetrieb NICHT aktiviert: In der Maschinen-/Modbus-Konfiguration ist keine LOGO!-Station administrativ aktiviert. Mindestens eine Station aktivieren und Partcounter neu starten.";
+                return;
+            }
+
+            // Pure simulation orders have no real-world authority. They must never prevent the operator
+            // from entering live mode and must never leak their counters/order state into a real LOGO session.
+            var discardedSimulationOrders = activationPlan.SimulationOrdersToDiscard.Count;
+            foreach (var machine in activationPlan.SimulationOrdersToDiscard)
+            {
+                var discardedOrder = machine.OrderNumber;
+                machine.ClearRecoveredOrder();
+                _scheduledCompletionHolds.Remove(machine.Configuration.MachineNumber);
+                _manualVeReconfigurationPending.Remove(machine.Configuration.MachineNumber);
+                try
+                {
+                    await _database.AddEventAsync(machine.Configuration.MachineNumber, "SIMULATION_ORDER_DISCARDED_FOR_LIVE_MODE",
+                        $"Simulationsauftrag {discardedOrder} wurde beim bewussten Wechsel in den Echtbetrieb verworfen.");
+                }
+                catch
+                {
+                    // A diagnostic event must never make the live-mode transition fail.
+                }
             }
 
             foreach (var machine in Machines)
                 machine.ConnectionState = ConnectionState.Offline;
 
-            await _fleet.StartAsync(Machines.Select(m => m.Configuration), publishSnapshots: false);
-
-            var recoveryErrors = await ReconcilePendingLiveOrdersAsync();
-            if (recoveryErrors.Count > 0)
+            try
             {
-                await _fleet.StopAsync();
-                foreach (var machine in Machines)
-                    machine.ConnectionState = ConnectionState.Simulation;
-                StatusMessage = $"Echtbetrieb NICHT aktiviert. Recovery-Fehler: {string.Join(" | ", recoveryErrors)} Bereits eindeutig erkannte Aufträge bleiben sicher pausiert.";
-                return;
-            }
+                // StartAsync creates sessions only for administratively enabled configurations.
+                // Every subsequent fleet call in this transition therefore uses LiveMachines only.
+                await _fleet.StartAsync(activationPlan.LiveMachines.Select(m => m.Configuration), publishSnapshots: false);
 
-            var recoveredCount = _startupRecoveryMachines.Count;
-            _startupRecoveryMachines.Clear();
-            IsSimulationMode = false;
+                var recoveryErrors = await ReconcilePendingLiveOrdersAsync();
+                if (recoveryErrors.Count > 0)
+                {
+                    await RollbackLiveModeActivationAsync();
+                    StatusMessage = $"Echtbetrieb NICHT aktiviert. Recovery-Fehler: {string.Join(" | ", recoveryErrors)} Bereits eindeutig erkannte Aufträge bleiben sicher pausiert.";
+                    return;
+                }
 
-            foreach (var machine in Machines)
-            {
-                if (machine.IsTemporarilyDisabled)
+                // Runtime-temporarily-disabled machines still have a communication session because their
+                // administrative configuration is enabled. Keep them silent before publishing live snapshots.
+                foreach (var machine in activationPlan.LiveMachines.Where(m => m.IsTemporarilyDisabled))
                 {
                     await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
                     await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
                 }
-                else
-                {
+
+                var recoveredCount = _startupRecoveryMachines.Count;
+                _startupRecoveryMachines.Clear();
+
+                // Commit the mode only after fleet creation, recovery and temporary-disable setup succeeded.
+                IsSimulationMode = false;
+
+                foreach (var machine in activationPlan.LiveMachines.Where(m => !m.IsTemporarilyDisabled))
                     await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: true);
+
+                var notes = new List<string>();
+                if (activationPlan.AdministrativelyDisabledCount > 0)
+                    notes.Add($"{activationPlan.AdministrativelyDisabledCount} administrativ deaktivierte Station(en) werden ignoriert");
+                if (discardedSimulationOrders > 0)
+                    notes.Add($"{discardedSimulationOrders} Simulationsauftrag/Simulationsaufträge kontrolliert verworfen");
+                var suffix = notes.Count == 0 ? string.Empty : $" · {string.Join(" · ", notes)}";
+
+                StatusMessage = recoveredCount > 0
+                    ? $"Echtbetrieb aktiv: {recoveredCount} wiederhergestellte(r) Auftrag/Aufträge mit JobId/Kavitäten/Hold gegen die LOGO! verifiziert und absichtlich PAUSIERT. Fortsetzen muss je Maschine bewusst erfolgen.{suffix}"
+                    : $"Echtbetrieb aktiv: {activationPlan.LiveMachines.Count} freigegebene LOGO!-Station(en) initialisiert. Nicht erreichbare Stationen werden einzeln als Offline gemeldet; Protocol V3 wird bei Kommunikation zwingend geprüft.{suffix}";
+            }
+            catch (Exception ex)
+            {
+                await RollbackLiveModeActivationAsync();
+                StatusMessage = $"Echtbetrieb konnte nicht aktiviert werden: {ex.Message} Partcounter wurde vollständig in die Simulation zurückgesetzt.";
+                try
+                {
+                    await _database.AddEventAsync(null, "LIVE_MODE_ACTIVATION_FAILED", StatusMessage);
+                }
+                catch
+                {
+                    // Preserve the actual activation error even if diagnostics cannot be persisted.
                 }
             }
-
-            StatusMessage = recoveredCount > 0
-                ? $"Echtbetrieb aktiv: {recoveredCount} wiederhergestellte(r) Auftrag/Aufträge mit JobId/Kavitäten/Hold gegen die LOGO! verifiziert und absichtlich PAUSIERT. Fortsetzen muss je Maschine bewusst erfolgen."
-                : "Echtbetrieb aktiv: Partcounter verbindet parallel mit allen freigegebenen LOGO!-Stationen. Protocol V3 wird zwingend geprüft.";
         }
         else
         {
@@ -300,12 +349,39 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
                 return;
             }
 
-            await _fleet.StopAsync();
-            IsSimulationMode = true;
-            foreach (var machine in Machines)
-                machine.ConnectionState = ConnectionState.Simulation;
-            StatusMessage = "Simulation aktiv. Es werden keine Modbus-Schreibbefehle an LOGO! gesendet.";
+            try
+            {
+                await _fleet.StopAsync();
+                IsSimulationMode = true;
+                foreach (var machine in Machines)
+                    machine.ConnectionState = ConnectionState.Simulation;
+                StatusMessage = "Simulation aktiv. Es werden keine Modbus-Schreibbefehle an LOGO! gesendet.";
+            }
+            catch (Exception ex)
+            {
+                // Even if teardown reports a diagnostic problem, the safe user-facing state is simulation.
+                IsSimulationMode = true;
+                foreach (var machine in Machines)
+                    machine.ConnectionState = ConnectionState.Simulation;
+                StatusMessage = $"Simulation aktiviert; beim Beenden der Modbus-Sessions trat ein Diagnosefehler auf: {ex.Message}";
+            }
         }
+    }
+
+    private async Task RollbackLiveModeActivationAsync()
+    {
+        try
+        {
+            await _fleet.StopAsync();
+        }
+        catch
+        {
+            // Rollback is best-effort; local mode and UI state are still forced back to simulation below.
+        }
+
+        IsSimulationMode = true;
+        foreach (var machine in Machines)
+            machine.ConnectionState = ConnectionState.Simulation;
     }
 
     private async Task ApplySelectedArticleAsync()

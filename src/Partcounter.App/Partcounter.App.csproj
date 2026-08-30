@@ -10,8 +10,8 @@
     <RootNamespace>Partcounter</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Version>0.1.25</Version>
-    <FileVersion>0.1.25.0</FileVersion>
-    <InformationalVersion>0.1.25-r001.25-final-hardening</InformationalVersion>
+    <FileVersion>0.1.25.1</FileVersion>
+    <InformationalVersion>0.1.25-r001.25-hf1-live-mode</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
