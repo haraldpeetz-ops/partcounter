@@ -83,7 +83,8 @@ public sealed class MachineFleetService : IAsyncDisposable
                 $"Auftrag an {session.Configuration.Name}",
                 job.ActiveCavities,
                 cancellationToken,
-                job.HoldAfterVeNumber);
+                job.HoldAfterVeNumber,
+                job.JobId);
             UpdateGlobalDiagnostics(session);
         }
         finally
@@ -112,7 +113,8 @@ public sealed class MachineFleetService : IAsyncDisposable
                 $"VE-Zielupdate an {session.Configuration.Name}",
                 job.ActiveCavities,
                 cancellationToken,
-                job.HoldAfterVeNumber);
+                job.HoldAfterVeNumber,
+                job.JobId);
             UpdateGlobalDiagnostics(session);
         }
         finally
@@ -228,7 +230,8 @@ public sealed class MachineFleetService : IAsyncDisposable
         string operation,
         ushort? expectedCavities,
         CancellationToken cancellationToken,
-        ushort? expectedHoldAfterVeNumber = null)
+        ushort? expectedHoldAfterVeNumber = null,
+        uint? expectedJobId = null)
     {
         Exception? lastError = null;
         for (var attempt = 1; attempt <= CommandRetryCount; attempt++)
@@ -239,10 +242,10 @@ public sealed class MachineFleetService : IAsyncDisposable
                 var beforeSend = await session.Client.ReadSnapshotAsync(cancellationToken);
                 session.LastSnapshot = beforeSend;
                 if (beforeSend.AcknowledgedCommandSequence == expectedSequence)
-                    return ValidateAcknowledgement(session, beforeSend, expectedSequence, operation, expectedCavities, expectedHoldAfterVeNumber);
+                    return ValidateAcknowledgement(session, beforeSend, expectedSequence, operation, expectedCavities, expectedHoldAfterVeNumber, expectedJobId);
 
                 await send(cancellationToken);
-                return await WaitForCommandAcknowledgementAsync(session, expectedSequence, operation, expectedCavities, cancellationToken, expectedHoldAfterVeNumber);
+                return await WaitForCommandAcknowledgementAsync(session, expectedSequence, operation, expectedCavities, cancellationToken, expectedHoldAfterVeNumber, expectedJobId);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -267,7 +270,8 @@ public sealed class MachineFleetService : IAsyncDisposable
         string operation,
         ushort? expectedCavities,
         CancellationToken cancellationToken,
-        ushort? expectedHoldAfterVeNumber = null)
+        ushort? expectedHoldAfterVeNumber = null,
+        uint? expectedJobId = null)
     {
         var stopwatch = Stopwatch.StartNew();
         while (stopwatch.ElapsedMilliseconds < CommandAckTimeoutMs)
@@ -279,7 +283,7 @@ public sealed class MachineFleetService : IAsyncDisposable
             UpdateGlobalDiagnostics(session);
             if (snapshot.AcknowledgedCommandSequence == expectedSequence)
             {
-                var validated = ValidateAcknowledgement(session, snapshot, expectedSequence, operation, expectedCavities, expectedHoldAfterVeNumber);
+                var validated = ValidateAcknowledgement(session, snapshot, expectedSequence, operation, expectedCavities, expectedHoldAfterVeNumber, expectedJobId);
                 PublishConnection(session, ConnectionState.Online, null);
                 return validated;
             }
@@ -294,7 +298,8 @@ public sealed class MachineFleetService : IAsyncDisposable
         ushort expectedSequence,
         string operation,
         ushort? expectedCavities,
-        ushort? expectedHoldAfterVeNumber = null)
+        ushort? expectedHoldAfterVeNumber = null,
+        uint? expectedJobId = null)
     {
         if (snapshot.AcknowledgedCommandSequence != expectedSequence)
             throw new InvalidOperationException($"{operation}: erwartete AckSequence {expectedSequence}, empfangen {snapshot.AcknowledgedCommandSequence}.");
@@ -304,6 +309,8 @@ public sealed class MachineFleetService : IAsyncDisposable
             throw new InvalidOperationException($"{operation}: Kavitäten-Echo {snapshot.ActiveCavitiesEcho} entspricht nicht Soll {expectedCavities.Value}.");
         if (expectedHoldAfterVeNumber.HasValue && snapshot.HoldAfterVeNumberEcho != expectedHoldAfterVeNumber.Value)
             throw new InvalidOperationException($"{operation}: HoldAfterVE-Echo {snapshot.HoldAfterVeNumberEcho} entspricht nicht Soll {expectedHoldAfterVeNumber.Value}.");
+        if (expectedJobId.HasValue && snapshot.JobIdEcho != expectedJobId.Value)
+            throw new InvalidOperationException($"{operation}: JobId-Echo {snapshot.JobIdEcho} entspricht nicht Soll {expectedJobId.Value}.");
         if (expectedHoldAfterVeNumber is > 0 && (snapshot.StatusWord & ModbusRegisterMap.StatusCompletionHoldArmed) == 0)
             throw new InvalidOperationException($"{operation}: LOGO! hat HoldAfterVE {expectedHoldAfterVeNumber.Value} bestätigt, aber CompletionHoldArmed ist nicht aktiv.");
         session.LastSnapshot = snapshot;

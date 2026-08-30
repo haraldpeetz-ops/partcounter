@@ -82,7 +82,8 @@ public sealed record LogoSnapshot(
     ushort ErrorCode,
     VeCompletionReason LastCompletionReason,
     DateTime ReadAtUtc,
-    ushort HoldAfterVeNumberEcho = 0);
+    ushort HoldAfterVeNumberEcho = 0,
+    uint JobIdEcho = 0);
 
 public sealed record VeCompletedEventArgs(
     ushort VeNumber,

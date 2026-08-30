@@ -132,10 +132,15 @@ public sealed class LogoModbusClient : IAsyncDisposable
 
         var currentParts = checked(currentVeCycles * (uint)activeCavities);
         var lastCompletedVeQuantity = checked(lastCompletedVeCycles * (uint)lastCompletedCavities);
+        var totalCycles = ModbusRegisterMap.ToUInt32(
+            registers[ModbusRegisterMap.StatusTotalCyclesHi],
+            registers[ModbusRegisterMap.StatusTotalCyclesLo]);
+        if (totalCycles > ModbusRegisterMap.MaxTotalCyclesPerJob)
+            throw new InvalidOperationException("LOGO! reported a total-cycle counter outside the approved Partcounter V3 range.");
 
         return new LogoSnapshot(
             currentParts,
-            ModbusRegisterMap.ToUInt32(registers[ModbusRegisterMap.StatusTotalCyclesHi], registers[ModbusRegisterMap.StatusTotalCyclesLo]),
+            totalCycles,
             registers[ModbusRegisterMap.StatusCurrentVe],
             registers[ModbusRegisterMap.StatusCompletedVes],
             lastCompletedVeQuantity,
@@ -148,7 +153,10 @@ public sealed class LogoModbusClient : IAsyncDisposable
             registers[ModbusRegisterMap.StatusErrorCode],
             (VeCompletionReason)registers[ModbusRegisterMap.StatusLastCompletionReason],
             DateTime.UtcNow,
-            registers[ModbusRegisterMap.StatusHoldAfterVeNumberEcho]);
+            registers[ModbusRegisterMap.StatusHoldAfterVeNumberEcho],
+            ModbusRegisterMap.ToUInt32(
+                registers[ModbusRegisterMap.StatusJobIdHiEcho],
+                registers[ModbusRegisterMap.StatusJobIdLoEcho]));
     }
 
     public void Disconnect()

@@ -21,7 +21,7 @@ public static class ModbusRegisterMap
     public const int ConfigHoldAfterVeNumber = 12;
 
     public const ushort StatusStart = 19; // HR20 / VW38
-    public const ushort StatusLength = 19;
+    public const ushort StatusLength = 21;
 
     public const int StatusProtocolVersion = 0;
     public const int StatusWord = 1;
@@ -42,6 +42,8 @@ public static class ModbusRegisterMap
     public const int StatusLastCompletionReason = 16;
     public const int StatusLastCompletedCavities = 17;
     public const int StatusHoldAfterVeNumberEcho = 18;
+    public const int StatusJobIdHiEcho = 19;
+    public const int StatusJobIdLoEcho = 20;
 
     public const ushort ProtocolVersion = 3;
 

@@ -74,8 +74,11 @@ public sealed class CoreRegressionTests
         Assert.Equal((ushort)13, ModbusRegisterMap.ConfigLength);
         Assert.Equal(12, ModbusRegisterMap.ConfigHoldAfterVeNumber);
         Assert.Equal((ushort)19, ModbusRegisterMap.StatusStart);
-        Assert.Equal((ushort)19, ModbusRegisterMap.StatusLength);
+        Assert.Equal((ushort)21, ModbusRegisterMap.StatusLength);
         Assert.Equal(18, ModbusRegisterMap.StatusHoldAfterVeNumberEcho);
+        Assert.Equal(19, ModbusRegisterMap.StatusJobIdHiEcho);
+        Assert.Equal(20, ModbusRegisterMap.StatusJobIdLoEcho);
+        Assert.Equal((uint)999999, ModbusRegisterMap.MaxTotalCyclesPerJob);
         Assert.Equal((ushort)32767, ModbusRegisterMap.MaxSequenceValue);
     }
 }
