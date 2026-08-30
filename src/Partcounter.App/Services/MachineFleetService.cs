@@ -67,6 +67,28 @@ public sealed class MachineFleetService : IAsyncDisposable
     public MachineCommunicationDiagnostics? GetCommunicationDiagnostics(int machineNumber) =>
         _sessions.TryGetValue(machineNumber, out var session) ? BuildDiagnostics(session) : null;
 
+    public async Task<LogoSnapshot> ReadSnapshotAsync(int machineNumber, CancellationToken cancellationToken = default)
+    {
+        var session = GetSession(machineNumber);
+        await session.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureConnectedAsync(session, cancellationToken);
+            var snapshot = await session.Client.ReadSnapshotAsync(cancellationToken);
+            session.LastSnapshot = snapshot;
+            session.LastMessage = null;
+            session.SynchronizeCommandSequence(snapshot.AcknowledgedCommandSequence);
+            UpdateGlobalDiagnostics(session);
+            SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(machineNumber, snapshot));
+            PublishConnection(session, ConnectionState.Online, null);
+            return snapshot;
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
+    }
+
     public async Task SendJobAsync(int machineNumber, JobParameters job, CancellationToken cancellationToken = default)
     {
         var session = GetSession(machineNumber);

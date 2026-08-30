@@ -9,7 +9,7 @@ using Partcounter.Services;
 
 namespace Partcounter.ViewModels;
 
-public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
+public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly DatabaseService _database = new();
     private readonly LabelPrintService _labelPrinter = new();
@@ -223,6 +223,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             Machines.Add(machine);
         }
 
+        await LoadPendingLiveOrderRecoveryAsync();
         await ReloadArticlesAsync();
 
         RecentPackagingUnits.Clear();
@@ -232,35 +233,62 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         LabelPrinterName = await _database.GetSettingAsync("LabelPrinterName") ?? string.Empty;
         AutoPrintLabels = bool.TryParse(await _database.GetSettingAsync("AutoPrintLabels"), out var autoPrint) && autoPrint;
 
-        SelectedMachine = Machines.FirstOrDefault();
+        SelectedMachine = Machines.FirstOrDefault(m => _startupRecoveryMachines.Contains(m.Configuration.MachineNumber))
+            ?? Machines.FirstOrDefault();
         SelectedArticle = Articles.FirstOrDefault();
 
         RefreshMachineCollections();
-        StatusMessage = $"Bereit · {Machines.Count} Maschinen · {Articles.Count} Artikel · aktive Maschinen ohne Auftrag werden ausgeblendet.";
+        StatusMessage = _startupRecoveryMachines.Count > 0
+            ? $"Wiederanlauf erforderlich: {_startupRecoveryMachines.Count} offener Echtauftrag/offene Echtaufträge wurden lokal sicher PAUSIERT geladen. Für Abgleich mit der LOGO! Echtbetrieb aktivieren."
+            : $"Bereit · {Machines.Count} Maschinen · {Articles.Count} Artikel · aktive Maschinen ohne Auftrag werden ausgeblendet.";
     }
 
     private async Task ToggleOperatingModeAsync()
     {
-        if (Machines.Any(m => m.IsActiveOrder))
-        {
-            StatusMessage = "Betriebsartwechsel gesperrt: Laufende oder pausierte Aufträge zuerst kontrolliert beenden. Simulation und Echtbetrieb dürfen keinen unterschiedlichen Auftragszustand übernehmen.";
-            return;
-        }
-
         if (IsSimulationMode)
         {
+            var nonRecoveryOrders = Machines
+                .Where(m => m.IsActiveOrder && !_startupRecoveryMachines.Contains(m.Configuration.MachineNumber))
+                .ToList();
+            if (nonRecoveryOrders.Count > 0)
+            {
+                StatusMessage = "Betriebsartwechsel gesperrt: Simulationsaufträge zuerst kontrolliert beenden. Offene Echtaufträge aus dem Recovery-Store sind davon ausgenommen und werden beim Umschalten abgeglichen.";
+                return;
+            }
+
             foreach (var machine in Machines)
                 machine.ConnectionState = ConnectionState.Offline;
 
             await _fleet.StartAsync(Machines.Select(m => m.Configuration));
+
+            var recoveryErrors = await ReconcilePendingLiveOrdersAsync();
+            if (recoveryErrors.Count > 0)
+            {
+                await _fleet.StopAsync();
+                foreach (var machine in Machines)
+                    machine.ConnectionState = ConnectionState.Simulation;
+                StatusMessage = $"Echtbetrieb NICHT aktiviert. Recovery-Fehler: {string.Join(" | ", recoveryErrors)} Bereits eindeutig erkannte Aufträge bleiben sicher pausiert.";
+                return;
+            }
+
             foreach (var machine in Machines.Where(m => m.IsTemporarilyDisabled))
                 await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
 
+            var recoveredCount = _startupRecoveryMachines.Count;
+            _startupRecoveryMachines.Clear();
             IsSimulationMode = false;
-            StatusMessage = "Echtbetrieb aktiv: Partcounter verbindet parallel mit allen freigegebenen LOGO!-Stationen. Protocol V3 wird zwingend geprüft.";
+            StatusMessage = recoveredCount > 0
+                ? $"Echtbetrieb aktiv: {recoveredCount} wiederhergestellte(r) Auftrag/Aufträge mit JobId/Kavitäten/Hold gegen die LOGO! verifiziert und absichtlich PAUSIERT. Fortsetzen muss je Maschine bewusst erfolgen."
+                : "Echtbetrieb aktiv: Partcounter verbindet parallel mit allen freigegebenen LOGO!-Stationen. Protocol V3 wird zwingend geprüft.";
         }
         else
         {
+            if (Machines.Any(m => m.IsActiveOrder))
+            {
+                StatusMessage = "Betriebsartwechsel gesperrt: Laufende oder pausierte Echtaufträge zuerst kontrolliert beenden.";
+                return;
+            }
+
             await _fleet.StopAsync();
             IsSimulationMode = true;
             foreach (var machine in Machines)
@@ -319,6 +347,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             if (wasTemporarilyDisabled)
                 await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: true);
 
+            await PersistPendingActivationAsync(machine, article, order, OrderTargetQuantity, firstPlan);
+
             var job = new JobParameters(
                 StableUInt32(order),
                 article.ArticleNumber,
@@ -346,6 +376,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                     }
                 }
 
+                await DeleteLiveOrderCheckpointAsync(machine.Configuration.MachineNumber);
                 StatusMessage = $"Auftrag nicht übernommen – LOGO!-Protocol-V3-Übertragung fehlgeschlagen: {ex.Message}";
                 await _database.AddEventAsync(machine.Configuration.MachineNumber, "MODBUS_WRITE_ERROR", ex.Message);
                 return;
@@ -361,6 +392,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             $"{machine.RequiredOrderVes:N0} VE geplant · erste VE {machine.CurrentVeTargetParts:N0} Teile · " +
             $"sicherer LOGO!-Grenzhalt nach VE {firstPlan.HoldAfterVeNumber:N0}.";
         await _database.AddEventAsync(machine.Configuration.MachineNumber, "JOB_STARTED", StatusMessage);
+        if (!IsSimulationMode)
+            await PersistLiveOrderCheckpointAsync(machine);
     }
 
     private async Task PauseSelectedOrderAsync()
@@ -380,6 +413,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             machine.PauseOrder();
             StatusMessage = $"{machine.DisplayName}: Auftrag {machine.OrderNumber} pausiert.";
             await _database.AddEventAsync(machine.Configuration.MachineNumber, "JOB_PAUSED", StatusMessage);
+            if (!IsSimulationMode)
+                await PersistLiveOrderCheckpointAsync(machine);
         }
         catch (Exception ex)
         {
@@ -390,6 +425,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private async Task ResumeSelectedOrderAsync()
     {
         var machine = SelectedMachine;
+        if (machine is not null && IsPendingStartupRecovery(machine))
+        {
+            StatusMessage = "Dieser Auftrag stammt aus einem Echtbetrieb-Wiederanlauf. Änderungen sind im Simulationsmodus gesperrt; zuerst Echtbetrieb aktivieren und LOGO!-Abgleich durchführen.";
+            return;
+        }
         if (machine is null || machine.OrderState != ProductionOrderState.Paused)
         {
             StatusMessage = "Die ausgewählte Maschine hat keinen pausierten Auftrag.";
@@ -449,6 +489,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             machine.ResumeOrder();
             StatusMessage = $"{machine.DisplayName}: Auftrag {machine.OrderNumber} fortgesetzt.";
             await _database.AddEventAsync(machine.Configuration.MachineNumber, "JOB_RESUMED", StatusMessage);
+            if (!IsSimulationMode)
+                await PersistLiveOrderCheckpointAsync(machine);
         }
         catch (Exception ex)
         {
@@ -459,6 +501,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private async Task EndSelectedOrderAsync()
     {
         var machine = SelectedMachine;
+        if (machine is not null && IsPendingStartupRecovery(machine))
+        {
+            StatusMessage = "Dieser Auftrag stammt aus einem Echtbetrieb-Wiederanlauf. Änderungen sind im Simulationsmodus gesperrt; zuerst Echtbetrieb aktivieren und LOGO!-Abgleich durchführen.";
+            return;
+        }
         if (machine is null || !machine.IsActiveOrder)
         {
             StatusMessage = "Die ausgewählte Maschine hat keinen aktiven Auftrag.";
@@ -473,6 +520,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             machine.EndOrder();
             _scheduledCompletionHolds.Remove(machine.Configuration.MachineNumber);
             _manualVeReconfigurationPending.Remove(machine.Configuration.MachineNumber);
+            if (!IsSimulationMode)
+                await DeleteLiveOrderCheckpointAsync(machine.Configuration.MachineNumber);
             StatusMessage =
                 $"{machine.DisplayName}: Auftrag {machine.OrderNumber} beendet bei {machine.OrderProducedQuantity:N0} / {machine.OrderTargetQuantity:N0} Teilen.";
             await _database.AddEventAsync(machine.Configuration.MachineNumber, "JOB_ENDED", StatusMessage);
@@ -485,6 +534,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task ToggleSelectedMachineDisabledAsync()
     {
+        if (SelectedMachine is not null && IsPendingStartupRecovery(SelectedMachine))
+        {
+            StatusMessage = "Maschinenstatus eines Recovery-Auftrags kann erst nach LOGO!-Abgleich geändert werden.";
+            return;
+        }
+
         if (SelectedMachine is null)
         {
             StatusMessage = "Bitte Maschine auswählen.";
@@ -515,6 +570,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             OnPropertyChanged(nameof(SelectedMachineDisableButtonText));
             OnPropertyChanged(nameof(SelectedMachineStateText));
             RefreshMachineCollections();
+            if (!IsSimulationMode && machine.HasOrder)
+                await PersistLiveOrderCheckpointAsync(machine);
         }
         catch (Exception ex)
         {
@@ -525,6 +582,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private async Task ManualVeChangeAsync(object? parameter)
     {
         if (parameter is not MachineState machine) return;
+        if (IsPendingStartupRecovery(machine))
+        {
+            StatusMessage = $"{machine.DisplayName}: Manueller VE-Wechsel ist bis zum LOGO!-Recovery-Abgleich gesperrt.";
+            return;
+        }
 
         if (!machine.IsActiveOrder || machine.IsTemporarilyDisabled)
         {
@@ -551,6 +613,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             await _fleet.PauseCountingAsync(machineNumber);
             pauseConfirmed = true;
             _manualVeReconfigurationPending.Add(machineNumber);
+            await PersistLiveOrderCheckpointAsync(machine);
 
             await _fleet.SendManualVeChangeAsync(machineNumber);
             StatusMessage = $"{machine.DisplayName}: Manueller VE-Wechsel bestätigt angefordert. Zählung bleibt bis zur Neuplanung gesperrt.";
@@ -565,6 +628,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
                 StatusMessage = $"{machine.DisplayName}: Manueller VE-Wechsel nicht eindeutig bestätigt. Zählung bleibt gesperrt; Abschluss abwarten oder kontrolliert zurücksetzen. {ex.Message}";
                 await _database.AddEventAsync(machineNumber, "MANUAL_VE_CHANGE_UNCERTAIN", StatusMessage);
+                await PersistLiveOrderCheckpointAsync(machine);
             }
             else
             {
@@ -577,6 +641,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private async Task ResetMachineAsync(object? parameter)
     {
         if (parameter is not MachineState machine) return;
+        if (IsPendingStartupRecovery(machine))
+        {
+            StatusMessage = $"{machine.DisplayName}: Reset ist bis zum LOGO!-Recovery-Abgleich gesperrt.";
+            return;
+        }
 
         if (!machine.IsActiveOrder)
         {
@@ -621,6 +690,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             _scheduledCompletionHolds[machine.Configuration.MachineNumber] = resetPlan.HoldAfterVeNumber;
             _manualVeReconfigurationPending.Remove(machine.Configuration.MachineNumber);
             StatusMessage = $"Reset an {machine.DisplayName} gesendet; Grenzhalt nach VE {resetPlan.HoldAfterVeNumber:N0} bestätigt.";
+            await PersistLiveOrderCheckpointAsync(machine);
         }
         catch (Exception ex)
         {
@@ -691,6 +761,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
 
         var now = DateTime.UtcNow;
+        if (!IsSimulationMode)
+            await PersistLiveOrderCheckpointAsync(machine);
+
         var record = new PackagingUnitRecord(
             $"TEST-{now:yyyyMMddHHmmssfff}",
             SelectedMachine.Configuration.MachineNumber,
@@ -820,6 +893,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             if (!string.IsNullOrWhiteSpace(boundaryError))
             {
                 StatusMessage = $"SICHERHEITSHALT {machine.DisplayName}: {boundaryError} VE {e.VeNumber} wurde protokolliert; keine Zählfreigabe erteilt.";
+                await PersistLiveOrderCheckpointAsync(machine);
                 return;
             }
 
@@ -829,6 +903,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 StatusMessage = machine.OrderState == ProductionOrderState.Completed
                     ? $"{machine.DisplayName}: Manueller VE-Abschluss {e.VeNumber} protokolliert; Auftrag abgeschlossen und Zählung bleibt gesperrt."
                     : $"{machine.DisplayName}: Manueller VE-Abschluss {e.VeNumber} protokolliert; nächste VE {machine.CurrentVeTargetParts:N0} Teile sicher neu geplant.";
+                if (machine.OrderState == ProductionOrderState.Completed)
+                    await DeleteLiveOrderCheckpointAsync(machine.Configuration.MachineNumber);
+                else
+                    await PersistLiveOrderCheckpointAsync(machine);
                 return;
             }
 
@@ -838,11 +916,21 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             StatusMessage = machine.OrderState == ProductionOrderState.Completed
                 ? $"{machine.DisplayName}: VE {e.VeNumber} fertig; Auftrag {machine.OrderNumber} mit {machine.OrderProducedQuantity:N0} Teilen abgeschlossen und LOGO!-Grenzhalt aktiv."
                 : $"{machine.DisplayName}: VE {e.VeNumber} fertig mit {e.Quantity:N0} Teilen; nächste VE {machine.CurrentVeTargetParts:N0} Teile; Etikett: {record.LabelStatus}.";
+
+            if (!IsSimulationMode)
+            {
+                if (machine.OrderState == ProductionOrderState.Completed)
+                    await DeleteLiveOrderCheckpointAsync(machine.Configuration.MachineNumber);
+                else
+                    await PersistLiveOrderCheckpointAsync(machine);
+            }
         }
         catch (Exception ex)
         {
             if (!IsSimulationMode && atHeldBoundary && machine.OrderState == ProductionOrderState.Running)
                 machine.PauseOrder();
+            if (!IsSimulationMode)
+                await PersistLiveOrderCheckpointAsync(machine);
             StatusMessage = $"VE-Abschluss/Sicherheitsgrenze nicht vollständig verarbeitet: {ex.Message}";
         }
     }

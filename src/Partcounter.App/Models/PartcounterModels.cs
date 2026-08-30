@@ -51,6 +51,35 @@ public sealed record JobParameters(
     ushort ValvePulseMs = 750,
     ushort HoldAfterVeNumber = 0);
 
+public enum ActiveOrderCheckpointPhase
+{
+    PendingActivation = 0,
+    Active = 1
+}
+
+public sealed record ActiveOrderCheckpoint(
+    int MachineNumber,
+    string OrderNumber,
+    uint JobId,
+    string ArticleNumber,
+    string ArticleDescription,
+    string ToolNumber,
+    ushort ActiveCavities,
+    uint StandardVeTarget,
+    uint OrderTargetQuantity,
+    ProductionOrderState OrderState,
+    ushort ScheduledHoldAfterVeNumber,
+    bool ManualVeReconfigurationPending,
+    bool IsTemporarilyDisabled,
+    uint LastKnownOrderProducedQuantity,
+    uint LastKnownCurrentParts,
+    uint LastKnownTotalCycles,
+    ushort LastKnownCurrentVeNumber,
+    ushort LastKnownCompletedVes,
+    uint LastKnownLastCompletedVeQuantity,
+    ActiveOrderCheckpointPhase Phase,
+    DateTime UpdatedAtUtc);
+
 public enum VeCompletionReason : ushort
 {
     Unknown = 0,
@@ -461,6 +490,91 @@ public sealed class MachineState : INotifyPropertyChanged
 
         ResetCountersCore();
         PrepareNextVeTarget();
+    }
+
+    public void RestoreRecoveredOrder(ActiveOrderCheckpoint checkpoint, LogoSnapshot? snapshot = null)
+    {
+        if (checkpoint.MachineNumber != Configuration.MachineNumber)
+            throw new InvalidOperationException($"Recovery-Checkpoint M{checkpoint.MachineNumber:00} passt nicht zu {DisplayName}.");
+        if (checkpoint.ActiveCavities is < 1 or > 64)
+            throw new InvalidOperationException("Recovery-Checkpoint enthält eine ungültige Kavitätenzahl.");
+        if (checkpoint.StandardVeTarget == 0 || checkpoint.OrderTargetQuantity == 0)
+            throw new InvalidOperationException("Recovery-Checkpoint enthält ungültige Auftragsmengen.");
+
+        ClearVeAttention();
+        ArticleNumber = checkpoint.ArticleNumber;
+        ArticleDescription = checkpoint.ArticleDescription;
+        ToolNumber = checkpoint.ToolNumber;
+        ActiveCavities = checkpoint.ActiveCavities;
+        TargetPartsPerVe = checkpoint.StandardVeTarget;
+        OrderNumber = checkpoint.OrderNumber;
+        OrderTargetQuantity = checkpoint.OrderTargetQuantity;
+        IsTemporarilyDisabled = checkpoint.IsTemporarilyDisabled;
+
+        if (snapshot is null)
+        {
+            CurrentParts = checkpoint.LastKnownCurrentParts;
+            TotalCycles = checkpoint.LastKnownTotalCycles;
+            CurrentVeNumber = Math.Max((ushort)1, checkpoint.LastKnownCurrentVeNumber);
+            CompletedVes = checkpoint.LastKnownCompletedVes;
+            LastCompletedVeQuantity = checkpoint.LastKnownLastCompletedVeQuantity;
+            OrderProducedQuantity = checkpoint.LastKnownOrderProducedQuantity;
+            ErrorCode = 0;
+            _logoSnapshotInitialized = false;
+            _lastCompletionSequence = 0;
+        }
+        else
+        {
+            if (snapshot.ActiveCavitiesEcho != checkpoint.ActiveCavities)
+                throw new InvalidOperationException($"Recovery-Kavitäten {snapshot.ActiveCavitiesEcho} entsprechen nicht Soll {checkpoint.ActiveCavities}.");
+
+            CurrentParts = snapshot.CurrentParts;
+            TotalCycles = snapshot.TotalCycles;
+            CurrentVeNumber = Math.Max((ushort)1, snapshot.CurrentVeNumber);
+            CompletedVes = snapshot.CompletedVes;
+            LastCompletedVeQuantity = snapshot.LastCompletedVeQuantity;
+            ErrorCode = snapshot.ErrorCode;
+            OrderProducedQuantity = checked(snapshot.TotalCycles * (uint)checkpoint.ActiveCavities);
+            LastCycleLocal = null;
+            LastVeCompletedLocal = null;
+            _lastCompletionSequence = snapshot.CompletionSequence;
+            _logoSnapshotInitialized = true;
+        }
+
+        if (OrderProducedQuantity >= OrderTargetQuantity)
+        {
+            OrderState = ProductionOrderState.Completed;
+            CurrentVeTargetParts = 0;
+            return;
+        }
+
+        // Every recovered live order is intentionally restored PAUSED. The operator must
+        // explicitly resume after Partcounter has reconciled the LOGO! state.
+        OrderState = ProductionOrderState.Paused;
+        var producedBeforeCurrentVe = OrderProducedQuantity >= CurrentParts
+            ? OrderProducedQuantity - CurrentParts
+            : 0;
+        var remainingAtCurrentVeStart = OrderTargetQuantity > producedBeforeCurrentVe
+            ? OrderTargetQuantity - producedBeforeCurrentVe
+            : 0;
+        CurrentVeTargetParts = Math.Min(TargetPartsPerVe, remainingAtCurrentVeStart);
+    }
+
+    public void ClearRecoveredOrder()
+    {
+        ClearVeAttention();
+        ArticleNumber = "–";
+        ArticleDescription = string.Empty;
+        ToolNumber = "–";
+        OrderNumber = string.Empty;
+        ActiveCavities = 1;
+        TargetPartsPerVe = 1000;
+        OrderTargetQuantity = 0;
+        OrderProducedQuantity = 0;
+        OrderState = ProductionOrderState.None;
+        IsTemporarilyDisabled = false;
+        CurrentVeTargetParts = 0;
+        ResetCountersCore();
     }
 
     public void PauseOrder()
