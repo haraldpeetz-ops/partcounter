@@ -16,34 +16,32 @@ public sealed class LabelReprintService
     {
         await _database.InitializeAsync();
         await _snapshots.InitializeAsync();
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
+        await _database.ExecuteExclusiveWriteAsync(async connection =>
+        {
+            var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE IF NOT EXISTS LabelReprintJournal (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    PackagingUnitId TEXT NOT NULL,
+                    ReprintNumber INTEGER NOT NULL,
+                    PrintedAtUtc TEXT NOT NULL,
+                    PrinterName TEXT NOT NULL,
+                    Reason TEXT NOT NULL,
+                    Successful INTEGER NOT NULL,
+                    ErrorMessage TEXT NOT NULL DEFAULT '',
+                    LayoutSource TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY(PackagingUnitId) REFERENCES PackagingUnits(Id)
+                );
 
-        var command = connection.CreateCommand();
-        command.CommandText = """
-            PRAGMA foreign_keys=ON;
+                CREATE INDEX IF NOT EXISTS IX_LabelReprintJournal_PackagingUnitId
+                    ON LabelReprintJournal(PackagingUnitId, Id DESC);
 
-            CREATE TABLE IF NOT EXISTS LabelReprintJournal (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                PackagingUnitId TEXT NOT NULL,
-                ReprintNumber INTEGER NOT NULL,
-                PrintedAtUtc TEXT NOT NULL,
-                PrinterName TEXT NOT NULL,
-                Reason TEXT NOT NULL,
-                Successful INTEGER NOT NULL,
-                ErrorMessage TEXT NOT NULL DEFAULT '',
-                LayoutSource TEXT NOT NULL DEFAULT '',
-                FOREIGN KEY(PackagingUnitId) REFERENCES PackagingUnits(Id)
-            );
-
-            CREATE INDEX IF NOT EXISTS IX_LabelReprintJournal_PackagingUnitId
-                ON LabelReprintJournal(PackagingUnitId, Id DESC);
-
-            CREATE UNIQUE INDEX IF NOT EXISTS UX_LabelReprintJournal_Number
-                ON LabelReprintJournal(PackagingUnitId, ReprintNumber);
-            """;
-        await command.ExecuteNonQueryAsync();
-        await EnsureColumnAsync(connection, "LabelReprintJournal", "LayoutSource", "TEXT NOT NULL DEFAULT ''");
+                CREATE UNIQUE INDEX IF NOT EXISTS UX_LabelReprintJournal_Number
+                    ON LabelReprintJournal(PackagingUnitId, ReprintNumber);
+                """;
+            await command.ExecuteNonQueryAsync();
+            await EnsureColumnAsync(connection, "LabelReprintJournal", "LayoutSource", "TEXT NOT NULL DEFAULT ''");
+        });
     }
 
     public async Task<LabelReprintResult> ReprintAsync(

@@ -49,31 +49,30 @@ public sealed class LabelTemplateService
 
     public async Task InitializeAsync()
     {
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
+        var needsDefault = await SqliteWriteCoordinator.ExecuteAsync(_databasePath, async connection =>
+        {
+            var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE IF NOT EXISTS LabelTemplates (
+                    Id TEXT PRIMARY KEY,
+                    Name TEXT NOT NULL,
+                    WidthMm REAL NOT NULL,
+                    HeightMm REAL NOT NULL,
+                    IsDefault INTEGER NOT NULL DEFAULT 0,
+                    AssignedArticleNumber TEXT NULL,
+                    DefinitionJson TEXT NOT NULL,
+                    UpdatedAtUtc TEXT NOT NULL
+                );
 
-        var command = connection.CreateCommand();
-        command.CommandText = """
-            CREATE TABLE IF NOT EXISTS LabelTemplates (
-                Id TEXT PRIMARY KEY,
-                Name TEXT NOT NULL,
-                WidthMm REAL NOT NULL,
-                HeightMm REAL NOT NULL,
-                IsDefault INTEGER NOT NULL DEFAULT 0,
-                AssignedArticleNumber TEXT NULL,
-                DefinitionJson TEXT NOT NULL,
-                UpdatedAtUtc TEXT NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS IX_LabelTemplates_Article
-                ON LabelTemplates(AssignedArticleNumber);
-            """;
-        await command.ExecuteNonQueryAsync();
-
-        var countCommand = connection.CreateCommand();
-        countCommand.CommandText = "SELECT COUNT(*) FROM LabelTemplates;";
-        var count = Convert.ToInt32(await countCommand.ExecuteScalarAsync());
-        if (count == 0)
+                CREATE INDEX IF NOT EXISTS IX_LabelTemplates_Article
+                    ON LabelTemplates(AssignedArticleNumber);
+                """;
+            await command.ExecuteNonQueryAsync();
+            var countCommand = connection.CreateCommand();
+            countCommand.CommandText = "SELECT COUNT(*) FROM LabelTemplates;";
+            return Convert.ToInt32(await countCommand.ExecuteScalarAsync()) == 0;
+        });
+        if (needsDefault)
             await SaveTemplateAsync(CreateLegacyCompatibleDefaultTemplate());
     }
 

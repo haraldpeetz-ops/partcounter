@@ -15,33 +15,31 @@ public sealed class LabelPrintSnapshotService
     };
 
     private readonly DatabaseService _database = new();
-    private string ConnectionString => $"Data Source={_database.DatabasePath};Cache=Shared";
+    private string ConnectionString => SqliteWriteCoordinator.BuildConnectionString(_database.DatabasePath);
 
     public async Task InitializeAsync()
     {
         await _database.InitializeAsync();
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
+        await _database.ExecuteExclusiveWriteAsync(async connection =>
+        {
+            var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE IF NOT EXISTS LabelPrintSnapshots (
+                    PackagingUnitId TEXT PRIMARY KEY,
+                    TemplateId TEXT NOT NULL,
+                    TemplateName TEXT NOT NULL,
+                    TemplateUpdatedAtUtc TEXT NOT NULL,
+                    DefinitionJson TEXT NOT NULL,
+                    DefinitionSha256 TEXT NOT NULL,
+                    CapturedAtUtc TEXT NOT NULL,
+                    FOREIGN KEY(PackagingUnitId) REFERENCES PackagingUnits(Id)
+                );
 
-        var command = connection.CreateCommand();
-        command.CommandText = """
-            PRAGMA foreign_keys=ON;
-
-            CREATE TABLE IF NOT EXISTS LabelPrintSnapshots (
-                PackagingUnitId TEXT PRIMARY KEY,
-                TemplateId TEXT NOT NULL,
-                TemplateName TEXT NOT NULL,
-                TemplateUpdatedAtUtc TEXT NOT NULL,
-                DefinitionJson TEXT NOT NULL,
-                DefinitionSha256 TEXT NOT NULL,
-                CapturedAtUtc TEXT NOT NULL,
-                FOREIGN KEY(PackagingUnitId) REFERENCES PackagingUnits(Id)
-            );
-
-            CREATE INDEX IF NOT EXISTS IX_LabelPrintSnapshots_CapturedAtUtc
-                ON LabelPrintSnapshots(CapturedAtUtc DESC);
-            """;
-        await command.ExecuteNonQueryAsync();
+                CREATE INDEX IF NOT EXISTS IX_LabelPrintSnapshots_CapturedAtUtc
+                    ON LabelPrintSnapshots(CapturedAtUtc DESC);
+                """;
+            await command.ExecuteNonQueryAsync();
+        });
     }
 
     public async Task<LabelPrintSnapshot> SaveSnapshotIfMissingAsync(
@@ -60,23 +58,24 @@ public sealed class LabelPrintSnapshotService
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json))).ToLowerInvariant();
         var capturedAtUtc = DateTime.UtcNow;
 
-        await using var connection = new SqliteConnection(ConnectionString);
-        await connection.OpenAsync();
-        var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT OR IGNORE INTO LabelPrintSnapshots
-                (PackagingUnitId, TemplateId, TemplateName, TemplateUpdatedAtUtc, DefinitionJson, DefinitionSha256, CapturedAtUtc)
-            VALUES
-                ($ve, $templateId, $templateName, $updated, $json, $hash, $captured);
-            """;
-        command.Parameters.AddWithValue("$ve", record.Id);
-        command.Parameters.AddWithValue("$templateId", template.Id ?? string.Empty);
-        command.Parameters.AddWithValue("$templateName", template.Name ?? string.Empty);
-        command.Parameters.AddWithValue("$updated", template.UpdatedAtUtc.ToString("O"));
-        command.Parameters.AddWithValue("$json", json);
-        command.Parameters.AddWithValue("$hash", hash);
-        command.Parameters.AddWithValue("$captured", capturedAtUtc.ToString("O"));
-        await command.ExecuteNonQueryAsync();
+        await _database.ExecuteExclusiveWriteAsync(async connection =>
+        {
+            var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT OR IGNORE INTO LabelPrintSnapshots
+                    (PackagingUnitId, TemplateId, TemplateName, TemplateUpdatedAtUtc, DefinitionJson, DefinitionSha256, CapturedAtUtc)
+                VALUES
+                    ($ve, $templateId, $templateName, $updated, $json, $hash, $captured);
+                """;
+            command.Parameters.AddWithValue("$ve", record.Id);
+            command.Parameters.AddWithValue("$templateId", template.Id ?? string.Empty);
+            command.Parameters.AddWithValue("$templateName", template.Name ?? string.Empty);
+            command.Parameters.AddWithValue("$updated", template.UpdatedAtUtc.ToString("O"));
+            command.Parameters.AddWithValue("$json", json);
+            command.Parameters.AddWithValue("$hash", hash);
+            command.Parameters.AddWithValue("$captured", capturedAtUtc.ToString("O"));
+            await command.ExecuteNonQueryAsync();
+        });
 
         return await LoadSnapshotAsync(record.Id)
             ?? throw new InvalidOperationException("Etiketten-Layout-Snapshot konnte nach dem Speichern nicht geladen werden.");
