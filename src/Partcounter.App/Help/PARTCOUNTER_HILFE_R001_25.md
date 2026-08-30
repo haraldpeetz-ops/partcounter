@@ -40,7 +40,7 @@ Screenshot-Hinweis: Leitstand direkt nach Programmstart mit Maschinenwahl, Artik
 - Die reale Maschine muss im Bereich **Maschinen / Modbus** korrekt angelegt sein.
 - Artikelnummer, Werkzeug, Kavitätenzahl und VE-Menge müssen im **Artikelstamm** stimmen.
 - Der Windows-Drucker muss unter **Einstellungen / Druck** hinterlegt und per Testetikett geprüft sein.
-- Die LOGO!-Station muss das freigegebene Modbus-Protokoll V2 verwenden.
+- Die LOGO!-Station muss das freigegebene **Modbus-Protokoll V3** verwenden. Vor Echtbetrieb müssen Hold-Echo sowie die Statusbits CompletionHoldArmed/CompletionHoldActive gemäß M01-Abnahme geprüft sein.
 
 ### Ersten Auftrag starten
 1. Im **Leitstand** die gewünschte Maschine auswählen.
@@ -147,7 +147,7 @@ Screenshot-Hinweis: Oberes Auftragsformular im Leitstand mit ausgefüllter Masch
 Ein Auftrag benötigt mindestens Maschine, Artikel, Auftragsnummer und Auftragsmenge. Der Artikel liefert Werkzeugnummer, aktive Kavitäten und Standard-VE-Menge.
 
 ### Übertragung im Echtbetrieb
-Beim Start schreibt Partcounter die freigegebenen Auftragsparameter über Modbus V2 an die ausgewählte LOGO!-Station. Erst wenn die Übertragung erfolgreich war, wird der Auftrag lokal als gestartet behandelt.
+Beim Start schreibt Partcounter die freigegebenen Auftragsparameter über **Modbus Protocol V3** an die ausgewählte LOGO!-Station. Der Auftrag gilt erst nach passender AckSequence, ErrorCode 0, Kavitäten-Echo, HoldAfterVeNumber-Echo und gesetztem CompletionHoldArmed als übernommen. Partcounter plant den ersten kritischen VE-Grenzpunkt bereits vor Produktionsbeginn.
 
 ### Erste und letzte VE
 Die erste VE verwendet die Standard-VE-Menge, solange die Auftragsrestmenge größer ist. Die letzte VE wird automatisch auf die verbleibende Auftragsmenge begrenzt und anschließend auf vollständige Werkzeugzyklen aufgerundet.
@@ -290,7 +290,7 @@ Ein mögliches Schema ist PC `192.168.50.10` und M01 bis M30 `192.168.50.101` bi
 ### WLAN-Bridge
 Die WLAN-Strecke sollte transparent arbeiten. AP-/Client-Isolation und unnötiges NAT zwischen PC und LOGO! können Modbus-Verbindungen verhindern.
 
-## [MODBUS-01] Modbus V2 – Register, Handshake und Heartbeats
+## [MODBUS-01] Modbus Protocol V3 – Register, Handshake, Grenzhalt und Heartbeats
 Kategorie: Maschinen / Modbus
 Abhängigkeiten: MACHINE-01
 Folgewirkungen: MODBUS-02, COMMISSION-02
@@ -299,7 +299,7 @@ Screenshot: 41_modbus_livewerte.png
 Screenshot-Hinweis: Live-Diagnose mit Protocol/Heartbeat/Command-Ack/StatusWord aufnehmen.
 ---
 ### Protokollversion
-Partcounter und LOGO! müssen dieselbe Protokollversion verwenden. R001.18/R001.19 basieren auf Modbus-Protokoll V2.
+Partcounter und LOGO! müssen dieselbe Protokollversion verwenden. **R001.25 verlangt Protocol V3.** Eine ältere V2-LOGO!-Station wird im Echtbetrieb bewusst abgewiesen, weil sie den lokalen VE-Grenzhalt nicht verbindlich bestätigen kann.
 
 ### CommandSequence / AckSequence
 Jeder neue Befehl erhält eine Sequenznummer. Die LOGO! quittiert die verarbeitete Sequenz. So wird verhindert, dass derselbe Befehl bei Kommunikationswiederkehr mehrfach ausgeführt wird.
@@ -732,12 +732,12 @@ Screenshot: 63_command_ack.png
 Screenshot-Hinweis: Inbetriebnahmeansicht mit CommandSequence und AckSequence aufnehmen.
 ---
 ### R001.25-Verhalten
-Ein erfolgreicher TCP-Schreibaufruf gilt nicht mehr als ausreichende Befehlsbestätigung. Partcounter wartet nach jedem Steuerbefehl auf die passende AckSequence, prüft ErrorCode=0 und bei Auftrags-/VE-Parametern zusätzlich das Kavitäten-Echo.
+Ein erfolgreicher TCP-Schreibaufruf gilt nicht als ausreichende Befehlsbestätigung. Partcounter wartet auf die passende AckSequence, prüft ErrorCode=0 und bei Auftrags-/VE-Parametern zusätzlich Kavitäten-Echo, HoldAfterVeNumber-Echo und bei Hold > 0 das Statusbit CompletionHoldArmed.
 
 Bleibt das ACK aus, wird derselbe Sequenzwert bis zu dreimal verwendet. Das ist absichtlich idempotent: Ein One-Shot darf bei einem verlorenen TCP-Antworttelegramm nicht doppelt ausgelöst werden.
 
 ### VE-Grenze
-Nach einer abgeschlossenen VE pausiert Partcounter im verfügbaren Onlinepfad zuerst die Zählung, überträgt und bestätigt das nächste VE-Ziel und gibt danach die Zählung wieder frei.
+R001.25 plant die erste kritische VE bereits **vor** Produktionsbeginn als HoldAfterVeNumber in der LOGO!. Gleichartige Standard-VE dürfen bis dorthin autonom laufen. An der geplanten Grenze muss die LOGO! CompletionHoldActive lokal latchen, bevor ein Folgezyklus gezählt werden kann. Partcounter prüft diesen Hold, überträgt im gehaltenen Zustand das nächste VE-Ziel samt neuem Grenzpunkt, wartet auf ACK/Echos/HoldArmed und sendet erst danach Resume. Bei der finalen VE erfolgt kein Resume.
 
 ## [BACKUP-24H-01] Datensicherung im 24/7-Betrieb
 Kategorie: Einstellungen / Support
