@@ -1,1 +1,1 @@
-One-shot trigger for R001.25 recovery snapshot isolation and held-boundary release proof. Remove during final cleanup.
+One-shot trigger retry for R001.25 recovery snapshot isolation and held-boundary release proof after unique JobId adaptation. Remove during final cleanup.
