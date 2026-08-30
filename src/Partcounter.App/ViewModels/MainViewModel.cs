@@ -392,6 +392,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
             return;
         }
 
+        if (!IsSimulationMode && !SelectedMachine.Configuration.Enabled)
+        {
+            StatusMessage = $"{SelectedMachine.DisplayName}: Auftrag nicht gestartet. Die Station ist in der Maschinen-/Modbus-Konfiguration administrativ deaktiviert und besitzt im Echtbetrieb bewusst keine Kommunikationssession.";
+            return;
+        }
+
         if (HasUnresolvedPendingActivation(SelectedMachine))
         {
             StatusMessage = $"{SelectedMachine.DisplayName}: Neue Beauftragung gesperrt. Ein vorheriger Echtauftrag ist wegen verlorener/fehlender Modbus-Bestätigung noch als PendingActivation offen. Nach Wiederherstellung der Verbindung Partcounter neu starten und den Recovery-Abgleich ausführen.";
