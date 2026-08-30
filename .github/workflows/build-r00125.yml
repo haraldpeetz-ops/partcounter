@@ -67,59 +67,144 @@ jobs:
             throw 'Partcounter R001.25 layout test failed.'
           }
 
-      - name: Static final-hardening audit
+      - name: Static final-hardening and engineering audit
         shell: pwsh
         run: |
           $audit = 'artifacts/Validation_R001_25/STATIC_AUDIT_R001_25.txt'
-          "PARTCOUNTER R001.25 STATIC AUDIT" | Set-Content -LiteralPath $audit
+          "PARTCOUNTER R001.25 STATIC + ENGINEERING AUDIT" | Set-Content -LiteralPath $audit
+
           $stale = Get-ChildItem src -Recurse -File -Include *.cs,*.xaml | Select-String -Pattern 'R001\.5'
           if ($stale) { $stale | Out-String | Add-Content $audit; throw 'Stale R001.5 UI reference found.' }
+
           $unfinished = Get-ChildItem src -Recurse -File -Include *.cs,*.xaml | Select-String -Pattern 'TODO|FIXME|NotImplementedException'
           if ($unfinished) { $unfinished | Out-String | Add-Content $audit; throw 'Unfinished code marker found.' }
+
+          $registerMap = Get-Content 'src/Partcounter.App/Services/ModbusRegisterMap.cs' -Raw
+          if ($registerMap -notmatch 'ProtocolVersion\s*=\s*3;') { throw 'ProtocolVersion 3 missing from ModbusRegisterMap.' }
+          if ($registerMap -notmatch 'ConfigLength\s*=\s*13;') { throw 'Protocol V3 ConfigLength 13 missing.' }
+          if ($registerMap -notmatch 'StatusLength\s*=\s*21;') { throw 'Protocol V3 StatusLength 21 missing.' }
+          if ($registerMap -notmatch 'StatusJobIdHiEcho' -or $registerMap -notmatch 'StatusJobIdLoEcho') { throw 'Protocol V3 JobId echo offsets missing.' }
+
+          $helpLoader = Get-Content 'src/Partcounter.App/Services/PartcounterHelpService.cs' -Raw
+          if ($helpLoader -notmatch 'PARTCOUNTER_HILFE_R001_25') { throw 'Current R001.25 help marker missing.' }
+          if ($helpLoader -match 'PARTCOUNTER_HILFE_R001_19') { throw 'Help loader still references R001.19.' }
+
+          $required = @(
+            'README.md',
+            'docs/MODBUS_REGISTER_MAP.md',
+            'docs/LOGO_CONTROL_LOGIC.md',
+            'docs/PROJECT_STATUS_R001_25_CHECKPOINT.md',
+            'docs/PARTCOUNTER_LOGO_V001_R001_25_COMPLETE_ENGINEERING_GUIDE.md',
+            'docs/PROTOCOL_V3_VE_BOUNDARY_DESIGN.md',
+            'docs/JOB_INSTANCE_ID_R001_25.md',
+            'docs/logo_v001/README_R001_25.md',
+            'docs/logo_v001/LOGO_V001_VM_MAP_R001_25.csv',
+            'docs/logo_v001/LOGO_V001_BLOCK_CONNECTIONS_R001_25.csv',
+            'docs/logo_v001/LOGO_V001_IO_WIRING_R001_25.csv',
+            'docs/logo_v001/LOGO_V001_TEST_CASES_R001_25.csv',
+            'docs/logo_v001/LOGO_V001_STATION01_BUILD_SHEET_R001_25.md',
+            'docs/logo_v001/STATION01_PARTCOUNTER_LOGO_V001_R001_25.ini',
+            'src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_25.md',
+            'src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_25_RECOVERY.md'
+          )
+          foreach ($file in $required) {
+            if (-not (Test-Path -LiteralPath $file)) { throw "Required R001.25 engineering file missing: $file" }
+          }
+
+          $vmMap = Get-Content 'docs/logo_v001/LOGO_V001_VM_MAP_R001_25.csv' -Raw
+          foreach ($needle in @('HR13','VW24','HoldAfterVeNumber','HR38','VW74','HoldAfterVeNumberEcho','HR39','HR40','JobIdEcho')) {
+            if ($vmMap -notmatch [regex]::Escape($needle)) { throw "Protocol V3 VM map is missing $needle" }
+          }
+
+          "Protocol V3 source contract: PASS" | Add-Content $audit
+          "R001.25 help resource routing: PASS" | Add-Content $audit
+          "Normative M01 engineering set: PASS" | Add-Content $audit
+          "Unfinished/stale source markers: PASS" | Add-Content $audit
           "PASS" | Add-Content -LiteralPath $audit
 
-      - name: Add engineering and documentation package
+      - name: Add current R001.25 engineering package
         shell: pwsh
         run: |
-          $targets = @(
-            'artifacts/Partcounter_R001_25_Portable_Folder_win-x64',
-            'artifacts/Partcounter_R001_25_SingleFile_win-x64'
+          $currentDocs = @(
+            'docs/MODBUS_REGISTER_MAP.md',
+            'docs/LOGO_CONTROL_LOGIC.md',
+            'docs/PROJECT_STATUS_R001_25_CHECKPOINT.md',
+            'docs/PARTCOUNTER_LOGO_V001_R001_25_COMPLETE_ENGINEERING_GUIDE.md',
+            'docs/PROTOCOL_V3_VE_BOUNDARY_DESIGN.md',
+            'docs/JOB_INSTANCE_ID_R001_25.md'
           )
-          foreach ($target in $targets) {
-            New-Item -ItemType Directory -Force -Path "$target/Engineering" | Out-Null
-            Copy-Item docs/*.md "$target/Engineering/" -Force
-            Copy-Item docs/logo_v001 "$target/Engineering/LOGO_V001" -Recurse -Force
-            Copy-Item src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_25.md "$target/Engineering/" -Force
-            Copy-Item artifacts/Validation_R001_25/*.txt "$target/Engineering/" -Force
+
+          function Copy-CurrentEngineering([string]$target) {
+            $engineering = Join-Path $target 'Engineering'
+            $logo = Join-Path $engineering 'LOGO_V001'
+            New-Item -ItemType Directory -Force -Path $engineering, $logo | Out-Null
+
+            Copy-Item 'README.md' (Join-Path $engineering 'PROJECT_README.md') -Force
+            foreach ($doc in $currentDocs) { Copy-Item $doc $engineering -Force }
+            Copy-Item 'src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_25*.md' $engineering -Force
+            Copy-Item 'docs/logo_v001/*R001_25*' $logo -Force
+            Copy-Item 'docs/logo_v001/README_R001_25.md' $logo -Force
+            Copy-Item 'artifacts/Validation_R001_25/*.txt' $engineering -Force
+
+            @'
+            CURRENT ENGINEERING SET - R001.25 / PROTOCOL V3
+            =================================================
+            Only the files in this Engineering folder are current build/commissioning guidance for this package.
+            Historical R001.8/R001.24 documents remain available in Git history/repository, but are intentionally not shipped here.
+            Real M01 hardware acceptance remains mandatory before Production Baseline status.
+            '@ | Set-Content -LiteralPath (Join-Path $engineering 'CURRENT_ENGINEERING_SET.txt') -Encoding UTF8
           }
+
+          Copy-CurrentEngineering 'artifacts/Partcounter_R001_25_Portable_Folder_win-x64'
+          Copy-CurrentEngineering 'artifacts/Partcounter_R001_25_SingleFile_win-x64'
+
           New-Item -ItemType Directory -Force -Path 'artifacts/Engineering_R001_25' | Out-Null
-          Copy-Item docs/*.md 'artifacts/Engineering_R001_25/' -Force
-          Copy-Item docs/logo_v001 'artifacts/Engineering_R001_25/LOGO_V001' -Recurse -Force
-          Copy-Item src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_25.md 'artifacts/Engineering_R001_25/' -Force
-          Copy-Item artifacts/Validation_R001_25/*.txt 'artifacts/Engineering_R001_25/' -Force
+          $standalone = 'artifacts/Engineering_R001_25'
+          $logoStandalone = Join-Path $standalone 'LOGO_V001'
+          New-Item -ItemType Directory -Force -Path $logoStandalone | Out-Null
+          Copy-Item 'README.md' (Join-Path $standalone 'PROJECT_README.md') -Force
+          foreach ($doc in $currentDocs) { Copy-Item $doc $standalone -Force }
+          Copy-Item 'src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_25*.md' $standalone -Force
+          Copy-Item 'docs/logo_v001/*R001_25*' $logoStandalone -Force
+          Copy-Item 'docs/logo_v001/README_R001_25.md' $logoStandalone -Force
+          Copy-Item 'artifacts/Validation_R001_25/*.txt' $standalone -Force
+          @'
+          CURRENT ENGINEERING SET - R001.25 / PROTOCOL V3
+          =================================================
+          This artifact intentionally contains only the current release-candidate engineering set.
+          Historical revision documents are retained in Git, not mixed into the commissioning package.
+          '@ | Set-Content -LiteralPath (Join-Path $standalone 'CURRENT_ENGINEERING_SET.txt') -Encoding UTF8
 
       - name: Add start instructions
         shell: pwsh
         run: |
           @'
-          PARTCOUNTER R001.25 - FINAL HARDENING
-          ====================================
+          PARTCOUNTER R001.25 - PRODUCTION RELEASE CANDIDATE
+          ==================================================
 
           Industrial hardening baseline:
           - .NET 10 LTS
           - compiler warnings fail the build
-          - confirmed LOGO CommandSequence/AckSequence handshake with same-sequence retry
-          - LOGO ErrorCode and parameter echo validation
-          - safe VE boundary: Pause -> confirmed target -> Resume
+          - NuGet security audit is mandatory
+          - LOGO! Modbus TCP Protocol V3
+          - confirmed CommandSequence/AckSequence handshake with same-sequence retry
+          - ErrorCode + cavities + HoldAfterVE + JobId echo validation
+          - deterministic LOGO-side CompletionHold prevents boundary leakage cycles
+          - unique persisted production JobId per real order activation
+          - PendingActivation protects uncertain command outcomes
+          - 24/7 restart recovery restores real jobs PAUSED and never auto-resumes
           - process-wide serialized SQLite writers
           - 24/7 daily backup check every 30 minutes
           - productive order source is exclusively ARBURG ALS or proALPHA
-          - DPAPI protected secrets
-          - optional Authenticode enforcement for future signed packages
+          - DPAPI protected secrets and hardened X509/mTLS path
           - unit/regression tests plus WPF stress and multi-resolution layout gates
 
-          IMPORTANT: Production release still requires real M01 hardware acceptance.
+          IMPORTANT:
+          This package is a software Production Release Candidate.
+          Production Baseline status still requires successful real M01 hardware acceptance.
+
           Data: %LOCALAPPDATA%\Partcounter
+          Current engineering: Engineering\
           '@ | Set-Content -Encoding UTF8 artifacts/Partcounter_R001_25_SingleFile_win-x64/START_HINWEIS.txt
           Copy-Item artifacts/Partcounter_R001_25_SingleFile_win-x64/START_HINWEIS.txt artifacts/Partcounter_R001_25_Portable_Folder_win-x64/START_HINWEIS.txt
 
@@ -142,11 +227,13 @@ jobs:
             version = '0.1.25'
             revision = 'R001.25'
             architecture = 'win-x64'
+            protocol = 'Modbus TCP Protocol V3'
+            releaseStage = 'Production Release Candidate'
             payloadRoot = 'payload/'
             requireAuthenticode = $false
             publisherCertificateThumbprint = ''
             createdAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-            releaseNotes = 'R001.25 Final Hardening - industrial release candidate; real M01 acceptance still required.'
+            releaseNotes = 'R001.25 Final Hardening / Protocol V3. Real M01 hardware acceptance remains required before Production Baseline status.'
           } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$package/partcounter-update.json" -Encoding UTF8
 
       - name: Upload validation reports
