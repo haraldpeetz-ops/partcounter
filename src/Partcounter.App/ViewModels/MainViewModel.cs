@@ -766,9 +766,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
         }
 
         var now = DateTime.UtcNow;
-        if (!IsSimulationMode)
-            await PersistLiveOrderCheckpointAsync(machine);
-
         var record = new PackagingUnitRecord(
             $"TEST-{now:yyyyMMddHHmmssfff}",
             SelectedMachine.Configuration.MachineNumber,
@@ -859,6 +856,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IAsyncDispos
                 (atHeldBoundary, boundaryError) = await PrecheckRealVeBoundaryAsync(machine, e);
             }
         }
+
+        if (!IsSimulationMode)
+            await PersistLiveOrderCheckpointAsync(machine);
 
         var record = new PackagingUnitRecord(
             $"PC-{completedUtc:yyyyMMddHHmmssfff}-M{machine.Configuration.MachineNumber:00}-VE{e.VeNumber:0000}",
