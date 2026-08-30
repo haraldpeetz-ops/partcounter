@@ -64,7 +64,8 @@ public sealed class LogoModbusClient : IAsyncDisposable
             ModbusRegisterMap.LowWord(job.JobId),
             ModbusRegisterMap.HighWord(job.TargetCyclesPerVe),
             ModbusRegisterMap.LowWord(job.TargetCyclesPerVe),
-            0
+            0,
+            job.HoldAfterVeNumber
         ];
 
         await _master!.WriteMultipleRegistersAsync(
@@ -127,7 +128,7 @@ public sealed class LogoModbusClient : IAsyncDisposable
             registers[ModbusRegisterMap.StatusLastVeCyclesLo]);
 
         if (currentVeCycles > ModbusRegisterMap.MaxTargetCyclesPerVe || lastCompletedVeCycles > ModbusRegisterMap.MaxTargetCyclesPerVe)
-            throw new InvalidOperationException("LOGO! reported a VE cycle counter outside the Partcounter V2 range.");
+            throw new InvalidOperationException("LOGO! reported a VE cycle counter outside the Partcounter V3 range.");
 
         var currentParts = checked(currentVeCycles * (uint)activeCavities);
         var lastCompletedVeQuantity = checked(lastCompletedVeCycles * (uint)lastCompletedCavities);
@@ -146,7 +147,8 @@ public sealed class LogoModbusClient : IAsyncDisposable
             registers[ModbusRegisterMap.StatusLogoHeartbeat],
             registers[ModbusRegisterMap.StatusErrorCode],
             (VeCompletionReason)registers[ModbusRegisterMap.StatusLastCompletionReason],
-            DateTime.UtcNow);
+            DateTime.UtcNow,
+            registers[ModbusRegisterMap.StatusHoldAfterVeNumberEcho]);
     }
 
     public void Disconnect()
@@ -173,6 +175,9 @@ public sealed class LogoModbusClient : IAsyncDisposable
 
         if (job.ValvePulseMs % ModbusRegisterMap.ValvePulseUnitMs != 0)
             throw new ArgumentOutOfRangeException(nameof(job), $"Valve pulse must be a multiple of {ModbusRegisterMap.ValvePulseUnitMs} ms.");
+
+        if (job.HoldAfterVeNumber > ModbusRegisterMap.MaxVeNumber)
+            throw new ArgumentOutOfRangeException(nameof(job), $"Hold-after VE must be 0..{ModbusRegisterMap.MaxVeNumber:N0}.");
     }
 
     private void EnsureConnected()

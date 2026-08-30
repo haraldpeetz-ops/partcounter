@@ -4,7 +4,7 @@ public static class ModbusRegisterMap
 {
     // NModbus addresses are zero based. Address 0 corresponds to LOGO! Holding Register 1 / VW0.
     public const ushort ConfigStart = 0;
-    public const ushort ConfigLength = 12;
+    public const ushort ConfigLength = 13;
 
     public const int ConfigProtocolVersion = 0;
     public const int ConfigCommandSequence = 1;
@@ -18,9 +18,10 @@ public static class ModbusRegisterMap
     public const int ConfigTargetCyclesHi = 9;
     public const int ConfigTargetCyclesLo = 10;
     public const int ConfigPcHeartbeat = 11;
+    public const int ConfigHoldAfterVeNumber = 12;
 
     public const ushort StatusStart = 19; // HR20 / VW38
-    public const ushort StatusLength = 18;
+    public const ushort StatusLength = 19;
 
     public const int StatusProtocolVersion = 0;
     public const int StatusWord = 1;
@@ -40,14 +41,16 @@ public static class ModbusRegisterMap
     public const int StatusErrorCode = 15;
     public const int StatusLastCompletionReason = 16;
     public const int StatusLastCompletedCavities = 17;
+    public const int StatusHoldAfterVeNumberEcho = 18;
 
-    public const ushort ProtocolVersion = 2;
+    public const ushort ProtocolVersion = 3;
 
     // LOGO! analog references and arithmetic use signed 16-bit integer values.
     // Keep all values that must be copied/compared inside the LOGO! in the positive 16-bit range.
     public const uint MaxTargetCyclesPerVe = 32_767;
     public const ushort MaxSequenceValue = 32_767;
     public const ushort MaxHeartbeatValue = 32_767;
+    public const ushort MaxVeNumber = 32_767;
 
     // The LOGO! timer parameter uses a fixed 10 ms time base in Partcounter_LOGO_V001.
     public const ushort ValvePulseUnitMs = 10;
@@ -66,6 +69,8 @@ public static class ModbusRegisterMap
     public const ushort StatusAlarm = 1 << 3;
     public const ushort StatusCycleInputActive = 1 << 4;
     public const ushort StatusPcHeartbeatStale = 1 << 5;
+    public const ushort StatusCompletionHoldArmed = 1 << 6;
+    public const ushort StatusCompletionHoldActive = 1 << 7;
 
     public const ushort ErrorNone = 0;
     public const ushort ErrorProtocolVersion = 1;

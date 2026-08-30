@@ -67,13 +67,15 @@ public sealed class CoreRegressionTests
     }
 
     [Fact]
-    public void ProtocolV2_ContractRemainsStable()
+    public void ProtocolV3_ContractExtendsBuffersWithoutMovingExistingAddresses()
     {
-        Assert.Equal((ushort)2, ModbusRegisterMap.ProtocolVersion);
+        Assert.Equal((ushort)3, ModbusRegisterMap.ProtocolVersion);
         Assert.Equal((ushort)0, ModbusRegisterMap.ConfigStart);
-        Assert.Equal((ushort)12, ModbusRegisterMap.ConfigLength);
+        Assert.Equal((ushort)13, ModbusRegisterMap.ConfigLength);
+        Assert.Equal(12, ModbusRegisterMap.ConfigHoldAfterVeNumber);
         Assert.Equal((ushort)19, ModbusRegisterMap.StatusStart);
-        Assert.Equal((ushort)18, ModbusRegisterMap.StatusLength);
+        Assert.Equal((ushort)19, ModbusRegisterMap.StatusLength);
+        Assert.Equal(18, ModbusRegisterMap.StatusHoldAfterVeNumberEcho);
         Assert.Equal((ushort)32767, ModbusRegisterMap.MaxSequenceValue);
     }
 }

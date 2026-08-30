@@ -48,7 +48,8 @@ public sealed record JobParameters(
     ushort ActiveCavities,
     uint TargetPartsPerVe,
     uint TargetCyclesPerVe,
-    ushort ValvePulseMs = 750);
+    ushort ValvePulseMs = 750,
+    ushort HoldAfterVeNumber = 0);
 
 public enum VeCompletionReason : ushort
 {
@@ -80,7 +81,8 @@ public sealed record LogoSnapshot(
     ushort LogoHeartbeat,
     ushort ErrorCode,
     VeCompletionReason LastCompletionReason,
-    DateTime ReadAtUtc);
+    DateTime ReadAtUtc,
+    ushort HoldAfterVeNumberEcho = 0);
 
 public sealed record VeCompletedEventArgs(
     ushort VeNumber,

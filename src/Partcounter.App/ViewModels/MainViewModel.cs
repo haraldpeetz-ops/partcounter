@@ -15,6 +15,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly LabelPrintService _labelPrinter = new();
     private readonly MachineFleetService _fleet = new();
     private readonly DispatcherTimer _simulationTimer;
+    private readonly Dictionary<int, ushort> _scheduledCompletionHolds = new();
 
     private bool _isSimulationMode = true;
     private bool _showIdleMachines;
@@ -239,6 +240,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task ToggleOperatingModeAsync()
     {
+        if (Machines.Any(m => m.IsActiveOrder))
+        {
+            StatusMessage = "Betriebsartwechsel gesperrt: Laufende oder pausierte Aufträge zuerst kontrolliert beenden. Simulation und Echtbetrieb dürfen keinen unterschiedlichen Auftragszustand übernehmen.";
+            return;
+        }
+
         if (IsSimulationMode)
         {
             foreach (var machine in Machines)
@@ -249,7 +256,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
 
             IsSimulationMode = false;
-            StatusMessage = "Echtbetrieb aktiv: Partcounter verbindet parallel mit allen freigegebenen LOGO!-Stationen.";
+            StatusMessage = "Echtbetrieb aktiv: Partcounter verbindet parallel mit allen freigegebenen LOGO!-Stationen. Protocol V3 wird zwingend geprüft.";
         }
         else
         {
@@ -293,8 +300,17 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             ? $"AUF-{DateTime.Now:yyyyMMdd-HHmmss}"
             : OrderNumber.Trim();
 
-        var firstVeTarget = Math.Min(article.PackagingQuantity, OrderTargetQuantity);
-        var firstVeCycles = (uint)Math.Ceiling(firstVeTarget / (double)article.ActiveCavities);
+        VeBoundaryPlan firstPlan;
+        try
+        {
+            firstPlan = VeBoundaryPolicy.Plan(1, 0, OrderTargetQuantity, article.PackagingQuantity, article.ActiveCavities);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Auftrag kann nicht sicher geplant werden: {ex.Message}";
+            return;
+        }
+
         var wasTemporarilyDisabled = machine.IsTemporarilyDisabled;
 
         if (!IsSimulationMode)
@@ -307,9 +323,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 article.ArticleNumber,
                 article.ToolNumber,
                 article.ActiveCavities,
-                firstVeTarget,
-                firstVeCycles,
-                ValvePulseMs);
+                firstPlan.TargetParts,
+                firstPlan.TargetCycles,
+                ValvePulseMs,
+                firstPlan.HoldAfterVeNumber);
 
             try
             {
@@ -328,18 +345,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                     }
                 }
 
-                StatusMessage = $"Auftrag nicht übernommen – LOGO!-Übertragung fehlgeschlagen: {ex.Message}";
+                StatusMessage = $"Auftrag nicht übernommen – LOGO!-Protocol-V3-Übertragung fehlgeschlagen: {ex.Message}";
                 await _database.AddEventAsync(machine.Configuration.MachineNumber, "MODBUS_WRITE_ERROR", ex.Message);
                 return;
             }
         }
 
         machine.StartOrder(article, order, OrderTargetQuantity);
+        _scheduledCompletionHolds[machine.Configuration.MachineNumber] = firstPlan.HoldAfterVeNumber;
         SelectedMachine = machine;
 
         StatusMessage =
             $"{machine.DisplayName}: Auftrag {order} gestartet · Soll {OrderTargetQuantity:N0} Teile · " +
-            $"{machine.RequiredOrderVes:N0} VE geplant · erste VE {machine.CurrentVeTargetParts:N0} Teile.";
+            $"{machine.RequiredOrderVes:N0} VE geplant · erste VE {machine.CurrentVeTargetParts:N0} Teile · " +
+            $"sicherer LOGO!-Grenzhalt nach VE {firstPlan.HoldAfterVeNumber:N0}.";
         await _database.AddEventAsync(machine.Configuration.MachineNumber, "JOB_STARTED", StatusMessage);
     }
 
@@ -412,6 +431,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 await _fleet.PauseCountingAsync(machine.Configuration.MachineNumber);
 
             machine.EndOrder();
+            _scheduledCompletionHolds.Remove(machine.Configuration.MachineNumber);
             StatusMessage =
                 $"{machine.DisplayName}: Auftrag {machine.OrderNumber} beendet bei {machine.OrderProducedQuantity:N0} / {machine.OrderTargetQuantity:N0} Teilen.";
             await _database.AddEventAsync(machine.Configuration.MachineNumber, "JOB_ENDED", StatusMessage);
@@ -498,32 +518,41 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
+        VeBoundaryPlan resetPlan;
+        try
+        {
+            resetPlan = VeBoundaryPolicy.Plan(1, 0, machine.OrderTargetQuantity, machine.TargetPartsPerVe, machine.ActiveCavities);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Reset kann nicht sicher geplant werden: {ex.Message}";
+            return;
+        }
+
         if (IsSimulationMode)
         {
             machine.ResetCounters();
+            _scheduledCompletionHolds[machine.Configuration.MachineNumber] = resetPlan.HoldAfterVeNumber;
             StatusMessage = $"{machine.DisplayName}: Auftragszähler zurückgesetzt.";
             return;
         }
 
         try
         {
-            var firstVeTarget = Math.Min(machine.TargetPartsPerVe, machine.OrderTargetQuantity);
-            var firstVeCycles = machine.ActiveCavities == 0
-                ? 0
-                : (uint)Math.Ceiling(firstVeTarget / (double)machine.ActiveCavities);
-
             var resetJob = new JobParameters(
                 StableUInt32(machine.OrderNumber),
                 machine.ArticleNumber,
                 machine.ToolNumber,
                 machine.ActiveCavities,
-                firstVeTarget,
-                firstVeCycles,
-                ValvePulseMs);
+                resetPlan.TargetParts,
+                resetPlan.TargetCycles,
+                ValvePulseMs,
+                resetPlan.HoldAfterVeNumber);
 
             await _fleet.SendJobAsync(machine.Configuration.MachineNumber, resetJob);
             machine.ResetCounters();
-            StatusMessage = $"Reset an {machine.DisplayName} gesendet.";
+            _scheduledCompletionHolds[machine.Configuration.MachineNumber] = resetPlan.HoldAfterVeNumber;
+            StatusMessage = $"Reset an {machine.DisplayName} gesendet; Grenzhalt nach VE {resetPlan.HoldAfterVeNumber:N0} bestätigt.";
         }
         catch (Exception ex)
         {
@@ -703,40 +732,116 @@ public sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 RecentPackagingUnits.RemoveAt(RecentPackagingUnits.Count - 1);
 
             if (!IsSimulationMode)
-            {
-                if (machine.OrderState == ProductionOrderState.Completed)
-                {
-                    await _fleet.PauseCountingAsync(machine.Configuration.MachineNumber);
-                }
-                else if (machine.IsActiveOrder && machine.CurrentVeTargetParts > 0)
-                {
-                    var nextJob = new JobParameters(
-                        StableUInt32(machine.OrderNumber),
-                        machine.ArticleNumber,
-                        machine.ToolNumber,
-                        machine.ActiveCavities,
-                        machine.CurrentVeTargetParts,
-                        machine.RequiredCyclesPerVe,
-                        ValvePulseMs);
-
-                    await _fleet.PauseCountingAsync(machine.Configuration.MachineNumber);
-                    await _fleet.UpdateVeTargetAsync(
-                        machine.Configuration.MachineNumber,
-                        nextJob,
-                        pauseCounting: true);
-                    if (machine.OrderState == ProductionOrderState.Running)
-                        await _fleet.ResumeCountingAsync(machine.Configuration.MachineNumber);
-                }
-            }
+                await HandleRealVeBoundaryAsync(machine, e);
 
             StatusMessage = machine.OrderState == ProductionOrderState.Completed
-                ? $"{machine.DisplayName}: VE {e.VeNumber} fertig; Auftrag {machine.OrderNumber} mit {machine.OrderProducedQuantity:N0} Teilen abgeschlossen."
+                ? $"{machine.DisplayName}: VE {e.VeNumber} fertig; Auftrag {machine.OrderNumber} mit {machine.OrderProducedQuantity:N0} Teilen abgeschlossen und LOGO!-Grenzhalt aktiv."
                 : $"{machine.DisplayName}: VE {e.VeNumber} fertig mit {e.Quantity:N0} Teilen; nächste VE {machine.CurrentVeTargetParts:N0} Teile; Etikett: {record.LabelStatus}.";
         }
         catch (Exception ex)
         {
-            StatusMessage = $"VE-Abschluss konnte nicht vollständig protokolliert werden: {ex.Message}";
+            StatusMessage = $"VE-Abschluss/Sicherheitsgrenze nicht vollständig verarbeitet: {ex.Message}";
         }
+    }
+
+    private async Task HandleRealVeBoundaryAsync(MachineState machine, VeCompletedEventArgs e)
+    {
+        var machineNumber = machine.Configuration.MachineNumber;
+        if (!_scheduledCompletionHolds.TryGetValue(machineNumber, out var scheduledHold) || scheduledHold == 0)
+        {
+            await EnterBoundaryFailSafeAsync(machine, "Für den aktiven Auftrag fehlt ein geplanter LOGO!-Grenzhalt.");
+            throw new InvalidOperationException("Fehlende HoldAfterVE-Planung; Zählung wurde sicherheitshalber pausiert.");
+        }
+
+        if (e.VeNumber < scheduledHold)
+            return;
+
+        if (e.VeNumber > scheduledHold)
+        {
+            await EnterBoundaryFailSafeAsync(machine, $"VE {e.VeNumber} wurde abgeschlossen, obwohl der Grenzhalt nach VE {scheduledHold} geplant war.");
+            throw new InvalidOperationException("Geplanter VE-Grenzhalt wurde überschritten.");
+        }
+
+        var diagnostics = _fleet.GetCommunicationDiagnostics(machineNumber);
+        var holdActive = diagnostics is not null &&
+                         (diagnostics.StatusWord & ModbusRegisterMap.StatusCompletionHoldActive) != 0;
+        if (!holdActive)
+        {
+            await EnterBoundaryFailSafeAsync(machine, $"LOGO! meldet an der geplanten Grenze VE {scheduledHold} keinen aktiven Completion-Hold.");
+            throw new InvalidOperationException("LOGO!-Completion-Hold fehlt an der Sicherheitsgrenze.");
+        }
+
+        if (machine.OrderState == ProductionOrderState.Completed)
+        {
+            await _fleet.PauseCountingAsync(machineNumber);
+            _scheduledCompletionHolds.Remove(machineNumber);
+            await _database.AddEventAsync(machineNumber, "VE_BOUNDARY_HOLD_FINAL",
+                $"Auftrag {machine.OrderNumber}: finaler Grenzhalt nach VE {e.VeNumber} aktiv und Zählpause bestätigt.");
+            return;
+        }
+
+        if (!machine.IsActiveOrder || machine.CurrentVeTargetParts == 0)
+        {
+            await EnterBoundaryFailSafeAsync(machine, "Nach Grenzhalt ist kein gültiges nächstes VE-Ziel vorhanden.");
+            throw new InvalidOperationException("Nächstes VE-Ziel fehlt.");
+        }
+
+        VeBoundaryPlan nextPlan;
+        try
+        {
+            nextPlan = VeBoundaryPolicy.Plan(
+                machine.CurrentVeNumber,
+                machine.OrderProducedQuantity,
+                machine.OrderTargetQuantity,
+                machine.TargetPartsPerVe,
+                machine.ActiveCavities);
+        }
+        catch (Exception ex)
+        {
+            await EnterBoundaryFailSafeAsync(machine, $"Nächste VE konnte nicht sicher geplant werden: {ex.Message}");
+            throw;
+        }
+
+        if (nextPlan.TargetParts != machine.CurrentVeTargetParts)
+        {
+            await EnterBoundaryFailSafeAsync(machine,
+                $"Planungsabweichung: MachineState erwartet {machine.CurrentVeTargetParts}, Grenzplan {nextPlan.TargetParts} Teile.");
+            throw new InvalidOperationException("VE-Zielberechnung ist inkonsistent.");
+        }
+
+        var nextJob = new JobParameters(
+            StableUInt32(machine.OrderNumber),
+            machine.ArticleNumber,
+            machine.ToolNumber,
+            machine.ActiveCavities,
+            nextPlan.TargetParts,
+            nextPlan.TargetCycles,
+            ValvePulseMs,
+            nextPlan.HoldAfterVeNumber);
+
+        await _fleet.UpdateVeTargetAsync(machineNumber, nextJob, pauseCounting: true);
+        _scheduledCompletionHolds[machineNumber] = nextPlan.HoldAfterVeNumber;
+        if (machine.OrderState == ProductionOrderState.Running)
+            await _fleet.ResumeCountingAsync(machineNumber);
+
+        await _database.AddEventAsync(machineNumber, "VE_BOUNDARY_RECONFIGURED",
+            $"Nach VE {e.VeNumber}: neues Ziel {nextPlan.TargetParts} Teile; nächster sicherer Grenzhalt VE {nextPlan.HoldAfterVeNumber}.");
+    }
+
+    private async Task EnterBoundaryFailSafeAsync(MachineState machine, string reason)
+    {
+        var detail = reason;
+        try
+        {
+            await _fleet.PauseCountingAsync(machine.Configuration.MachineNumber);
+        }
+        catch (Exception pauseError)
+        {
+            detail += $" Zusätzlicher Pause-Befehl fehlgeschlagen: {pauseError.Message}";
+        }
+
+        await _database.AddEventAsync(machine.Configuration.MachineNumber, "SAFETY_VE_BOUNDARY_STOP", detail);
+        StatusMessage = $"SICHERHEITSHALT {machine.DisplayName}: {detail}";
     }
 
     private void MachineOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
