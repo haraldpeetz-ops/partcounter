@@ -179,7 +179,7 @@ public sealed partial class MainViewModel
 
                 await PersistLiveOrderCheckpointAsync(machine);
                 await _database.AddEventAsync(machineNumber, "RECOVERY_JOB_VERIFIED_PAUSED",
-                    $"Auftrag {machine.OrderNumber}: JobId {checkpoint.JobId}, Kavitäten {checkpoint.ActiveCavities}, Hold {holdEcho} bestätigt. Auftrag bleibt absichtlich pausiert.");
+                    $"Auftrag {machine.OrderNumber}: JobId {checkpoint.JobId}, Kavitäten {checkpoint.ActiveCavities}, Hold {snapshot.HoldAfterVeNumberEcho} bestätigt. Auftrag bleibt absichtlich pausiert.");
             }
             catch (Exception ex)
             {
