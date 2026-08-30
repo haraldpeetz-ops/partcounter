@@ -1,4 +1,4 @@
-name: Apply R001.25 recovery hold isolation
+name: Finalize R001.25 repository cleanup
 
 on:
   push:
@@ -8,8 +8,8 @@ permissions:
   contents: write
 
 jobs:
-  apply-recovery-hold-isolation:
-    if: contains(github.event.head_commit.message, '[apply-recovery-hold-isolation]')
+  cleanup:
+    if: contains(github.event.head_commit.message, '[final-cleanup]')
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -17,16 +17,44 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Apply recovery hold and snapshot isolation hardening
+      - name: Remove one-shot hardening infrastructure and historical CI workflows
         shell: pwsh
-        run: python tools/run_r00125_recovery_hold_isolation.py
+        run: |
+          $ErrorActionPreference = 'Stop'
 
-      - name: Commit hardened product source
+          $remove = @()
+          $remove += Get-ChildItem '.github/workflows' -File -Filter 'apply-r00125-*.yml' -ErrorAction SilentlyContinue
+          $remove += Get-ChildItem '.github/workflows' -File -Filter 'bootstrap-r00125-hardening.yml' -ErrorAction SilentlyContinue
+          $remove += Get-ChildItem '.github/workflows' -File -Filter 'build-r001*.yml' -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'build-r00125.yml' }
+
+          foreach ($file in ($remove | Sort-Object FullName -Unique)) {
+            git rm -- $file.FullName
+          }
+
+          if (Test-Path 'tools') {
+            git rm -r -- 'tools'
+          }
+
+          $legacyHelp = @(
+            'src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_14.md',
+            'src/Partcounter.App/Help/PARTCOUNTER_HILFE_R001_19.md'
+          )
+          foreach ($file in $legacyHelp) {
+            if (Test-Path $file) { git rm -- $file }
+          }
+
+          $remainingBuilds = Get-ChildItem '.github/workflows' -File -Filter 'build-r001*.yml' | Select-Object -ExpandProperty Name
+          if (@($remainingBuilds).Count -ne 1 -or $remainingBuilds[0] -ne 'build-r00125.yml') {
+            throw "Unexpected remaining revision build workflows: $($remainingBuilds -join ', ')"
+          }
+
+          if (Test-Path 'tools') { throw 'Temporary tools directory still exists.' }
+
+      - name: Commit clean release-candidate repository
         shell: pwsh
         run: |
           git config user.name "partcounter-ci"
           git config user.email "partcounter-ci@users.noreply.github.com"
-          git add src tests docs
-          if (git diff --cached --quiet) { throw 'No product changes generated.' }
-          git commit -m "fix: isolate recovery snapshots and prove held boundary release [recovery-hold-isolation-applied]"
+          if (git diff --cached --quiet) { throw 'Cleanup generated no tracked changes.' }
+          git commit -m "chore: clean R001.25 release-candidate repository [cleanup-applied]"
           git push
