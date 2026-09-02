@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - tmp-lsc-v84-inspect-20260902
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
