@@ -17,26 +17,26 @@ jobs:
           set -euo pipefail
           URL='https://assets.new.siemens.com/siemens/assets/api/uuid:3beee75d-e033-4064-9a7e-d56ff50d5cf0/logo-soft-comfort-v8-4-linux.zip'
           curl -fL --retry 3 --retry-delay 5 "$URL" -o /tmp/lsc.zip
-          ls -lh /tmp/lsc.zip
-      - name: Locate Siemens LOGO application and security JARs
+      - name: Collect complete runtime JAR set
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/lsc /tmp/logo-jars
           unzip -q /tmp/lsc.zip -d /tmp/lsc
-          find /tmp/lsc -type f -iname '*.jar' -print | tee /tmp/jars.txt
-          while IFS= read -r jar; do
-            if jar tf "$jar" 2>/dev/null | grep -Eq '^(DE/siemens/ad/logo/|com/siemens/logo/security/)'; then
-              echo "MATCH: $jar"
-              cp "$jar" "/tmp/logo-jars/$(basename "$jar")"
+          find /tmp/lsc -type f -iname '*.jar' -print0 | while IFS= read -r -d '' jar; do
+            base="$(basename "$jar")"
+            out="/tmp/logo-jars/$base"
+            if [ -e "$out" ]; then
+              out="/tmp/logo-jars/$(printf '%s' "$jar" | sha256sum | cut -c1-12)-$base"
             fi
-          done < /tmp/jars.txt
-          echo 'Selected artifacts:'
-          ls -lh /tmp/logo-jars
-      - name: Upload LOGO classes
+            cp "$jar" "$out"
+          done
+          echo 'JAR count:' $(find /tmp/logo-jars -type f | wc -l)
+          du -sh /tmp/logo-jars
+      - name: Upload LOGO runtime
         uses: actions/upload-artifact@v4
         with:
-          name: logo-v84-siemens-jars
+          name: logo-v84-runtime-jars
           path: /tmp/logo-jars/*
           if-no-files-found: error
           retention-days: 1
