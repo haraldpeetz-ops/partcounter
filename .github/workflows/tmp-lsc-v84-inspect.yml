@@ -1,0 +1,48 @@
+name: tmp-lsc-v84-inspect
+on:
+  push:
+    branches:
+      - tmp-lsc-v84-inspect-20260902
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download official Siemens LOGO Soft Comfort V8.4 Linux package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 --retry-all-errors \
+            'https://assets.new.siemens.com/siemens/assets/api/uuid:3beee75d-e033-4064-9a7e-d56ff50d5cf0/logo-soft-comfort-v8-4-linux.zip' \
+            -o /tmp/lsc84.zip
+          ls -lh /tmp/lsc84.zip
+          unzip -l /tmp/lsc84.zip | head -n 250
+      - name: Extract application payload and locate Java archives
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/lsc84
+          unzip -q /tmp/lsc84.zip -d /tmp/lsc84
+          echo '--- JAR/ZIP candidates ---'
+          find /tmp/lsc84 -type f \( -iname '*.jar' -o -iname '*.zip' -o -iname '*.lax' -o -iname 'LOGOComfort*' \) -printf '%s %p\n' | sort -nr | head -n 300
+          echo '--- AES / Cipher strings ---'
+          grep -R -a -n -m 20 -E 'AES|Cipher|getInstance|SecretKeySpec|PBE|encrypt|decrypt' /tmp/lsc84 2>/dev/null | head -n 300 || true
+      - name: Collect likely runtime files
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/runtime
+          find /tmp/lsc84 -type f \( -iname '*.jar' -o -iname '*.lax' \) -size -80M -exec cp --parents '{}' /tmp/runtime/ \;
+          tar -C /tmp/runtime -czf /tmp/lsc84-runtime.tgz .
+          ls -lh /tmp/lsc84-runtime.tgz
+      - name: Upload runtime files
+        uses: actions/upload-artifact@v4
+        with:
+          name: lsc84-runtime
+          path: /tmp/lsc84-runtime.tgz
+          retention-days: 1
