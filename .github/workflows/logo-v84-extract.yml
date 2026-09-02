@@ -1,1 +1,45 @@
 name: LOGO V8.4 class extractor
+
+on:
+  push:
+    branches:
+      - work/logo-hf3-3-lsc-repair
+  workflow_dispatch:
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download official Siemens LOGO Soft Comfort V8.4 Linux package
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://assets.new.siemens.com/siemens/assets/api/uuid:3beee75d-e033-4064-9a7e-d56ff50d5cf0/logo-soft-comfort-v8-4-linux.zip'
+          curl -fL --retry 3 --retry-delay 5 "$URL" -o /tmp/lsc.zip
+          ls -lh /tmp/lsc.zip
+      - name: Locate Siemens LOGO application JARs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/lsc /tmp/logo-jars
+          unzip -q /tmp/lsc.zip -d /tmp/lsc
+          echo 'Top-level package:'
+          find /tmp/lsc -maxdepth 3 -type f | head -100
+          echo 'JAR candidates:'
+          find /tmp/lsc -type f -iname '*.jar' -print | tee /tmp/jars.txt
+          while IFS= read -r jar; do
+            if jar tf "$jar" 2>/dev/null | grep -q '^DE/siemens/ad/logo/'; then
+              echo "MATCH: $jar"
+              cp "$jar" "/tmp/logo-jars/$(basename "$jar")"
+            fi
+          done < /tmp/jars.txt
+          echo 'Selected artifacts:'
+          ls -lh /tmp/logo-jars || true
+      - name: Upload LOGO classes
+        uses: actions/upload-artifact@v4
+        with:
+          name: logo-v84-siemens-jars
+          path: /tmp/logo-jars/*
+          if-no-files-found: warn
+          retention-days: 1
