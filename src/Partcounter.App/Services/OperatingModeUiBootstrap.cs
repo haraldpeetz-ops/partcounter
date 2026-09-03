@@ -118,14 +118,13 @@ public static class OperatingModeUiBootstrap
             FontWeight = FontWeights.Bold,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = "Betriebsart umschalten. Im Echtbetrieb werden die aktivierten LOGO!-Stationen über Modbus TCP angesprochen."
+            ToolTip = "Betriebsart bewusst umschalten. HF4 hält den Echtbetrieb nach aufgebauten Modbus-Sessions eingerastet; einzelne Offline-/Recovery-Fehler schalten nicht mehr die gesamte Anwendung zurück."
         };
         AutomationProperties.SetAutomationId(toggleButton, ToggleAutomationId);
 
-        // Wichtig: Der historische Admin-Code sucht gezielt nach einem Button, dessen
-        // Content selbst an OperatingModeButtonText gebunden ist. Beim neuen Produktions-
-        // schalter ist deshalb nur der innere Text gebunden. Dadurch kann der Admin-Code
-        // diesen Schalter technisch nicht als geschützten Alt-Schalter identifizieren.
+        // Der historische Admin-Code sucht gezielt nach einem Button, dessen Content selbst
+        // an OperatingModeButtonText gebunden ist. Beim Produktionsschalter ist nur der innere
+        // Text gebunden; der Button selbst bleibt damit frei von der Admin-Abfanglogik.
         var toggleText = new TextBlock
         {
             FontWeight = FontWeights.Bold,
@@ -133,7 +132,7 @@ public static class OperatingModeUiBootstrap
         };
         toggleText.SetBinding(TextBlock.TextProperty, new Binding("OperatingModeButtonText"));
         toggleButton.Content = toggleText;
-        toggleButton.SetBinding(Button.CommandProperty, new Binding("ToggleOperatingModeCommand"));
+        toggleButton.SetBinding(Button.CommandProperty, new Binding("Hf4ToggleOperatingModeCommand"));
 
         var buttonStyle = new Style(typeof(Button));
         buttonStyle.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
