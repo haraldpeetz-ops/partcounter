@@ -32,7 +32,7 @@ public static class OperatingModeUiBootstrap
         if (window.Content is not DockPanel root)
             throw new InvalidOperationException("MainWindow root must be a DockPanel for the operating-mode bar.");
 
-        // Der alte Kopfzeilen-Schalter wird später vom historischen Admin-Code abgefangen.
+        // Der alte Kopfzeilen-Schalter wird später vom historischen Admin-Code gefunden.
         // Er bleibt technisch erhalten, wird aber ausgeblendet, damit es nur einen eindeutigen
         // frei bedienbaren Umschalter gibt.
         var legacyHeaderToggle = FindBoundOperatingModeButton(root);
@@ -121,7 +121,18 @@ public static class OperatingModeUiBootstrap
             ToolTip = "Betriebsart umschalten. Im Echtbetrieb werden die aktivierten LOGO!-Stationen über Modbus TCP angesprochen."
         };
         AutomationProperties.SetAutomationId(toggleButton, ToggleAutomationId);
-        toggleButton.SetBinding(ContentControl.ContentProperty, new Binding("OperatingModeButtonText"));
+
+        // Wichtig: Der historische Admin-Code sucht gezielt nach einem Button, dessen
+        // Content selbst an OperatingModeButtonText gebunden ist. Beim neuen Produktions-
+        // schalter ist deshalb nur der innere Text gebunden. Dadurch kann der Admin-Code
+        // diesen Schalter technisch nicht als geschützten Alt-Schalter identifizieren.
+        var toggleText = new TextBlock
+        {
+            FontWeight = FontWeights.Bold,
+            TextAlignment = TextAlignment.Center
+        };
+        toggleText.SetBinding(TextBlock.TextProperty, new Binding("OperatingModeButtonText"));
+        toggleButton.Content = toggleText;
         toggleButton.SetBinding(Button.CommandProperty, new Binding("ToggleOperatingModeCommand"));
 
         var buttonStyle = new Style(typeof(Button));
