@@ -1,12 +1,26 @@
 # Partcounter
 
-**Aktueller Engineering-Stand:** R001.25 – Final Hardening  
-**Version:** 0.1.25  
+**Aktueller Engineering-Stand:** R001.25 HF2 – Protocol Contract  
+**Version:** 0.1.25 · **FileVersion:** 0.1.25.2  
 **Plattform:** Windows 10/11 · C# · .NET 10 LTS · WPF  
 **Anlage:** bis zu 30 Spritzgussmaschinen · Siemens LOGO! · Modbus TCP · WLAN/LAN  
 **LOGO-Protokoll:** Modbus TCP Protocol V3
 
 Partcounter ist ein industrieller Leitstand für Verpackungseinheiten im Spritzguss. Die Siemens LOGO! zählt Maschinenzyklen lokal und steuert den nicht sicherheitsgerichteten VE-Wechsler; Partcounter verwaltet Aufträge, VE-Ziele, Historie, Etikettierung, Reprint, ARBURG ALS/proALPHA, Diagnose, Recovery und Inbetriebnahme.
+
+## R001.25 HF2 – Protocol Contract
+
+HF2 härtet das reale PC↔LOGO!-Zusammenspiel, ohne die freigegebene Protocol-V3-Registermatrix zu verschieben:
+
+- vollständige Job-Telegramme schreiben HR12/VW22 `PcHeartbeat` nicht mehr mit 0,
+- gültiger Heartbeat `1..32767` bleibt beim 13-Register-Jobwrite erhalten,
+- `HoldAfterVeNumber=0` wird vor einem produktiven Modbus-Schreiben abgelehnt,
+- CommandSequence und V3-Payload werden zusätzlich auf ihren freigegebenen Wertebereich geprüft,
+- TCP-Verbindungsaufbau besitzt einen begrenzten Timeout mit eindeutiger IP-/Port-Diagnose,
+- Protocol-Mismatch nennt Soll-/Ist-Version und HR20/VW38,
+- neuer echter TCP/NModbus-Loopback-Integrationstest prüft Connect → HR1..HR13 → HR20..HR40 → Ack/Echos → Reconnect.
+
+Details: `docs/HOTFIX_R001_25_2_PROTOCOL_CONTRACT.md`.
 
 ## R001.25 – Final Hardening
 
@@ -89,6 +103,8 @@ Für R001.25 ausschließlich verwenden:
 - `docs/logo_v001/LOGO_V001_STATION01_BUILD_SHEET_R001_25.md`
 - `docs/logo_v001/STATION01_PARTCOUNTER_LOGO_V001_R001_25.ini`
 
+Aktueller transferfähiger LOGO!-Binärstand: `PARTCOUNTER_LOGO_V001_R001_25_HF3_4_TRANSFERREADY.lsc`. HF2 erfordert keine Änderung des validierten FBD-/VM-Graphen; die reale Station muss jedoch mit aktivem Modbus-Zugriff und passender Server-/IP-Konfiguration projektiert sein.
+
 R001.24/R001.8-Dateien sind historische Revisionsunterlagen und keine aktuelle Bauvorgabe.
 
 ## Release-Gates
@@ -98,17 +114,19 @@ Ein freigabefähiger Head muss bestehen:
 1. Restore + NuGet Security Audit.
 2. Release-Build mit Warnings-as-Errors.
 3. Unit-/Regressionstests.
-4. Portable win-x64.
-5. SingleFile win-x64.
-6. 30-Maschinen-WPF-Stresstest.
-7. Multi-Resolution-WPF-Test.
-8. statischer Final-Audit.
-9. Engineering-/Updatepaketbau.
+4. TCP/NModbus Protocol-V3-Loopback-Integrationstest.
+5. Portable win-x64.
+6. SingleFile win-x64.
+7. 30-Maschinen-WPF-Stresstest.
+8. Multi-Resolution-WPF-Test.
+9. statischer Final-Audit.
+10. Engineering-/Updatepaketbau.
 
 ## M01 bleibt die physische Freigabestufe
 
 Automatisierte Softwaretests ersetzen nicht die reale Maschinenabnahme. Vor `Partcounter 1.0 Production Baseline` müssen insbesondere real validiert werden:
 
+- T01: echte LOGO! in RUN, Modbus-Server erreichbar, HR20/VW38 = 3,
 - I1-Pegel, Pulsbreite und positive Flanke,
 - High-/Low-Word-Reihenfolge,
 - Command/Ack-Retry mit verlorener Antwort,
