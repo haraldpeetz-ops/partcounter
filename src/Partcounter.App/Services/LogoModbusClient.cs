@@ -11,6 +11,7 @@ public sealed class LogoModbusClient : IAsyncDisposable
     private readonly MachineConfiguration _configuration;
     private TcpClient? _tcpClient;
     private IModbusMaster? _master;
+    private ushort _lastHeartbeat;
 
     public LogoModbusClient(MachineConfiguration configuration)
     {
@@ -59,7 +60,6 @@ public sealed class LogoModbusClient : IAsyncDisposable
     public async Task WriteJobAsync(
         JobParameters job,
         ushort commandSequence,
-        ushort heartbeat,
         bool automaticMode = true,
         bool resetJob = true,
         bool pauseCounting = false,
@@ -67,6 +67,11 @@ public sealed class LogoModbusClient : IAsyncDisposable
     {
         EnsureConnected();
         cancellationToken.ThrowIfCancellationRequested();
+
+        // Protocol V3 requires HR12/PcHeartbeat in the range 1..32767.
+        // A full job write must therefore never overwrite a valid heartbeat with zero.
+        var heartbeat = _lastHeartbeat == 0 ? (ushort)1 : _lastHeartbeat;
+        _lastHeartbeat = heartbeat;
 
         var registers = BuildJobRegisterPayload(
             job,
@@ -150,6 +155,7 @@ public sealed class LogoModbusClient : IAsyncDisposable
             _configuration.UnitId,
             (ushort)(ModbusRegisterMap.ConfigStart + ModbusRegisterMap.ConfigPcHeartbeat),
             heartbeat);
+        _lastHeartbeat = heartbeat;
     }
 
     public async Task<LogoSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken = default)
