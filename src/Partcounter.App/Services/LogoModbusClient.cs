@@ -6,6 +6,8 @@ namespace Partcounter.Services;
 
 public sealed class LogoModbusClient : IAsyncDisposable
 {
+    private const int ConnectTimeoutMs = 2_500;
+
     private readonly MachineConfiguration _configuration;
     private TcpClient? _tcpClient;
     private IModbusMaster? _master;
@@ -28,7 +30,28 @@ public sealed class LogoModbusClient : IAsyncDisposable
             NoDelay = true
         };
 
-        await tcpClient.ConnectAsync(_configuration.IpAddress, _configuration.Port, cancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ConnectTimeoutMs);
+
+        try
+        {
+            await tcpClient.ConnectAsync(_configuration.IpAddress, _configuration.Port, timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            tcpClient.Dispose();
+            throw new TimeoutException(
+                $"TCP-Verbindung zu {_configuration.Name} ({_configuration.IpAddress}:{_configuration.Port}) " +
+                $"konnte innerhalb von {ConnectTimeoutMs} ms nicht hergestellt werden.");
+        }
+        catch (Exception ex)
+        {
+            tcpClient.Dispose();
+            throw new InvalidOperationException(
+                $"TCP-Verbindung zu {_configuration.Name} ({_configuration.IpAddress}:{_configuration.Port}) fehlgeschlagen: {ex.Message}",
+                ex);
+        }
+
         _tcpClient = tcpClient;
         _master = new ModbusFactory().CreateMaster(tcpClient);
     }
@@ -36,14 +59,43 @@ public sealed class LogoModbusClient : IAsyncDisposable
     public async Task WriteJobAsync(
         JobParameters job,
         ushort commandSequence,
+        ushort heartbeat,
         bool automaticMode = true,
         bool resetJob = true,
         bool pauseCounting = false,
         CancellationToken cancellationToken = default)
     {
         EnsureConnected();
-        ValidateJob(job);
         cancellationToken.ThrowIfCancellationRequested();
+
+        var registers = BuildJobRegisterPayload(
+            job,
+            commandSequence,
+            heartbeat,
+            automaticMode,
+            resetJob,
+            pauseCounting);
+
+        await _master!.WriteMultipleRegistersAsync(
+            _configuration.UnitId,
+            ModbusRegisterMap.ConfigStart,
+            registers);
+    }
+
+    public static ushort[] BuildJobRegisterPayload(
+        JobParameters job,
+        ushort commandSequence,
+        ushort heartbeat,
+        bool automaticMode = true,
+        bool resetJob = true,
+        bool pauseCounting = false)
+    {
+        ValidateJob(job);
+
+        if (commandSequence is 0 or > ModbusRegisterMap.MaxSequenceValue)
+            throw new ArgumentOutOfRangeException(nameof(commandSequence), $"Command sequence must be 1..{ModbusRegisterMap.MaxSequenceValue}.");
+        if (heartbeat is 0 or > ModbusRegisterMap.MaxHeartbeatValue)
+            throw new ArgumentOutOfRangeException(nameof(heartbeat), $"PC heartbeat must be 1..{ModbusRegisterMap.MaxHeartbeatValue}.");
 
         var commandWord = automaticMode ? ModbusRegisterMap.CommandEnableAutomatic : (ushort)0;
         if (resetJob)
@@ -51,7 +103,7 @@ public sealed class LogoModbusClient : IAsyncDisposable
         if (pauseCounting)
             commandWord |= ModbusRegisterMap.CommandPauseCounting;
 
-        ushort[] registers =
+        return
         [
             ModbusRegisterMap.ProtocolVersion,
             commandSequence,
@@ -64,14 +116,9 @@ public sealed class LogoModbusClient : IAsyncDisposable
             ModbusRegisterMap.LowWord(job.JobId),
             ModbusRegisterMap.HighWord(job.TargetCyclesPerVe),
             ModbusRegisterMap.LowWord(job.TargetCyclesPerVe),
-            0,
+            heartbeat,
             job.HoldAfterVeNumber
         ];
-
-        await _master!.WriteMultipleRegistersAsync(
-            _configuration.UnitId,
-            ModbusRegisterMap.ConfigStart,
-            registers);
     }
 
     public async Task SendCommandAsync(
@@ -115,8 +162,11 @@ public sealed class LogoModbusClient : IAsyncDisposable
             ModbusRegisterMap.StatusStart,
             ModbusRegisterMap.StatusLength);
 
-        if (registers[ModbusRegisterMap.StatusProtocolVersion] != ModbusRegisterMap.ProtocolVersion)
-            throw new InvalidOperationException("LOGO! register protocol version does not match Partcounter.");
+        var reportedProtocol = registers[ModbusRegisterMap.StatusProtocolVersion];
+        if (reportedProtocol != ModbusRegisterMap.ProtocolVersion)
+            throw new InvalidOperationException(
+                $"LOGO! register protocol mismatch at {_configuration.Name} ({_configuration.IpAddress}:{_configuration.Port}): " +
+                $"expected V{ModbusRegisterMap.ProtocolVersion}, received V{reportedProtocol} from HR20/VW38.");
 
         var activeCavities = registers[ModbusRegisterMap.StatusActiveCavitiesEcho];
         var lastCompletedCavities = registers[ModbusRegisterMap.StatusLastCompletedCavities];
@@ -187,8 +237,8 @@ public sealed class LogoModbusClient : IAsyncDisposable
         if (job.ValvePulseMs % ModbusRegisterMap.ValvePulseUnitMs != 0)
             throw new ArgumentOutOfRangeException(nameof(job), $"Valve pulse must be a multiple of {ModbusRegisterMap.ValvePulseUnitMs} ms.");
 
-        if (job.HoldAfterVeNumber > ModbusRegisterMap.MaxVeNumber)
-            throw new ArgumentOutOfRangeException(nameof(job), $"Hold-after VE must be 0..{ModbusRegisterMap.MaxVeNumber:N0}.");
+        if (job.HoldAfterVeNumber is 0 or > ModbusRegisterMap.MaxVeNumber)
+            throw new ArgumentOutOfRangeException(nameof(job), $"Hold-after VE must be 1..{ModbusRegisterMap.MaxVeNumber:N0} for Protocol V3 production commands.");
     }
 
     private void EnsureConnected()
