@@ -10,6 +10,54 @@ namespace Partcounter.Tests;
 public sealed class LogoModbusIntegrationTests
 {
     [Fact]
+    public async Task SharedClient_SerializesConcurrentModbusTransactions()
+    {
+        await using var server = new FakeLogoModbusServer();
+        var configuration = new MachineConfiguration(
+            1,
+            "M01-Concurrency",
+            IPAddress.Loopback.ToString(),
+            server.Port,
+            1,
+            true);
+
+        await using var client = new LogoModbusClient(configuration);
+        await client.ConnectAsync();
+
+        var operations = Enumerable.Range(1, 64)
+            .Select(index => index % 2 == 0
+                ? client.WriteHeartbeatAsync(checked((ushort)index))
+                : client.ReadSnapshotAsync())
+            .ToArray();
+
+        await Task.WhenAll(operations);
+        Assert.True(client.IsConnected);
+    }
+
+    [Fact]
+    public async Task DelayedResponseFromPriorRetry_IsDiscardedWithoutPoisoningTransport()
+    {
+        await using var server = new FakeLogoModbusServer(delayFirstResponseMs: 1_750);
+        var configuration = new MachineConfiguration(
+            1,
+            "M01-DelayedResponse",
+            IPAddress.Loopback.ToString(),
+            server.Port,
+            1,
+            true);
+
+        await using var client = new LogoModbusClient(configuration);
+        await client.ConnectAsync();
+
+        var snapshot = await client.ReadSnapshotAsync();
+        await client.WriteHeartbeatAsync(31);
+
+        Assert.True((snapshot.StatusWord & ModbusRegisterMap.StatusReady) != 0);
+        Assert.Equal((ushort)31, server.GetRegister(ModbusRegisterMap.ConfigPcHeartbeat));
+        Assert.True(server.GetRequestCount(3) >= 2);
+    }
+
+    [Fact]
     public async Task ProtocolV3_Loopback_EndToEnd_ConnectWriteReadAndReconnect()
     {
         await using var server = new FakeLogoModbusServer();
@@ -38,6 +86,9 @@ public sealed class LogoModbusIntegrationTests
         await client.WriteJobAsync(job, 23);
         var snapshot = await client.ReadSnapshotAsync();
 
+        await client.SendCommandAsync(24, ModbusRegisterMap.CommandEnableAutomatic);
+        var afterCommand = await client.ReadSnapshotAsync();
+
         Assert.Equal((ushort)3, server.GetRegister(ModbusRegisterMap.StatusStart));
         Assert.Equal((ushort)17, server.GetRegister(ModbusRegisterMap.ConfigPcHeartbeat));
         Assert.Equal((ushort)7, server.GetRegister(ModbusRegisterMap.ConfigHoldAfterVeNumber));
@@ -46,14 +97,44 @@ public sealed class LogoModbusIntegrationTests
         Assert.Equal((ushort)7, snapshot.HoldAfterVeNumberEcho);
         Assert.Equal(job.JobId, snapshot.JobIdEcho);
         Assert.True((snapshot.StatusWord & ModbusRegisterMap.StatusCompletionHoldArmed) != 0);
+        Assert.Equal((ushort)24, afterCommand.AcknowledgedCommandSequence);
+        Assert.Equal(ModbusRegisterMap.CommandEnableAutomatic, server.GetRegister(ModbusRegisterMap.ConfigCommandWord));
+        Assert.True(server.GetRequestCount(3) >= 2);
+        Assert.True(server.GetRequestCount(6) >= 1);
+        Assert.True(server.GetRequestCount(16) >= 2);
 
         client.Disconnect();
         await client.ConnectAsync();
         var afterReconnect = await client.ReadSnapshotAsync();
 
-        Assert.Equal((ushort)23, afterReconnect.AcknowledgedCommandSequence);
+        Assert.Equal((ushort)24, afterReconnect.AcknowledgedCommandSequence);
         Assert.Equal(job.JobId, afterReconnect.JobIdEcho);
         Assert.Equal((ushort)7, afterReconnect.HoldAfterVeNumberEcho);
+    }
+
+    [Fact]
+    public async Task ProtocolMismatch_IsRejectedWithEndpointAndRegisterDiagnostic()
+    {
+        await using var server = new FakeLogoModbusServer();
+        server.SetRegister(
+            ModbusRegisterMap.StatusStart + ModbusRegisterMap.StatusProtocolVersion,
+            2);
+        var configuration = new MachineConfiguration(
+            1,
+            "M01-Mismatch",
+            IPAddress.Loopback.ToString(),
+            server.Port,
+            1,
+            true);
+
+        await using var client = new LogoModbusClient(configuration);
+        await client.ConnectAsync();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadSnapshotAsync());
+        Assert.Contains("expected V3", error.Message);
+        Assert.Contains("received V2", error.Message);
+        Assert.Contains("HR20/VW38", error.Message);
+        Assert.Contains(server.Port.ToString(), error.Message);
     }
 
     private sealed class FakeLogoModbusServer : IAsyncDisposable
@@ -62,10 +143,14 @@ public sealed class LogoModbusIntegrationTests
         private readonly CancellationTokenSource _cts = new();
         private readonly Task _runTask;
         private readonly ushort[] _registers = new ushort[128];
+        private readonly int[] _functionCounts = new int[256];
         private readonly object _sync = new();
+        private readonly int _delayFirstResponseMs;
+        private int _responseSequence;
 
-        public FakeLogoModbusServer()
+        public FakeLogoModbusServer(int delayFirstResponseMs = 0)
         {
+            _delayFirstResponseMs = delayFirstResponseMs;
             _registers[ModbusRegisterMap.StatusStart + ModbusRegisterMap.StatusProtocolVersion] = ModbusRegisterMap.ProtocolVersion;
             _registers[ModbusRegisterMap.StatusStart + ModbusRegisterMap.StatusWord] =
                 (ushort)(ModbusRegisterMap.StatusReady | ModbusRegisterMap.StatusCompletionHoldArmed);
@@ -84,6 +169,14 @@ public sealed class LogoModbusIntegrationTests
                 return _registers[zeroBasedAddress];
         }
 
+        public void SetRegister(int zeroBasedAddress, ushort value)
+        {
+            lock (_sync)
+                _registers[zeroBasedAddress] = value;
+        }
+
+        public int GetRequestCount(byte functionCode) => Volatile.Read(ref _functionCounts[functionCode]);
+
         private async Task RunAsync(CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -98,6 +191,10 @@ public sealed class LogoModbusIntegrationTests
                     break;
                 }
                 catch (SocketException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
@@ -145,6 +242,9 @@ public sealed class LogoModbusIntegrationTests
             await stream.ReadExactlyAsync(pdu, cancellationToken);
             var responsePdu = BuildResponse(pdu);
 
+            if (Interlocked.Increment(ref _responseSequence) == 1 && _delayFirstResponseMs > 0)
+                await Task.Delay(_delayFirstResponseMs, cancellationToken);
+
             var responseHeader = new byte[7];
             header.AsSpan(0, 4).CopyTo(responseHeader);
             BinaryPrimitives.WriteUInt16BigEndian(responseHeader.AsSpan(4, 2), checked((ushort)(responsePdu.Length + 1)));
@@ -159,6 +259,8 @@ public sealed class LogoModbusIntegrationTests
         {
             if (pdu.Length == 0)
                 throw new InvalidDataException("Empty Modbus PDU.");
+
+            Interlocked.Increment(ref _functionCounts[pdu[0]]);
 
             return pdu[0] switch
             {
@@ -233,6 +335,12 @@ public sealed class LogoModbusIntegrationTests
                         _registers[ModbusRegisterMap.ConfigJobIdHi];
                     _registers[ModbusRegisterMap.StatusStart + ModbusRegisterMap.StatusJobIdLoEcho] =
                         _registers[ModbusRegisterMap.ConfigJobIdLo];
+                }
+                var commandSequenceAddress = ModbusRegisterMap.ConfigStart + ModbusRegisterMap.ConfigCommandSequence;
+                if (start <= commandSequenceAddress && start + count > commandSequenceAddress)
+                {
+                    _registers[ModbusRegisterMap.StatusStart + ModbusRegisterMap.StatusAckSequence] =
+                        _registers[commandSequenceAddress];
                 }
             }
 

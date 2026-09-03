@@ -14,6 +14,9 @@ public partial class App : Application
     private string? _stressReportPath;
     private string? _layoutReportPath;
 
+    internal bool IsStressMode => _stressMode;
+    internal bool IsAutomatedValidationMode => _stressMode || _layoutMode;
+
     private static string LogDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Partcounter");

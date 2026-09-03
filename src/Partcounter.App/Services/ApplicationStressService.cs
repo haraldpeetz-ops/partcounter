@@ -142,18 +142,25 @@ public sealed class ApplicationStressService
             var simulationOrderState = simulationMachine01.OrderState;
             var simulationTotalCycles = simulationMachine01.TotalCycles;
             var simulationCompletedVes = simulationMachine01.CompletedVes;
+            var machine01HadParkedLiveRecovery = vm.Hf5HasParkedLiveRecoveryForValidation(1);
 
             vm.Hf5ToggleOperatingModeCommand.Execute(null);
             await WaitUntilAsync(
                 () => !vm.IsSimulationMode && vm.Hf5IsUsingLiveMachines,
                 TimeSpan.FromSeconds(20),
                 cancellationToken);
+            await WaitUntilAsync(
+                () => vm.Hf5ToggleOperatingModeCommand.CanExecute(null),
+                TimeSpan.FromSeconds(30),
+                cancellationToken);
 
             var liveMachine01 = vm.Machines.First(m => m.Configuration.MachineNumber == 1);
             if (ReferenceEquals(simulationMachine01, liveMachine01))
                 errors.Add("HF5-Isolationsbruch: M01 verwendet in Simulation und Echtbetrieb dieselbe MachineState-Instanz.");
-            if (liveMachine01.OrderState != ProductionOrderState.None)
+            if (liveMachine01.OrderState != ProductionOrderState.None && !machine01HadParkedLiveRecovery)
                 errors.Add($"HF5-Isolationsbruch: frischer Live-M01 übernahm Simulations-Auftragszustand {liveMachine01.OrderState}.");
+            else if (machine01HadParkedLiveRecovery)
+                notes.Add($"Vorhandener M01-Echtbetrieb-Recoveryzustand blieb separat erhalten ({liveMachine01.OrderState}).");
             notes.Add("Simulation → Echtbetrieb: separate MachineState-Instanz geprüft");
 
             vm.Hf5ToggleOperatingModeCommand.Execute(null);
@@ -350,7 +357,7 @@ public sealed class ApplicationStressService
         reportPath = Path.GetFullPath(reportPath);
         Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
         var sb = new StringBuilder();
-        sb.AppendLine("PARTCOUNTER HF5 STRESSTEST + OPERATING MODE ISOLATION");
+        sb.AppendLine("PARTCOUNTER HF6 STRESSTEST + OPERATING MODE ISOLATION");
         sb.AppendLine($"Revision: {AppVersionInfo.RevisionLabel}");
         sb.AppendLine($"Version: {AppVersionInfo.VersionText}");
         sb.AppendLine($"Build: {AppVersionInfo.InformationalVersion}");

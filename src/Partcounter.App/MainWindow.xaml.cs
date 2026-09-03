@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private Button? _operatingModeButton;
     private Button? _adminButton;
     private bool _tabGuardBusy;
+    private bool _machineContextMenuAttachPending;
 
     public MainWindow()
     {
@@ -416,12 +417,31 @@ public partial class MainWindow : Window
     }
 
     private void OnVisibleMachinesChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
-        _ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(AttachMachineContextMenus));
+        ScheduleMachineContextMenuAttachment();
 
     private void OnMachineContainerStatusChanged(object? sender, EventArgs e)
     {
         if (MachineItemsControl.ItemContainerGenerator.Status == GeneratorStatus.ContainersGenerated)
-            _ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(AttachMachineContextMenus));
+            ScheduleMachineContextMenuAttachment();
+    }
+
+    private void ScheduleMachineContextMenuAttachment()
+    {
+        if (_machineContextMenuAttachPending)
+            return;
+
+        _machineContextMenuAttachPending = true;
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            try
+            {
+                AttachMachineContextMenus();
+            }
+            finally
+            {
+                _machineContextMenuAttachPending = false;
+            }
+        }));
     }
 
     private void AttachMachineContextMenus()
@@ -431,7 +451,12 @@ public partial class MainWindow : Window
             if (MachineItemsControl.ItemContainerGenerator.ContainerFromItem(machine) is not FrameworkElement container)
                 continue;
 
-            container.ContextMenu = CreateMachineContextMenu(machine);
+            if (container.ContextMenu?.Tag is MachineState currentMachine && ReferenceEquals(currentMachine, machine))
+                continue;
+
+            var menu = CreateMachineContextMenu(machine);
+            menu.Tag = machine;
+            container.ContextMenu = menu;
         }
     }
 

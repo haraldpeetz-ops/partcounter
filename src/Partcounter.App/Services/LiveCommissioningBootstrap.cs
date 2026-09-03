@@ -35,6 +35,12 @@ public sealed class LiveCommissioningBootstrap
     {
         try
         {
+            // The stress gate validates the production view model and must never be
+            // slowed or blocked by a commissioning-only modal dialog. Layout mode still
+            // attaches the view so that its visual tree remains part of layout coverage.
+            if ((Application.Current as App)?.IsStressMode == true)
+                return;
+
             if (_window.DataContext is not MainViewModel main)
                 return;
 
@@ -49,19 +55,25 @@ public sealed class LiveCommissioningBootstrap
                 await Task.Delay(150);
             }
 
-            MessageBox.Show(
-                "Der Bereich 'Inbetriebnahme / Diagnose' wurde nicht gefunden. Die übrige Anwendung bleibt verfügbar.",
-                AppVersionInfo.ProductTitle,
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            if ((Application.Current as App)?.IsAutomatedValidationMode != true)
+            {
+                MessageBox.Show(
+                    "Der Bereich 'Inbetriebnahme / Diagnose' wurde nicht gefunden. Die übrige Anwendung bleibt verfügbar.",
+                    AppVersionInfo.ProductTitle,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                $"Die Live-Abnahme konnte nicht initialisiert werden.\n\n{ex.Message}",
-                AppVersionInfo.ProductTitle,
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            if ((Application.Current as App)?.IsAutomatedValidationMode != true)
+            {
+                MessageBox.Show(
+                    $"Die Live-Abnahme konnte nicht initialisiert werden.\n\n{ex.Message}",
+                    AppVersionInfo.ProductTitle,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
         }
     }
 
@@ -108,11 +120,14 @@ public sealed class LiveCommissioningBootstrap
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                $"Live-Abnahme konnte nicht initialisiert werden.\n\n{ex.Message}",
-                AppVersionInfo.ProductTitle,
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            if ((Application.Current as App)?.IsAutomatedValidationMode != true)
+            {
+                MessageBox.Show(
+                    $"Live-Abnahme konnte nicht initialisiert werden.\n\n{ex.Message}",
+                    AppVersionInfo.ProductTitle,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
         }
     }
 

@@ -7,8 +7,10 @@ namespace Partcounter.Services;
 public sealed class LogoModbusClient : IAsyncDisposable
 {
     private const int ConnectTimeoutMs = 2_500;
+    private const uint StaleResponseTransactionWindow = 16;
 
     private readonly MachineConfiguration _configuration;
+    private readonly SemaphoreSlim _transportGate = new(1, 1);
     private TcpClient? _tcpClient;
     private IModbusMaster? _master;
     private ushort _lastHeartbeat;
@@ -22,39 +24,52 @@ public sealed class LogoModbusClient : IAsyncDisposable
 
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        Disconnect();
-
-        var tcpClient = new TcpClient
-        {
-            ReceiveTimeout = 1500,
-            SendTimeout = 1500,
-            NoDelay = true
-        };
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(ConnectTimeoutMs);
-
+        await _transportGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await tcpClient.ConnectAsync(_configuration.IpAddress, _configuration.Port, timeout.Token);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            tcpClient.Dispose();
-            throw new TimeoutException(
-                $"TCP-Verbindung zu {_configuration.Name} ({_configuration.IpAddress}:{_configuration.Port}) " +
-                $"konnte innerhalb von {ConnectTimeoutMs} ms nicht hergestellt werden.");
-        }
-        catch (Exception ex)
-        {
-            tcpClient.Dispose();
-            throw new InvalidOperationException(
-                $"TCP-Verbindung zu {_configuration.Name} ({_configuration.IpAddress}:{_configuration.Port}) fehlgeschlagen: {ex.Message}",
-                ex);
-        }
+            DisconnectCore();
 
-        _tcpClient = tcpClient;
-        _master = new ModbusFactory().CreateMaster(tcpClient);
+            var tcpClient = new TcpClient
+            {
+                ReceiveTimeout = 1500,
+                SendTimeout = 1500,
+                NoDelay = true
+            };
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(ConnectTimeoutMs);
+
+            try
+            {
+                await tcpClient.ConnectAsync(_configuration.IpAddress, _configuration.Port, timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                tcpClient.Dispose();
+                throw new TimeoutException(
+                    $"TCP-Verbindung zu {_configuration.Name} ({_configuration.IpAddress}:{_configuration.Port}) " +
+                    $"konnte innerhalb von {ConnectTimeoutMs} ms nicht hergestellt werden.");
+            }
+            catch (Exception ex)
+            {
+                tcpClient.Dispose();
+                throw new InvalidOperationException(
+                    $"TCP-Verbindung zu {_configuration.Name} ({_configuration.IpAddress}:{_configuration.Port}) fehlgeschlagen: {ex.Message}",
+                    ex);
+            }
+
+            _tcpClient = tcpClient;
+            _master = new ModbusFactory().CreateMaster(tcpClient);
+
+            // NModbus retries timed-out requests with a new transaction ID. A delayed
+            // response from the preceding attempt must be consumed and ignored rather
+            // than poisoning the following request with an ID-mismatch exception.
+            _master.Transport.RetryOnOldResponseThreshold = StaleResponseTransactionWindow;
+        }
+        finally
+        {
+            _transportGate.Release();
+        }
     }
 
     public async Task WriteJobAsync(
@@ -65,26 +80,34 @@ public sealed class LogoModbusClient : IAsyncDisposable
         bool pauseCounting = false,
         CancellationToken cancellationToken = default)
     {
-        EnsureConnected();
-        cancellationToken.ThrowIfCancellationRequested();
+        await _transportGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
 
-        // Protocol V3 requires HR12/PcHeartbeat in the range 1..32767.
-        // A full job write must therefore never overwrite a valid heartbeat with zero.
-        var heartbeat = _lastHeartbeat == 0 ? (ushort)1 : _lastHeartbeat;
-        _lastHeartbeat = heartbeat;
+            // Protocol V3 requires HR12/PcHeartbeat in the range 1..32767.
+            // A full job write must therefore never overwrite a valid heartbeat with zero.
+            var heartbeat = _lastHeartbeat == 0 ? (ushort)1 : _lastHeartbeat;
+            _lastHeartbeat = heartbeat;
 
-        var registers = BuildJobRegisterPayload(
-            job,
-            commandSequence,
-            heartbeat,
-            automaticMode,
-            resetJob,
-            pauseCounting);
+            var registers = BuildJobRegisterPayload(
+                job,
+                commandSequence,
+                heartbeat,
+                automaticMode,
+                resetJob,
+                pauseCounting);
 
-        await _master!.WriteMultipleRegistersAsync(
-            _configuration.UnitId,
-            ModbusRegisterMap.ConfigStart,
-            registers);
+            await _master!.WriteMultipleRegistersAsync(
+                _configuration.UnitId,
+                ModbusRegisterMap.ConfigStart,
+                registers).ConfigureAwait(false);
+        }
+        finally
+        {
+            _transportGate.Release();
+        }
     }
 
     public static ushort[] BuildJobRegisterPayload(
@@ -131,91 +154,128 @@ public sealed class LogoModbusClient : IAsyncDisposable
         ushort commandWord,
         CancellationToken cancellationToken = default)
     {
-        EnsureConnected();
-        cancellationToken.ThrowIfCancellationRequested();
+        await _transportGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
 
-        if (commandSequence is 0 or > ModbusRegisterMap.MaxSequenceValue)
-            throw new ArgumentOutOfRangeException(nameof(commandSequence));
+            if (commandSequence is 0 or > ModbusRegisterMap.MaxSequenceValue)
+                throw new ArgumentOutOfRangeException(nameof(commandSequence));
 
-        await _master!.WriteMultipleRegistersAsync(
-            _configuration.UnitId,
-            (ushort)(ModbusRegisterMap.ConfigStart + ModbusRegisterMap.ConfigCommandSequence),
-            [commandSequence, commandWord]);
+            await _master!.WriteMultipleRegistersAsync(
+                _configuration.UnitId,
+                (ushort)(ModbusRegisterMap.ConfigStart + ModbusRegisterMap.ConfigCommandSequence),
+                [commandSequence, commandWord]).ConfigureAwait(false);
+        }
+        finally
+        {
+            _transportGate.Release();
+        }
     }
 
     public async Task WriteHeartbeatAsync(ushort heartbeat, CancellationToken cancellationToken = default)
     {
-        EnsureConnected();
-        cancellationToken.ThrowIfCancellationRequested();
+        await _transportGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
 
-        if (heartbeat is 0 or > ModbusRegisterMap.MaxHeartbeatValue)
-            throw new ArgumentOutOfRangeException(nameof(heartbeat));
+            if (heartbeat is 0 or > ModbusRegisterMap.MaxHeartbeatValue)
+                throw new ArgumentOutOfRangeException(nameof(heartbeat));
 
-        await _master!.WriteSingleRegisterAsync(
-            _configuration.UnitId,
-            (ushort)(ModbusRegisterMap.ConfigStart + ModbusRegisterMap.ConfigPcHeartbeat),
-            heartbeat);
-        _lastHeartbeat = heartbeat;
+            await _master!.WriteSingleRegisterAsync(
+                _configuration.UnitId,
+                (ushort)(ModbusRegisterMap.ConfigStart + ModbusRegisterMap.ConfigPcHeartbeat),
+                heartbeat).ConfigureAwait(false);
+            _lastHeartbeat = heartbeat;
+        }
+        finally
+        {
+            _transportGate.Release();
+        }
     }
 
     public async Task<LogoSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken = default)
     {
-        EnsureConnected();
-        cancellationToken.ThrowIfCancellationRequested();
+        await _transportGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
 
-        var registers = await _master!.ReadHoldingRegistersAsync(
-            _configuration.UnitId,
-            ModbusRegisterMap.StatusStart,
-            ModbusRegisterMap.StatusLength);
+            var registers = await _master!.ReadHoldingRegistersAsync(
+                _configuration.UnitId,
+                ModbusRegisterMap.StatusStart,
+                ModbusRegisterMap.StatusLength).ConfigureAwait(false);
 
-        var reportedProtocol = registers[ModbusRegisterMap.StatusProtocolVersion];
-        if (reportedProtocol != ModbusRegisterMap.ProtocolVersion)
-            throw new InvalidOperationException(
-                $"LOGO! register protocol mismatch at {_configuration.Name} ({_configuration.IpAddress}:{_configuration.Port}): " +
-                $"expected V{ModbusRegisterMap.ProtocolVersion}, received V{reportedProtocol} from HR20/VW38.");
+            var reportedProtocol = registers[ModbusRegisterMap.StatusProtocolVersion];
+            if (reportedProtocol != ModbusRegisterMap.ProtocolVersion)
+                throw new InvalidOperationException(
+                    $"LOGO! register protocol mismatch at {_configuration.Name} ({_configuration.IpAddress}:{_configuration.Port}): " +
+                    $"expected V{ModbusRegisterMap.ProtocolVersion}, received V{reportedProtocol} from HR20/VW38.");
 
-        var activeCavities = registers[ModbusRegisterMap.StatusActiveCavitiesEcho];
-        var lastCompletedCavities = registers[ModbusRegisterMap.StatusLastCompletedCavities];
-        var currentVeCycles = ModbusRegisterMap.ToUInt32(
-            registers[ModbusRegisterMap.StatusCurrentVeCyclesHi],
-            registers[ModbusRegisterMap.StatusCurrentVeCyclesLo]);
-        var lastCompletedVeCycles = ModbusRegisterMap.ToUInt32(
-            registers[ModbusRegisterMap.StatusLastVeCyclesHi],
-            registers[ModbusRegisterMap.StatusLastVeCyclesLo]);
+            var activeCavities = registers[ModbusRegisterMap.StatusActiveCavitiesEcho];
+            var lastCompletedCavities = registers[ModbusRegisterMap.StatusLastCompletedCavities];
+            var currentVeCycles = ModbusRegisterMap.ToUInt32(
+                registers[ModbusRegisterMap.StatusCurrentVeCyclesHi],
+                registers[ModbusRegisterMap.StatusCurrentVeCyclesLo]);
+            var lastCompletedVeCycles = ModbusRegisterMap.ToUInt32(
+                registers[ModbusRegisterMap.StatusLastVeCyclesHi],
+                registers[ModbusRegisterMap.StatusLastVeCyclesLo]);
 
-        if (currentVeCycles > ModbusRegisterMap.MaxTargetCyclesPerVe || lastCompletedVeCycles > ModbusRegisterMap.MaxTargetCyclesPerVe)
-            throw new InvalidOperationException("LOGO! reported a VE cycle counter outside the Partcounter V3 range.");
+            if (currentVeCycles > ModbusRegisterMap.MaxTargetCyclesPerVe || lastCompletedVeCycles > ModbusRegisterMap.MaxTargetCyclesPerVe)
+                throw new InvalidOperationException("LOGO! reported a VE cycle counter outside the Partcounter V3 range.");
 
-        var currentParts = checked(currentVeCycles * (uint)activeCavities);
-        var lastCompletedVeQuantity = checked(lastCompletedVeCycles * (uint)lastCompletedCavities);
-        var totalCycles = ModbusRegisterMap.ToUInt32(
-            registers[ModbusRegisterMap.StatusTotalCyclesHi],
-            registers[ModbusRegisterMap.StatusTotalCyclesLo]);
-        if (totalCycles > ModbusRegisterMap.MaxTotalCyclesPerJob)
-            throw new InvalidOperationException("LOGO! reported a total-cycle counter outside the approved Partcounter V3 range.");
+            var currentParts = checked(currentVeCycles * (uint)activeCavities);
+            var lastCompletedVeQuantity = checked(lastCompletedVeCycles * (uint)lastCompletedCavities);
+            var totalCycles = ModbusRegisterMap.ToUInt32(
+                registers[ModbusRegisterMap.StatusTotalCyclesHi],
+                registers[ModbusRegisterMap.StatusTotalCyclesLo]);
+            if (totalCycles > ModbusRegisterMap.MaxTotalCyclesPerJob)
+                throw new InvalidOperationException("LOGO! reported a total-cycle counter outside the approved Partcounter V3 range.");
 
-        return new LogoSnapshot(
-            currentParts,
-            totalCycles,
-            registers[ModbusRegisterMap.StatusCurrentVe],
-            registers[ModbusRegisterMap.StatusCompletedVes],
-            lastCompletedVeQuantity,
-            registers[ModbusRegisterMap.StatusWord],
-            registers[ModbusRegisterMap.StatusAckSequence],
-            activeCavities,
-            registers[ModbusRegisterMap.StatusLastCompletedVeNumber],
-            registers[ModbusRegisterMap.StatusCompletionSequence],
-            registers[ModbusRegisterMap.StatusLogoHeartbeat],
-            registers[ModbusRegisterMap.StatusErrorCode],
-            (VeCompletionReason)registers[ModbusRegisterMap.StatusLastCompletionReason],
-            DateTime.UtcNow,
-            registers[ModbusRegisterMap.StatusHoldAfterVeNumberEcho],
-            ModbusRegisterMap.ToUInt32(
-                registers[ModbusRegisterMap.StatusJobIdHiEcho],
-                registers[ModbusRegisterMap.StatusJobIdLoEcho]));
+            return new LogoSnapshot(
+                currentParts,
+                totalCycles,
+                registers[ModbusRegisterMap.StatusCurrentVe],
+                registers[ModbusRegisterMap.StatusCompletedVes],
+                lastCompletedVeQuantity,
+                registers[ModbusRegisterMap.StatusWord],
+                registers[ModbusRegisterMap.StatusAckSequence],
+                activeCavities,
+                registers[ModbusRegisterMap.StatusLastCompletedVeNumber],
+                registers[ModbusRegisterMap.StatusCompletionSequence],
+                registers[ModbusRegisterMap.StatusLogoHeartbeat],
+                registers[ModbusRegisterMap.StatusErrorCode],
+                (VeCompletionReason)registers[ModbusRegisterMap.StatusLastCompletionReason],
+                DateTime.UtcNow,
+                registers[ModbusRegisterMap.StatusHoldAfterVeNumberEcho],
+                ModbusRegisterMap.ToUInt32(
+                    registers[ModbusRegisterMap.StatusJobIdHiEcho],
+                    registers[ModbusRegisterMap.StatusJobIdLoEcho]));
+        }
+        finally
+        {
+            _transportGate.Release();
+        }
     }
 
     public void Disconnect()
+    {
+        _transportGate.Wait();
+        try
+        {
+            DisconnectCore();
+        }
+        finally
+        {
+            _transportGate.Release();
+        }
+    }
+
+    private void DisconnectCore()
     {
         _master?.Dispose();
         _master = null;
@@ -253,9 +313,16 @@ public sealed class LogoModbusClient : IAsyncDisposable
             throw new InvalidOperationException($"Machine {_configuration.Name} is not connected.");
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Disconnect();
-        return ValueTask.CompletedTask;
+        await _transportGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            DisconnectCore();
+        }
+        finally
+        {
+            _transportGate.Release();
+        }
     }
 }

@@ -393,6 +393,19 @@ public sealed class MachineFleetService : IAsyncDisposable
                         SnapshotReceived?.Invoke(this, new MachineSnapshotEventArgs(session.Configuration.MachineNumber, snapshot));
                     PublishConnection(session, ConnectionState.Online, null);
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    // Keep the session gate while invalidating the transport. Otherwise a
+                    // command can acquire the session between the failed poll and this
+                    // disconnect, then lose its freshly reconnected socket before ACK readback.
+                    session.Client.Disconnect();
+                    session.LastMessage = ex.Message;
+                    PublishConnection(session, ConnectionState.Offline, ex.Message);
+                }
                 finally
                 {
                     session.Gate.Release();
@@ -401,12 +414,6 @@ public sealed class MachineFleetService : IAsyncDisposable
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 break;
-            }
-            catch (Exception ex)
-            {
-                session.Client.Disconnect();
-                session.LastMessage = ex.Message;
-                PublishConnection(session, ConnectionState.Offline, ex.Message);
             }
 
             try

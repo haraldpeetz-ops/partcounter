@@ -53,6 +53,10 @@ public sealed partial class MainViewModel
 
     public long Hf5HiddenNonProductionHistoryCount => _hf5HiddenNonProductionHistoryCount;
 
+    internal bool Hf5HasParkedLiveRecoveryForValidation(int machineNumber) =>
+        _hf5ParkedLiveRecoveryMachines.Contains(machineNumber) ||
+        _startupRecoveryMachines.Contains(machineNumber);
+
     public async Task EnableHf5IsolationAsync()
     {
         if (_hf5IsolationEnabled)

@@ -1,12 +1,33 @@
 # Partcounter
 
-**Aktueller Engineering-Stand:** R001.25 HF3 – Operating Mode UI  
-**Version:** 0.1.25 · **FileVersion:** 0.1.25.3  
-**Plattform:** Windows 10/11 · C# · .NET 10 LTS · WPF  
-**Anlage:** bis zu 30 Spritzgussmaschinen · Siemens LOGO! · Modbus TCP · WLAN/LAN  
+**Aktueller Engineering-Stand:** R001.25 HF6 – Modbus Transport Hardening<br>
+**Version:** 0.1.25 · **FileVersion:** 0.1.25.6<br>
+**Plattform:** Windows 10/11 · C# · .NET 10 LTS · WPF<br>
+**Anlage:** bis zu 30 Spritzgussmaschinen · Siemens LOGO! · Modbus TCP · WLAN/LAN<br>
 **LOGO-Protokoll:** Modbus TCP Protocol V3
 
 Partcounter ist ein industrieller Leitstand für Verpackungseinheiten im Spritzguss. Die Siemens LOGO! zählt Maschinenzyklen lokal und steuert den nicht sicherheitsgerichteten VE-Wechsler; Partcounter verwaltet Aufträge, VE-Ziele, Historie, Etikettierung, Reprint, ARBURG ALS/proALPHA, Diagnose, Recovery und Inbetriebnahme.
+
+## R001.25 HF6 – Modbus Transport Hardening
+
+HF6 beseitigt zwei Race-Conditions im realen PC↔LOGO!-Transport:
+
+- alle Operationen eines LOGO!-Clients einschließlich Connect/Disconnect laufen serialisiert,
+- verspätete Modbus-Antworten vorheriger Retry-Versuche werden anhand ihrer Transaction-ID verworfen,
+- ein fehlgeschlagener Poll darf eine parallel neu aufgebaute Befehlsverbindung nicht mehr schließen,
+- automatisierte Stress-/Layoutläufe können nicht mehr durch unsichtbare Inbetriebnahme-Dialoge blockiert werden,
+- Maschinen-Kontextmenüs werden bei WPF-Containeränderungen zusammengefasst und wiederverwendet statt fortlaufend neu erzeugt,
+- Integrationstests decken FC03, FC06, FC16, Reconnect, Protokoll-Mismatch, Parallelzugriff und verspätete Antworten ab.
+
+LOGO!-Programm und Protocol-V3-Registermatrix bleiben unverändert.
+
+Details: `docs/HOTFIX_R001_25_6_MODBUS_TRANSPORT_HARDENING.md`.
+
+## R001.25 HF5 – Operating Mode Isolation
+
+HF5 trennt Simulation und Echtbetrieb in eigenständige Laufzeitdomänen. Simulationszustände können dadurch weder reale Recovery-Zustände blockieren noch produktive VE-Historie oder LOGO!-Sessions verändern.
+
+Details: `docs/HOTFIX_R001_25_5_OPERATING_MODE_ISOLATION.md`.
 
 ## R001.25 HF3 – Operating Mode UI
 
