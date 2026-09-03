@@ -357,7 +357,7 @@ public sealed class ApplicationStressService
         reportPath = Path.GetFullPath(reportPath);
         Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
         var sb = new StringBuilder();
-        sb.AppendLine("PARTCOUNTER HF6 STRESSTEST + OPERATING MODE ISOLATION");
+        sb.AppendLine("PARTCOUNTER STRESSTEST + OPERATING MODE ISOLATION");
         sb.AppendLine($"Revision: {AppVersionInfo.RevisionLabel}");
         sb.AppendLine($"Version: {AppVersionInfo.VersionText}");
         sb.AppendLine($"Build: {AppVersionInfo.InformationalVersion}");

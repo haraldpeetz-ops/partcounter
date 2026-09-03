@@ -1,12 +1,18 @@
 # Partcounter
 
-**Aktueller Engineering-Stand:** R001.25 HF6 – Modbus Transport Hardening<br>
-**Version:** 0.1.25 · **FileVersion:** 0.1.25.6<br>
+**Aktueller Engineering-Stand:** R001.25 HF7 – Commissioning Navigation Fix<br>
+**Version:** 0.1.25 · **FileVersion:** 0.1.25.7<br>
 **Plattform:** Windows 10/11 · C# · .NET 10 LTS · WPF<br>
 **Anlage:** bis zu 30 Spritzgussmaschinen · Siemens LOGO! · Modbus TCP · WLAN/LAN<br>
 **LOGO-Protokoll:** Modbus TCP Protocol V3
 
 Partcounter ist ein industrieller Leitstand für Verpackungseinheiten im Spritzguss. Die Siemens LOGO! zählt Maschinenzyklen lokal und steuert den nicht sicherheitsgerichteten VE-Wechsler; Partcounter verwaltet Aufträge, VE-Ziele, Historie, Etikettierung, Reprint, ARBURG ALS/proALPHA, Diagnose, Recovery und Inbetriebnahme.
+
+## R001.25 HF7 – Commissioning Navigation Fix
+
+HF7 behebt die irreführende Meldung, dass der Bereich `Inbetriebnahme / Diagnose` nicht gefunden wurde. Seit der Einführung des verschachtelten Administrationsbereichs wurde der Reiter nach dem Start aus der Hauptnavigation verschoben, während die Live-Abnahme weiterhin nur dort suchte. Die Anbindung verwendet nun eine stabile direkte Referenz und wird im Layout-Gate ausdrücklich geprüft.
+
+Details: `docs/HOTFIX_R001_25_7_COMMISSIONING_NAVIGATION_FIX.md`.
 
 ## R001.25 HF6 – Modbus Transport Hardening
 

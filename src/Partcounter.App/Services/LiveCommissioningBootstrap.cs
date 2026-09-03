@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using Partcounter.ViewModels;
 using Partcounter.Views;
 
@@ -44,9 +43,9 @@ public sealed class LiveCommissioningBootstrap
             if (_window.DataContext is not MainViewModel main)
                 return;
 
-            // MainWindow erzeugt den geschützten Diagnose-Reiter während seines Loaded-Handlers.
-            // Danach wird der Header durch die Admin-Logik zu "🔒 Inbetriebnahme / Diagnose"
-            // bzw. "🔓 ...". Deshalb bewusst suffix-basiert suchen.
+            // MainWindow creates the commissioning view asynchronously. The admin hub
+            // can move its tab into a nested TabControl at any time, so attachment uses
+            // MainWindow's stable view reference rather than the visual tab hierarchy.
             for (var attempt = 0; attempt < 40; attempt++)
             {
                 if (TryAttachToCommissioning(main))
@@ -79,19 +78,11 @@ public sealed class LiveCommissioningBootstrap
 
     private bool TryAttachToCommissioning(MainViewModel main)
     {
-        var mainTabs = FindDescendant<TabControl>(_window, tabs =>
-            tabs.Items.OfType<TabItem>().Any(tab => HeaderEndsWith(tab, "Leitstand")));
-
-        var commissioningTab = mainTabs?.Items
-            .OfType<TabItem>()
-            .FirstOrDefault(tab => HeaderEndsWith(tab, "Inbetriebnahme / Diagnose"));
-
-        if (commissioningTab?.Content is not CommissioningView commissioningView)
+        var commissioningView = _window.CommissioningView;
+        if (commissioningView is null)
             return false;
 
-        var innerTabs = FindDescendant<TabControl>(commissioningView, _ => true);
-        if (innerTabs is null)
-            return false;
+        var innerTabs = commissioningView.CommissioningTabs;
 
         if (innerTabs.Items.OfType<TabItem>().Any(tab =>
                 tab.Header?.ToString()?.StartsWith("Live-Abnahme", StringComparison.Ordinal) == true))
@@ -108,9 +99,6 @@ public sealed class LiveCommissioningBootstrap
         _ = InitializeViewModelAsync(_viewModel);
         return true;
     }
-
-    private static bool HeaderEndsWith(TabItem tab, string expected) =>
-        tab.Header?.ToString()?.EndsWith(expected, StringComparison.Ordinal) == true;
 
     private static async Task InitializeViewModelAsync(LiveCommissioningViewModel viewModel)
     {
@@ -140,19 +128,4 @@ public sealed class LiveCommissioningBootstrap
         Instances.Remove(_window);
     }
 
-    private static T? FindDescendant<T>(DependencyObject root, Predicate<T> predicate) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match && predicate(match))
-                return match;
-
-            var nested = FindDescendant(child, predicate);
-            if (nested is not null)
-                return nested;
-        }
-
-        return null;
-    }
 }

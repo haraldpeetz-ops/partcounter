@@ -38,6 +38,11 @@ public partial class MainWindow : Window
     private bool _tabGuardBusy;
     private bool _machineContextMenuAttachPending;
 
+    // Stable access for bootstraps whose views are moved into the nested
+    // administration tab after startup. Looking the tab up in MainTabs is no
+    // longer reliable once the administration hub has been built.
+    internal CommissioningView? CommissioningView => _commissioningTab?.Content as CommissioningView;
+
     public MainWindow()
     {
         InitializeComponent();

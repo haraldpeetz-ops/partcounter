@@ -34,7 +34,8 @@ public sealed class LayoutValidationService
             await WaitUntilAsync(
                 () => window.DataContext is MainViewModel vm &&
                       vm.Machines.Count == 30 &&
-                      window.AdministrationHubReadyForLayoutValidation,
+                      window.AdministrationHubReadyForLayoutValidation &&
+                      HasLiveCommissioningTab(window),
                 TimeSpan.FromSeconds(60),
                 cancellationToken);
 
@@ -72,6 +73,11 @@ public sealed class LayoutValidationService
             return 3;
         }
     }
+
+    private static bool HasLiveCommissioningTab(MainWindow window) =>
+        window.CommissioningView?.CommissioningTabs.Items
+            .OfType<TabItem>()
+            .Any(tab => tab.Header?.ToString()?.StartsWith("Live-Abnahme", StringComparison.Ordinal) == true) == true;
 
     private static async Task ValidateAuxiliaryWindowsAsync(
         MainWindow mainWindow,

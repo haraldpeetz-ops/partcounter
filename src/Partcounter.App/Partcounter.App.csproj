@@ -10,8 +10,8 @@
     <RootNamespace>Partcounter</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Version>0.1.25</Version>
-    <FileVersion>0.1.25.6</FileVersion>
-    <InformationalVersion>0.1.25-r001.25-hf6-modbus-transport-hardening</InformationalVersion>
+    <FileVersion>0.1.25.7</FileVersion>
+    <InformationalVersion>0.1.25-r001.25-hf7-commissioning-navigation-fix</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

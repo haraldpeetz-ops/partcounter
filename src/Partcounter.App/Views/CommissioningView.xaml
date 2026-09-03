@@ -33,7 +33,7 @@
             </Grid>
         </Border>
 
-        <TabControl Grid.Row="1">
+        <TabControl x:Name="CommissioningTabs" Grid.Row="1">
             <TabItem Header="Live-Diagnose">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10">
