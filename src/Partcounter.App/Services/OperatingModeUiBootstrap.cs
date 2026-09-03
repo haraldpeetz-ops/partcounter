@@ -1,16 +1,19 @@
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Partcounter.ViewModels;
 
 namespace Partcounter.Services;
 
 /// <summary>
-/// Stellt die produktionsrelevante Betriebsart-Umschaltung dauerhaft sichtbar bereit.
-/// HF5 initialisiert zusätzlich die harte Trennung von Simulations- und Echtbetriebszustand.
+/// Stellt die produktionsrelevante Betriebsart-Umschaltung dauerhaft sichtbar bereit,
+/// initialisiert die HF5-Isolation und schützt die aktuelle Versions-/Modusanzeige vor
+/// historischen Bootstrap-Schichten.
 /// </summary>
 public static class OperatingModeUiBootstrap
 {
@@ -72,11 +75,12 @@ public static class OperatingModeUiBootstrap
                     vm.Articles.Count > 0 &&
                     vm.SelectedMachine is not null)
                 {
-                    // Der MainWindow-Loaded-Handler soll seinen Basisschritt (u. a. Event-Hooks
-                    // und dynamische Reiter) zuerst abschließen. Danach wird atomar auf die
-                    // getrennte HF5-Simulationsdomäne umgestellt.
+                    // MainWindow-Basisinitialisierung einschließlich dynamischer Reiter/Event-Hooks
+                    // zuerst abschließen lassen. Danach atomarer Wechsel auf die HF5-Simulationsdomäne.
                     await Task.Delay(150);
                     await vm.EnableHf5IsolationAsync();
+                    AttachUiIntegrityGuard(window, vm);
+                    NormalizeCurrentRevisionUi(window, vm);
                     return;
                 }
 
@@ -92,6 +96,61 @@ public static class OperatingModeUiBootstrap
                 AppVersionInfo.ProductTitle,
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+        }
+    }
+
+    private static void AttachUiIntegrityGuard(MainWindow window, MainViewModel vm)
+    {
+        PropertyChangedEventHandler? handler = null;
+        handler = (_, args) =>
+        {
+            if (args.PropertyName is not (
+                nameof(MainViewModel.IsSimulationMode) or
+                nameof(MainViewModel.SystemStatusText) or
+                nameof(MainViewModel.Hf5IsUsingSimulationMachines) or
+                nameof(MainViewModel.Hf5IsUsingLiveMachines)))
+                return;
+
+            // Historische Module stellen teilweise bei ApplicationIdle alte Revisionstexte wieder her.
+            // SystemIdle läuft danach und macht die aktuelle Assembly-Version zur letzten Autorität.
+            _ = window.Dispatcher.BeginInvoke(
+                DispatcherPriority.SystemIdle,
+                new Action(() => NormalizeCurrentRevisionUi(window, vm)));
+        };
+
+        vm.PropertyChanged += handler;
+        window.Closed += (_, _) =>
+        {
+            if (handler is not null)
+                vm.PropertyChanged -= handler;
+        };
+    }
+
+    private static void NormalizeCurrentRevisionUi(MainWindow window, MainViewModel vm)
+    {
+        window.Title = AppVersionInfo.ProductTitle;
+        var currentStatus = vm.SystemStatusText;
+
+        foreach (var text in FindDescendants<TextBlock>(window))
+        {
+            var expression = BindingOperations.GetBindingExpression(text, TextBlock.TextProperty);
+            var boundToStatus = expression?.ParentBinding.Path?.Path == nameof(MainViewModel.SystemStatusText);
+            var looksLikeLegacyModeStatus =
+                text.Text?.StartsWith("R001.", StringComparison.Ordinal) == true &&
+                (text.Text.Contains("SIMULATION", StringComparison.OrdinalIgnoreCase) ||
+                 text.Text.Contains("ECHTBETRIEB", StringComparison.OrdinalIgnoreCase));
+
+            if (boundToStatus || looksLikeLegacyModeStatus)
+            {
+                // Eine von Altcode entfernte Bindung wird absichtlich nicht benötigt: dieser Guard
+                // aktualisiert den Status bei jedem HF5-Modusereignis deterministisch.
+                BindingOperations.ClearBinding(text, TextBlock.TextProperty);
+                text.Text = currentStatus;
+                continue;
+            }
+
+            if (text.Text?.StartsWith("Installiert:", StringComparison.OrdinalIgnoreCase) == true)
+                text.Text = AppVersionInfo.InstalledText;
         }
     }
 
@@ -141,7 +200,7 @@ public static class OperatingModeUiBootstrap
             Margin = new Thickness(8, 0, 14, 0),
             Foreground = new SolidColorBrush(Color.FromRgb(45, 55, 72))
         };
-        status.SetBinding(TextBlock.TextProperty, new Binding("SystemStatusText"));
+        status.SetBinding(TextBlock.TextProperty, new Binding(nameof(MainViewModel.SystemStatusText)));
         Grid.SetColumn(status, 1);
         grid.Children.Add(status);
 
@@ -153,21 +212,20 @@ public static class OperatingModeUiBootstrap
             FontWeight = FontWeights.Bold,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = "HF5: Simulation und Echtbetrieb besitzen getrennte Maschinen-/Auftragszustände. Ein Wechsel vermischt keine Zähler, Recovery-Daten oder Modbus-Snapshots."
+            ToolTip = "HF5: Simulation und Echtbetrieb besitzen getrennte Maschinen-, Auftrags- und Eingabezustände. Ein Wechsel vermischt keine Zähler, Recovery-Daten oder Modbus-Snapshots."
         };
         AutomationProperties.SetAutomationId(toggleButton, ToggleAutomationId);
 
-        // Der historische Admin-Code sucht nach einer direkten Content-Bindung an
-        // OperatingModeButtonText. Beim primären Produktionsschalter ist nur der innere
-        // Text gebunden; dadurch kann der Altcode diesen Schalter nicht abfangen.
+        // Der historische Admin-Code sucht nach einer direkten Button.Content-Bindung an
+        // OperatingModeButtonText. Beim Produktionsschalter ist nur der innere Text gebunden.
         var toggleText = new TextBlock
         {
             FontWeight = FontWeights.Bold,
             TextAlignment = TextAlignment.Center
         };
-        toggleText.SetBinding(TextBlock.TextProperty, new Binding("OperatingModeButtonText"));
+        toggleText.SetBinding(TextBlock.TextProperty, new Binding(nameof(MainViewModel.OperatingModeButtonText)));
         toggleButton.Content = toggleText;
-        toggleButton.SetBinding(Button.CommandProperty, new Binding("Hf5ToggleOperatingModeCommand"));
+        toggleButton.SetBinding(Button.CommandProperty, new Binding(nameof(MainViewModel.Hf5ToggleOperatingModeCommand)));
 
         var buttonStyle = new Style(typeof(Button));
         buttonStyle.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
@@ -176,7 +234,7 @@ public static class OperatingModeUiBootstrap
 
         var liveTrigger = new DataTrigger
         {
-            Binding = new Binding("IsSimulationMode"),
+            Binding = new Binding(nameof(MainViewModel.IsSimulationMode)),
             Value = false
         };
         liveTrigger.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(180, 83, 9))));
@@ -201,7 +259,7 @@ public static class OperatingModeUiBootstrap
                 var expression = BindingOperations.GetBindingExpression(button, ContentControl.ContentProperty);
                 if (string.Equals(
                         expression?.ParentBinding.Path?.Path,
-                        "OperatingModeButtonText",
+                        nameof(MainViewModel.OperatingModeButtonText),
                         StringComparison.Ordinal))
                     return button;
             }
@@ -212,5 +270,18 @@ public static class OperatingModeUiBootstrap
         }
 
         return null;
+    }
+
+    private static IEnumerable<T> FindDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                yield return match;
+
+            foreach (var nested in FindDescendants<T>(child))
+                yield return nested;
+        }
     }
 }
