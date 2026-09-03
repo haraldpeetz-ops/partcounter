@@ -8,9 +8,10 @@ using Partcounter.ViewModels;
 namespace Partcounter.Services;
 
 /// <summary>
-/// Headless/CI stress run against the real WPF application in simulation mode.
-/// It deliberately exercises the normal MainViewModel/MachineState/SQLite event path,
-/// but never enables Modbus real operation and never sends PLC writes.
+/// Headless/CI stress run against the real WPF application.
+/// HF5 verifies not only load/stability but also the functional contract:
+/// simulation must stay in-memory, must start orders normally and must remain
+/// completely isolated from the live MachineState/fleet/recovery state.
 /// </summary>
 public sealed class ApplicationStressService
 {
@@ -27,18 +28,40 @@ public sealed class ApplicationStressService
         try
         {
             await WaitUntilAsync(
-                () => window.DataContext is MainViewModel vm && vm.Machines.Count == 30 && vm.Articles.Count > 0,
-                TimeSpan.FromSeconds(45),
+                () => window.DataContext is MainViewModel vm &&
+                      vm.Hf5IsolationEnabled &&
+                      vm.Hf5IsUsingSimulationMachines &&
+                      vm.Machines.Count == 30 &&
+                      vm.Articles.Count > 0,
+                TimeSpan.FromSeconds(60),
                 cancellationToken);
 
             if (window.DataContext is not MainViewModel vm)
                 throw new InvalidOperationException("MainViewModel wurde im Stresslauf nicht gefunden.");
-            if (!vm.IsSimulationMode)
-                throw new InvalidOperationException("Stresslauf darf ausschließlich im Simulationsmodus starten.");
+            if (!vm.IsSimulationMode || !vm.Hf5IsUsingSimulationMachines)
+                throw new InvalidOperationException("HF5-Stresslauf muss mit dem isolierten Simulations-Maschinensatz starten.");
 
             vm.AutoPrintLabels = false;
             var article = vm.Articles.FirstOrDefault(a => a.ActiveCavities == 64)
                 ?? vm.Articles.First();
+
+            var databasePath = new DatabaseService().DatabasePath;
+            var persistedBefore = await CountStressRowsAsync(databasePath, cancellationToken);
+
+            // Bedienpfad prüfen: Der echte Auftrag-starten-Command muss im Simulationsmodus
+            // trotz eventuell geparkter Echtbetriebs-Recoverydaten funktionieren.
+            var commandMachine = vm.Machines.First();
+            vm.SelectedMachine = commandMachine;
+            vm.SelectedArticle = article;
+            vm.OrderNumber = "STRESS-COMMAND-M01";
+            vm.OrderTargetQuantity = 4096;
+            vm.ApplyArticleCommand.Execute(null);
+            await WaitUntilAsync(
+                () => commandMachine.OrderState == ProductionOrderState.Running,
+                TimeSpan.FromSeconds(10),
+                cancellationToken);
+            notes.Add("Simulations-Auftrag über regulären ApplyArticleCommand: PASS");
+            commandMachine.EndOrder();
 
             foreach (var machine in vm.Machines)
                 machine.VeCompleted += CountVe;
@@ -96,10 +119,62 @@ public sealed class ApplicationStressService
                 machine.VeCompleted -= CountVe;
 
             var expected = Volatile.Read(ref stressVeEvents);
-            var databasePath = new DatabaseService().DatabasePath;
-            var persisted = await WaitForStressRowsAsync(databasePath, expected, TimeSpan.FromSeconds(75), cancellationToken);
-            if (persisted < expected)
-                errors.Add($"SQLite: nur {persisted:N0} von {expected:N0} ausgelösten Stress-VE-Datensätzen persistiert.");
+
+            // HF5-Fachvertrag: keine Simulations-VE in PackagingUnits. Frühere Builds
+            // verlangten fälschlich das Gegenteil und konnten dadurch Vermischungen übersehen.
+            await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            await Task.Delay(250, cancellationToken);
+            var persistedAfter = await CountStressRowsAsync(databasePath, cancellationToken);
+            if (persistedAfter != persistedBefore)
+            {
+                errors.Add(
+                    $"HF5-Isolationsbruch: Simulations-VE haben PackagingUnits verändert. " +
+                    $"Vorher={persistedBefore:N0}, nachher={persistedAfter:N0}.");
+            }
+            else
+            {
+                notes.Add("Simulation → Produktionshistorie: 0 neue Datensätze (PASS)");
+            }
+
+            // Zustandswechsel prüfen. Der Simulationszustand muss beim Wechsel auf den
+            // separaten Live-Satz eingefroren bleiben und danach exakt wieder erscheinen.
+            var simulationMachine01 = vm.Machines.First(m => m.Configuration.MachineNumber == 1);
+            var simulationOrderState = simulationMachine01.OrderState;
+            var simulationTotalCycles = simulationMachine01.TotalCycles;
+            var simulationCompletedVes = simulationMachine01.CompletedVes;
+
+            vm.Hf5ToggleOperatingModeCommand.Execute(null);
+            await WaitUntilAsync(
+                () => !vm.IsSimulationMode && vm.Hf5IsUsingLiveMachines,
+                TimeSpan.FromSeconds(20),
+                cancellationToken);
+
+            var liveMachine01 = vm.Machines.First(m => m.Configuration.MachineNumber == 1);
+            if (ReferenceEquals(simulationMachine01, liveMachine01))
+                errors.Add("HF5-Isolationsbruch: M01 verwendet in Simulation und Echtbetrieb dieselbe MachineState-Instanz.");
+            if (liveMachine01.OrderState != ProductionOrderState.None)
+                errors.Add($"HF5-Isolationsbruch: frischer Live-M01 übernahm Simulations-Auftragszustand {liveMachine01.OrderState}.");
+            notes.Add("Simulation → Echtbetrieb: separate MachineState-Instanz geprüft");
+
+            vm.Hf5ToggleOperatingModeCommand.Execute(null);
+            await WaitUntilAsync(
+                () => vm.IsSimulationMode && vm.Hf5IsUsingSimulationMachines,
+                TimeSpan.FromSeconds(20),
+                cancellationToken);
+
+            var restoredSimulationMachine01 = vm.Machines.First(m => m.Configuration.MachineNumber == 1);
+            if (!ReferenceEquals(simulationMachine01, restoredSimulationMachine01))
+                errors.Add("HF5-Isolationsbruch: Rückkehr zur Simulation stellte nicht dieselbe Simulationsinstanz wieder her.");
+            if (restoredSimulationMachine01.OrderState != simulationOrderState ||
+                restoredSimulationMachine01.TotalCycles != simulationTotalCycles ||
+                restoredSimulationMachine01.CompletedVes != simulationCompletedVes)
+            {
+                errors.Add("HF5-Isolationsbruch: Simulationszustand wurde beim Live-Wechsel verändert.");
+            }
+            else
+            {
+                notes.Add("Echtbetrieb → Simulation: eingefrorener Simulationszustand unverändert wiederhergestellt (PASS)");
+            }
 
             var health = await new ProductionReadinessService().CheckDatabaseAsync();
             if (!health.IsOk)
@@ -124,7 +199,7 @@ public sealed class ApplicationStressService
             peakManaged = Math.Max(peakManaged, GC.GetTotalMemory(false));
 
             notes.Add($"VE-Ereignisse gesamt: {expected:N0}");
-            notes.Add($"Persistierte Stress-VE: {persisted:N0}");
+            notes.Add($"Persistierte Simulations-Stress-VE neu: {persistedAfter - persistedBefore:N0} (Soll 0)");
             notes.Add($"SQLite quick_check: {health.QuickCheck}");
             notes.Add($"Working Set Ende: {process.WorkingSet64 / 1024d / 1024d:N1} MiB");
             notes.Add($"Peak Working Set: {peakWorkingSet / 1024d / 1024d:N1} MiB");
@@ -145,7 +220,7 @@ public sealed class ApplicationStressService
 
     private static async Task StressOrderInterfacesAsync(List<string> notes, List<string> errors, CancellationToken cancellationToken)
     {
-        var root = Path.Combine(Path.GetTempPath(), $"Partcounter_R00123_Stress_{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"Partcounter_R00125_HF5_Stress_{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         var source = Path.Combine(root, "orders.csv");
         try
@@ -242,27 +317,13 @@ public sealed class ApplicationStressService
         }
     }
 
-    private static async Task<long> WaitForStressRowsAsync(
-        string databasePath,
-        long expected,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
+    private static async Task<long> CountStressRowsAsync(string databasePath, CancellationToken cancellationToken)
     {
-        var until = DateTime.UtcNow + timeout;
-        long count = 0;
-        while (DateTime.UtcNow < until)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await using var connection = new SqliteConnection($"Data Source={databasePath};Cache=Shared;Default Timeout=15");
-            await connection.OpenAsync(cancellationToken);
-            await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT COUNT(*) FROM PackagingUnits WHERE OrderNumber LIKE 'STRESS-%';";
-            count = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
-            if (count >= expected)
-                return count;
-            await Task.Delay(250, cancellationToken);
-        }
-        return count;
+        await using var connection = new SqliteConnection($"Data Source={databasePath};Cache=Shared;Default Timeout=15");
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM PackagingUnits WHERE OrderNumber LIKE 'STRESS-%';";
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, CancellationToken cancellationToken)
@@ -275,7 +336,7 @@ public sealed class ApplicationStressService
                 return;
             await Task.Delay(100, cancellationToken);
         }
-        throw new TimeoutException("Partcounter-Initialisierung hat im Stresslauf das Zeitlimit überschritten.");
+        throw new TimeoutException("Partcounter/HF5-Initialisierung oder Zustandswechsel hat das Zeitlimit überschritten.");
     }
 
     private static async Task WriteReportAsync(
@@ -289,14 +350,14 @@ public sealed class ApplicationStressService
         reportPath = Path.GetFullPath(reportPath);
         Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
         var sb = new StringBuilder();
-        sb.AppendLine("PARTCOUNTER STRESSTEST");
-        sb.AppendLine($"Revision: {AppVersionInfo.Revision}");
+        sb.AppendLine("PARTCOUNTER HF5 STRESSTEST + OPERATING MODE ISOLATION");
+        sb.AppendLine($"Revision: {AppVersionInfo.RevisionLabel}");
         sb.AppendLine($"Version: {AppVersionInfo.VersionText}");
         sb.AppendLine($"Build: {AppVersionInfo.InformationalVersion}");
         sb.AppendLine($"Zeit: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine($"Dauer: {elapsed}");
         sb.AppendLine($"Ergebnis: {(success ? "PASS" : "FAIL")}");
-        sb.AppendLine("Modus: SIMULATION ONLY - keine Modbus-Schreibbefehle");
+        sb.AppendLine("Vertrag: Simulation und Echtbetrieb getrennte MachineState-Instanzen; Simulation ohne Produktionspersistenz/Auto-Druck");
         sb.AppendLine();
         sb.AppendLine("MESSWERTE / NOTIZEN");
         foreach (var note in notes) sb.AppendLine($"- {note}");
