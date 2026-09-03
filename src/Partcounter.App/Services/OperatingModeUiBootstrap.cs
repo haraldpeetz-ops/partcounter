@@ -4,13 +4,13 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
+using Partcounter.ViewModels;
 
 namespace Partcounter.Services;
 
 /// <summary>
 /// Stellt die produktionsrelevante Betriebsart-Umschaltung dauerhaft sichtbar bereit.
-/// Simulation/Echtbetrieb ist eine Bedienfunktion; administrative Konfigurationen
-/// wie LOGO!/Modbus, Drucker und Systemeinstellungen bleiben weiterhin geschützt.
+/// HF5 initialisiert zusätzlich die harte Trennung von Simulations- und Echtbetriebszustand.
 /// </summary>
 public static class OperatingModeUiBootstrap
 {
@@ -22,7 +22,6 @@ public static class OperatingModeUiBootstrap
     {
         ArgumentNullException.ThrowIfNull(window);
 
-        // Der reale Mindestwert muss zum bereits vorhandenen 800x500-Layoutgate passen.
         window.MinWidth = 800;
         window.MinHeight = 500;
 
@@ -32,9 +31,6 @@ public static class OperatingModeUiBootstrap
         if (window.Content is not DockPanel root)
             throw new InvalidOperationException("MainWindow root must be a DockPanel for the operating-mode bar.");
 
-        // Der alte Kopfzeilen-Schalter wird später vom historischen Admin-Code gefunden.
-        // Er bleibt technisch erhalten, wird aber ausgeblendet, damit es nur einen eindeutigen
-        // frei bedienbaren Umschalter gibt.
         var legacyHeaderToggle = FindBoundOperatingModeButton(root);
         if (legacyHeaderToggle is not null)
         {
@@ -55,10 +51,44 @@ public static class OperatingModeUiBootstrap
         var tabIndex = root.Children.IndexOf(mainTabs);
         root.Children.Insert(tabIndex, border);
         ToggleButtons.Add(window, toggleButton);
+
+        // MainWindow lädt Maschinen/Artikel in seinem eigenen async Loaded-Handler. Der HF5-
+        // Initialisierer wartet deshalb explizit, bis dieser Basisschritt abgeschlossen ist.
+        window.Loaded += OnWindowLoaded;
     }
 
     internal static Button? GetPrimaryToggle(MainWindow window) =>
         ToggleButtons.TryGetValue(window, out var button) ? button : null;
+
+    private static async void OnWindowLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MainWindow window)
+            return;
+
+        try
+        {
+            for (var attempt = 0; attempt < 120; attempt++)
+            {
+                if (window.DataContext is MainViewModel vm && vm.Machines.Count > 0 && vm.Articles.Count > 0)
+                {
+                    await vm.EnableHf5IsolationAsync();
+                    return;
+                }
+
+                await Task.Delay(50);
+            }
+
+            throw new TimeoutException("HF5-Betriebsartenisolation konnte nicht initialisiert werden, weil die Stammdaten nicht rechtzeitig verfügbar waren.");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Die HF5-Betriebsartenisolation konnte nicht initialisiert werden.\n\n{ex.Message}",
+                AppVersionInfo.ProductTitle,
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
 
     private static Border BuildBar(out Button toggleButton)
     {
@@ -91,7 +121,7 @@ public static class OperatingModeUiBootstrap
         });
         caption.Children.Add(new TextBlock
         {
-            Text = "Simulation ↔ Echtbetrieb",
+            Text = "HF5 · getrennte Zustände: Simulation ↔ Echtbetrieb",
             FontSize = 11,
             Foreground = new SolidColorBrush(Color.FromRgb(86, 100, 115))
         });
@@ -118,13 +148,13 @@ public static class OperatingModeUiBootstrap
             FontWeight = FontWeights.Bold,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = "Betriebsart bewusst umschalten. HF4 hält den Echtbetrieb nach aufgebauten Modbus-Sessions eingerastet; einzelne Offline-/Recovery-Fehler schalten nicht mehr die gesamte Anwendung zurück."
+            ToolTip = "HF5: Simulation und Echtbetrieb besitzen getrennte Maschinen-/Auftragszustände. Ein Wechsel vermischt keine Zähler, Recovery-Daten oder Modbus-Snapshots."
         };
         AutomationProperties.SetAutomationId(toggleButton, ToggleAutomationId);
 
-        // Der historische Admin-Code sucht gezielt nach einem Button, dessen Content selbst
-        // an OperatingModeButtonText gebunden ist. Beim Produktionsschalter ist nur der innere
-        // Text gebunden; der Button selbst bleibt damit frei von der Admin-Abfanglogik.
+        // Der historische Admin-Code sucht nach einer direkten Content-Bindung an
+        // OperatingModeButtonText. Beim primären Produktionsschalter ist nur der innere
+        // Text gebunden; dadurch kann der Altcode diesen Schalter nicht abfangen.
         var toggleText = new TextBlock
         {
             FontWeight = FontWeights.Bold,
@@ -132,7 +162,7 @@ public static class OperatingModeUiBootstrap
         };
         toggleText.SetBinding(TextBlock.TextProperty, new Binding("OperatingModeButtonText"));
         toggleButton.Content = toggleText;
-        toggleButton.SetBinding(Button.CommandProperty, new Binding("Hf4ToggleOperatingModeCommand"));
+        toggleButton.SetBinding(Button.CommandProperty, new Binding("Hf5ToggleOperatingModeCommand"));
 
         var buttonStyle = new Style(typeof(Button));
         buttonStyle.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
