@@ -26,7 +26,7 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
     private string _preflightText = "Live-Prüfung wird initialisiert …";
     private string _currentLiveText = "Noch keine Echtbetriebsdiagnose erfasst.";
     private string _summaryText = "Noch keine Messung vorhanden.";
-    private string _statusMessage = "R001.16 Live-Abnahme bereit.";
+    private string _statusMessage = $"{AppVersionInfo.RevisionLabel} Live-Abnahme bereit.";
     private string _lastExportPath = string.Empty;
 
     public LiveCommissioningViewModel(MainViewModel main)
@@ -100,8 +100,8 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
         : $"{SelectedMachine.Configuration.IpAddress}:{SelectedMachine.Configuration.Port} · Unit-ID {SelectedMachine.Configuration.UnitId}";
 
     public string OperatingModeText => _main.IsSimulationMode
-        ? "SIMULATION · Live-Abnahme gesperrt"
-        : "ECHTBETRIEB · vorhandene Modbus-V2-Session wird passiv beobachtet";
+        ? "SIMULATION · Live-Abnahme gesperrt · separater Simulationszustand"
+        : $"ECHTBETRIEB · Modbus TCP Protocol V{ModbusRegisterMap.ProtocolVersion} · separater Live-Zustand";
 
     public string RecordingStateText => IsRecording ? "MESSUNG LÄUFT" : "MESSUNG GESTOPPT";
     public bool CanSelectMachine => !IsRecording;
@@ -126,8 +126,36 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
 
     private void OnMainPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(MainViewModel.IsSimulationMode) or nameof(MainViewModel.SystemStatusText))
+        if (e.PropertyName is nameof(MainViewModel.IsSimulationMode)
+            or nameof(MainViewModel.SystemStatusText)
+            or nameof(MainViewModel.Hf5IsUsingSimulationMachines)
+            or nameof(MainViewModel.Hf5IsUsingLiveMachines))
         {
+            var previousMachineNumber = _selectedMachine?.Configuration.MachineNumber;
+
+            if (_main.IsSimulationMode && IsRecording)
+                _ = StopRecordingAsync("Messung automatisch beendet: Betriebsart wurde auf Simulation umgeschaltet.");
+
+            if (previousMachineNumber.HasValue)
+            {
+                var activeMachine = Machines.FirstOrDefault(m =>
+                    m.Configuration.MachineNumber == previousMachineNumber.Value);
+                if (activeMachine is not null && !ReferenceEquals(activeMachine, _selectedMachine))
+                {
+                    _selectedMachine = activeMachine;
+                    OnPropertyChanged(nameof(SelectedMachine));
+                    OnPropertyChanged(nameof(MachineTitle));
+                    OnPropertyChanged(nameof(EndpointText));
+                }
+            }
+            else
+            {
+                _selectedMachine = Machines.FirstOrDefault();
+                OnPropertyChanged(nameof(SelectedMachine));
+                OnPropertyChanged(nameof(MachineTitle));
+                OnPropertyChanged(nameof(EndpointText));
+            }
+
             OnPropertyChanged(nameof(OperatingModeText));
             RefreshLiveState();
         }
@@ -143,7 +171,13 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
 
         if (_main.IsSimulationMode)
         {
-            StatusMessage = "Live-Abnahme kann nur im Echtbetrieb gestartet werden. Der Betriebsmodus wird aus Sicherheitsgründen nicht automatisch umgeschaltet.";
+            StatusMessage = "Live-Abnahme kann nur im Echtbetrieb gestartet werden. Die HF5-Betriebsart wird aus Sicherheitsgründen nicht automatisch umgeschaltet.";
+            return;
+        }
+
+        if (!_main.Hf5IsUsingLiveMachines)
+        {
+            StatusMessage = "Live-Abnahme gesperrt: Die Hauptansicht verwendet noch nicht den isolierten Live-Maschinensatz.";
             return;
         }
 
@@ -163,7 +197,7 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
         RaiseSessionProperties();
 
         CaptureSample();
-        await _database.AddEventAsync(_sessionMachineNumber, "COMMISSIONING_R00116_START", "Read-only Live-Abnahmemessung gestartet.");
+        await _database.AddEventAsync(_sessionMachineNumber, "COMMISSIONING_LIVE_START", $"{AppVersionInfo.RevisionLabel} read-only Live-Abnahmemessung gestartet.");
         StatusMessage = $"Live-Abnahmemessung für M{_sessionMachineNumber:00} gestartet. Es werden keine Modbus-Register geschrieben.";
     }
 
@@ -179,7 +213,7 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
         CaptureSample();
         IsRecording = false;
         UpdateSummary();
-        await _database.AddEventAsync(_sessionMachineNumber, "COMMISSIONING_R00116_STOP", $"{reason} {_sessionSamples.Count} Messpunkte.");
+        await _database.AddEventAsync(_sessionMachineNumber, "COMMISSIONING_LIVE_STOP", $"{reason} {_sessionSamples.Count} Messpunkte.");
         StatusMessage = reason;
     }
 
@@ -214,7 +248,11 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
         var diagnostics = MachineFleetService.GetGlobalCommunicationDiagnostics(machine.Configuration.MachineNumber);
         if (_main.IsSimulationMode)
         {
-            PreflightText = "SIMULATION aktiv. Für die reale Abnahme den geschützten Betriebsmodus bewusst auf Echtbetrieb umschalten.";
+            PreflightText = "SIMULATION aktiv. HF5 hält die Live-Maschinen- und Recovery-Zustände separat; für die reale Abnahme bewusst auf Echtbetrieb umschalten.";
+        }
+        else if (!_main.Hf5IsUsingLiveMachines)
+        {
+            PreflightText = "Echtbetrieb-Anzeige aktiv, aber der isolierte Live-Maschinensatz ist noch nicht vollständig übernommen.";
         }
         else if (diagnostics is null)
         {
@@ -224,7 +262,7 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
         {
             PreflightText = diagnostics.ConnectionState switch
             {
-                ConnectionState.Online => $"Bereit: ONLINE · letzte LOGO!-Antwort {FormatSnapshotTime(diagnostics.LastSnapshotUtc)} · Command/Ack {(diagnostics.CommandSequenceSynchronized ? "synchron" : "NICHT synchron")}",
+                ConnectionState.Online => $"Bereit: ONLINE · Protocol V{ModbusRegisterMap.ProtocolVersion} · letzte LOGO!-Antwort {FormatSnapshotTime(diagnostics.LastSnapshotUtc)} · Command/Ack {(diagnostics.CommandSequenceSynchronized ? "synchron" : "NICHT synchron")}",
                 ConnectionState.Offline => $"Nicht bereit: OFFLINE · {diagnostics.LastMessage ?? "keine Antwort"}",
                 ConnectionState.Fault => $"Nicht bereit: FEHLER · {diagnostics.LastMessage ?? "unbekannt"}",
                 _ => $"Status: {diagnostics.ConnectionState}"
@@ -393,17 +431,18 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
                 "Partcounter",
                 "Inbetriebnahme");
             Directory.CreateDirectory(folder);
-            var path = Path.Combine(folder, $"Partcounter_R00116_LiveAbnahme_M{_sessionMachineNumber:00}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+            var path = Path.Combine(folder, $"Partcounter_R00125_HF5_LiveAbnahme_M{_sessionMachineNumber:00}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
             var summary = BuildSummary();
 
             var sb = new StringBuilder();
-            sb.AppendLine("PARTCOUNTER R001.16 LIVE-ABNAHMEMESSUNG");
-            AddCsv(sb, "Revision", "R001.16");
+            sb.AppendLine($"PARTCOUNTER {AppVersionInfo.RevisionLabel} LIVE-ABNAHMEMESSUNG");
+            AddCsv(sb, "Revision", AppVersionInfo.RevisionLabel);
+            AddCsv(sb, "Protocol", $"Modbus TCP V{ModbusRegisterMap.ProtocolVersion}");
             AddCsv(sb, "Maschine", $"M{_sessionMachineNumber:00}");
             AddCsv(sb, "Start lokal", SessionStartedText);
             AddCsv(sb, "Messpunkte", _sessionSamples.Count.ToString());
             AddCsv(sb, "Auswertung", summary?.DisplayText ?? "–");
-            AddCsv(sb, "Sicherheitsprinzip", "Read-only Beobachtung der vorhandenen Fleet-Diagnose; keine Modbus-Schreibbefehle, keine direkte Q1-Ansteuerung.");
+            AddCsv(sb, "Sicherheitsprinzip", "Read-only Beobachtung der isolierten Live-Fleet-Diagnose; keine Modbus-Schreibbefehle, keine direkte Q1-Ansteuerung.");
             sb.AppendLine();
             sb.AppendLine("Zeit_lokal;Diagnose;Verbindung;PC_HB;LOGO_HB;CommandSeq;AckSeq;Seq_sync;StatusWord;Status;ErrorCode;CompletionSeq;Kavitaeten;CurrentParts;TotalCycles;CurrentVE;CompletedVEs;SourceSnapshot_UTC;Meldung");
 
@@ -435,7 +474,7 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
 
             await File.WriteAllTextAsync(path, sb.ToString(), new UTF8Encoding(true));
             LastExportPath = path;
-            await _database.AddEventAsync(_sessionMachineNumber, "COMMISSIONING_R00116_EXPORT", path);
+            await _database.AddEventAsync(_sessionMachineNumber, "COMMISSIONING_LIVE_EXPORT", path);
             StatusMessage = $"Live-Abnahmemessung exportiert: {path}";
         }
         catch (Exception ex)
@@ -469,11 +508,11 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
             var valid = _sessionSamples.Where(s => s.DiagnosticsAvailable).ToList();
             var first = valid.FirstOrDefault();
             var last = valid.LastOrDefault();
-            var evidencePrefix = $"[R001.16 Messung {DateTime.Now:dd.MM.yyyy HH:mm:ss}] ";
+            var evidencePrefix = $"[{AppVersionInfo.RevisionLabel} Messung {DateTime.Now:dd.MM.yyyy HH:mm:ss}] ";
 
             var entries = new Dictionary<string, string>
             {
-                ["MOD-01"] = $"{summary.OnlineSamples:N0} Online-Messpunkte über die Protocol-V2-Diagnose erfasst; ErrorCode zuletzt {last?.ErrorCode ?? 0}.",
+                ["MOD-01"] = $"{summary.OnlineSamples:N0} Online-Messpunkte über die Protocol-V{ModbusRegisterMap.ProtocolVersion}-Diagnose erfasst; ErrorCode zuletzt {last?.ErrorCode ?? 0}.",
                 ["HB-01"] = $"PC-HB {summary.FirstPcHeartbeat}→{summary.LastPcHeartbeat} ({(summary.PcHeartbeatChanged ? "Änderung erkannt" : "keine Änderung erkannt")}); LOGO-HB {summary.FirstLogoHeartbeat}→{summary.LastLogoHeartbeat} ({(summary.LogoHeartbeatChanged ? "Änderung erkannt" : "keine Änderung erkannt")}).",
                 ["CMD-01"] = $"Command/Ack-Synchronität: {summary.SequenceSyncFailureSamples:N0} unsynchrone Messpunkte; Start {first?.LocalCommandSequence ?? 0}/{first?.AckSequence ?? 0}, Ende {last?.LocalCommandSequence ?? 0}/{last?.AckSequence ?? 0}.",
                 ["I1-02"] = $"Gesamtzykluszähler Δ {summary.TotalCycleDelta:+#;-#;0}; I1-Aktiv-Bit in {summary.CycleInputActiveSamples:N0} Messpunkten gesehen. Hinweis: Die exakte 1:1-Zuordnung Maschinenflanke→Zählschritt bleibt vor Ort zu bestätigen, da kurze I1-Pulse beim 750-ms-Sampling übersehen werden können.",
@@ -497,8 +536,8 @@ public sealed class LiveCommissioningViewModel : INotifyPropertyChanged, IDispos
                     existing?.CheckedAtUtc));
             }
 
-            await _database.AddEventAsync(_sessionMachineNumber, "COMMISSIONING_R00116_EVIDENCE", "Messdaten in Prüfnotizen übernommen; Prüfergebnisse unverändert.");
-            StatusMessage = "R001.16-Messdaten wurden als objektive Evidenz in die passenden Prüfnotizen übernommen. Bestanden/Nicht bestanden wurde bewusst nicht automatisch geändert.";
+            await _database.AddEventAsync(_sessionMachineNumber, "COMMISSIONING_LIVE_EVIDENCE", $"{AppVersionInfo.RevisionLabel}: Messdaten in Prüfnotizen übernommen; Prüfergebnisse unverändert.");
+            StatusMessage = $"{AppVersionInfo.RevisionLabel}-Messdaten wurden als objektive Evidenz in die passenden Prüfnotizen übernommen. Bestanden/Nicht bestanden wurde bewusst nicht automatisch geändert.";
         }
         catch (Exception ex)
         {
