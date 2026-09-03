@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Input;
 using Partcounter.Models;
@@ -16,6 +15,7 @@ namespace Partcounter.ViewModels;
 ///   Echtbetrieb aktiv gehalten.
 /// - Simulations-VE werden niemals über den produktiven MachineOnVeCompleted-Pfad
 ///   persistiert oder gedruckt.
+/// - Neue PackagingUnits werden zusätzlich per SQLite-Trigger nach Betriebsart klassifiziert.
 /// </summary>
 public sealed partial class MainViewModel
 {
@@ -27,10 +27,12 @@ public sealed partial class MainViewModel
     private readonly Dictionary<int, ushort> _hf5ParkedLiveCompletionHolds = new();
     private readonly HashSet<int> _hf5ParkedLiveManualVePending = new();
     private readonly HashSet<int> _hf5ParkedLiveRecoveryMachines = new();
+    private readonly OperatingModeDataIsolationService _hf5DataIsolation = new();
 
     private ICommand? _hf5ToggleOperatingModeCommand;
     private bool _hf5IsolationEnabled;
     private bool _hf5ModeSwitchInProgress;
+    private long _hf5HiddenNonProductionHistoryCount;
 
     public ICommand Hf5ToggleOperatingModeCommand =>
         _hf5ToggleOperatingModeCommand ??= new AsyncRelayCommand(_ => ToggleOperatingModeHf5Async());
@@ -47,16 +49,18 @@ public sealed partial class MainViewModel
         ? _hf5ParkedLiveRecoveryMachines.Count
         : _startupRecoveryMachines.Count;
 
+    public long Hf5HiddenNonProductionHistoryCount => _hf5HiddenNonProductionHistoryCount;
+
     /// <summary>
     /// Wird nach der normalen MainViewModel-Initialisierung einmalig aufgerufen.
     /// Der bis dahin geladene Maschinenbestand wird als Echtbetriebsbestand übernommen,
     /// weil dort auch eventuell vorhandene Recovery-Aufträge eingelesen wurden.
     /// Anschließend wird ein vollständig unabhängiger Simulationsbestand aufgebaut.
     /// </summary>
-    public Task EnableHf5IsolationAsync()
+    public async Task EnableHf5IsolationAsync()
     {
         if (_hf5IsolationEnabled)
-            return Task.CompletedTask;
+            return;
 
         if (Machines.Count == 0)
             throw new InvalidOperationException("HF5-Isolation kann erst nach dem Laden der Maschinen aktiviert werden.");
@@ -92,6 +96,9 @@ public sealed partial class MainViewModel
         _fleet.SnapshotReceived += Hf5FleetOnSnapshotReceived;
         _fleet.ConnectionChanged += Hf5FleetOnConnectionChanged;
 
+        await _hf5DataIsolation.InitializeAsync();
+        await FilterProductionHistoryAsync();
+
         ParkActiveLiveControlState();
         ClearActiveModeControlState();
 
@@ -105,12 +112,28 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(Hf5IsUsingSimulationMachines));
         OnPropertyChanged(nameof(Hf5IsUsingLiveMachines));
         OnPropertyChanged(nameof(PendingLiveRecoveryCount));
+        OnPropertyChanged(nameof(Hf5HiddenNonProductionHistoryCount));
+
+        var historyNote = _hf5HiddenNonProductionHistoryCount > 0
+            ? $" {_hf5HiddenNonProductionHistoryCount:N0} ältere/unproduktive VE-Datensätze werden aus der HF5-Produktionshistorie ausgeblendet."
+            : string.Empty;
 
         StatusMessage = _hf5ParkedLiveRecoveryMachines.Count > 0
-            ? $"HF5-Simulation aktiv und vollständig vom Echtbetrieb getrennt. {_hf5ParkedLiveRecoveryMachines.Count} Echtbetrieb-Recovery-Auftrag/Aufträge sind separat geparkt und beeinflussen die Simulation nicht."
-            : "HF5-Simulation aktiv und vollständig vom Echtbetrieb getrennt. Keine Modbus-Sessions, keine Produktionshistorie und kein automatischer Produktionsetikettendruck.";
+            ? $"HF5-Simulation aktiv und vollständig vom Echtbetrieb getrennt. {_hf5ParkedLiveRecoveryMachines.Count} Echtbetrieb-Recovery-Auftrag/Aufträge sind separat geparkt und beeinflussen die Simulation nicht.{historyNote}"
+            : $"HF5-Simulation aktiv und vollständig vom Echtbetrieb getrennt. Keine Modbus-Sessions, keine Produktionshistorie und kein automatischer Produktionsetikettendruck.{historyNote}";
+    }
 
-        return Task.CompletedTask;
+    private async Task FilterProductionHistoryAsync()
+    {
+        var productionIds = await _hf5DataIsolation.LoadProductionPackagingUnitIdsAsync();
+        for (var index = RecentPackagingUnits.Count - 1; index >= 0; index--)
+        {
+            if (!productionIds.Contains(RecentPackagingUnits[index].Id))
+                RecentPackagingUnits.RemoveAt(index);
+        }
+
+        var counts = await _hf5DataIsolation.GetHistoryClassificationCountsAsync();
+        _hf5HiddenNonProductionHistoryCount = counts.Simulation + counts.LegacyUnknown;
     }
 
     private async Task ToggleOperatingModeHf5Async()
@@ -169,6 +192,7 @@ public sealed partial class MainViewModel
                 activationPlan.LiveMachines.Select(m => m.Configuration),
                 publishSnapshots: false);
             fleetStarted = true;
+            await _hf5DataIsolation.SetModeAsync(OperatingModeDataIsolationService.ProductionMode);
 
             // Erst nachdem der Session-Verbund existiert, wird die aktive Ansicht auf die
             // getrennten Echtbetriebsobjekte umgeschaltet. Die Simulationsobjekte bleiben
@@ -179,11 +203,14 @@ public sealed partial class MainViewModel
             OnPropertyChanged(nameof(Hf5IsUsingLiveMachines));
             OnPropertyChanged(nameof(PendingLiveRecoveryCount));
 
-            foreach (var machine in activationPlan.LiveMachines.Where(m => m.IsTemporarilyDisabled))
-            {
-                await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
-                await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
-            }
+            await Task.WhenAll(
+                activationPlan.LiveMachines
+                    .Where(m => m.IsTemporarilyDisabled)
+                    .Select(async machine =>
+                    {
+                        await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
+                        await _fleet.SetMachinePollingEnabledAsync(machine.Configuration.MachineNumber, enabled: false);
+                    }));
 
             var recoveryBefore = _startupRecoveryMachines.ToHashSet();
             var recoveryErrors = await ReconcilePendingLiveOrdersAsync();
@@ -195,8 +222,12 @@ public sealed partial class MainViewModel
                     _startupRecoveryMachines.Remove(machineNumber);
             }
 
-            foreach (var machine in activationPlan.LiveMachines.Where(m => !m.IsTemporarilyDisabled))
-                await _fleet.SetSnapshotPublishingEnabledAsync(machine.Configuration.MachineNumber, enabled: true);
+            await Task.WhenAll(
+                activationPlan.LiveMachines
+                    .Where(m => !m.IsTemporarilyDisabled)
+                    .Select(machine => _fleet.SetSnapshotPublishingEnabledAsync(
+                        machine.Configuration.MachineNumber,
+                        enabled: true)));
 
             var notes = new List<string>();
             if (activationPlan.AdministrativelyDisabledCount > 0)
@@ -224,6 +255,7 @@ public sealed partial class MainViewModel
             }
 
             try { await _fleet.StopAsync(); } catch { }
+            try { await _hf5DataIsolation.SetModeAsync(OperatingModeDataIsolationService.SimulationMode); } catch { }
             ParkActiveLiveControlState();
             ClearActiveModeControlState();
             SwitchVisibleMachineSet(_hf5SimulationMachines, previouslySelectedMachine);
@@ -264,6 +296,17 @@ public sealed partial class MainViewModel
             stopError = ex.Message;
         }
 
+        try
+        {
+            await _hf5DataIsolation.SetModeAsync(OperatingModeDataIsolationService.SimulationMode);
+        }
+        catch (Exception ex)
+        {
+            stopError = string.IsNullOrWhiteSpace(stopError)
+                ? $"Datenmodus konnte nicht auf Simulation gesetzt werden: {ex.Message}"
+                : $"{stopError} | Datenmodus: {ex.Message}";
+        }
+
         ParkActiveLiveControlState();
         ClearActiveModeControlState();
 
@@ -283,7 +326,7 @@ public sealed partial class MainViewModel
             : string.Empty;
         var stopNote = string.IsNullOrWhiteSpace(stopError)
             ? string.Empty
-            : $" Diagnosehinweis beim Beenden der Fleet-Sessions: {stopError}";
+            : $" Diagnosehinweis beim Beenden der Live-Domäne: {stopError}";
 
         StatusMessage = $"SIMULATION aktiv und vollständig vom Echtbetrieb getrennt. Keine Modbus-Schreibbefehle, keine Produktionshistorie, kein automatischer Produktionsetikettendruck.{recoveryNote}{stopNote}";
     }
@@ -305,7 +348,11 @@ public sealed partial class MainViewModel
         if (!_hf5IsolationEnabled || IsSimulationMode)
             return;
 
-        _ = Application.Current.Dispatcher.BeginInvoke(() =>
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+            return;
+
+        _ = dispatcher.BeginInvoke(() =>
         {
             if (IsSimulationMode || !Hf5IsUsingLiveMachines)
                 return;
@@ -320,7 +367,11 @@ public sealed partial class MainViewModel
         if (!_hf5IsolationEnabled || IsSimulationMode)
             return;
 
-        _ = Application.Current.Dispatcher.BeginInvoke(() =>
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+            return;
+
+        _ = dispatcher.BeginInvoke(() =>
         {
             if (IsSimulationMode || !Hf5IsUsingLiveMachines)
                 return;
