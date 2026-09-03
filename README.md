@@ -1,12 +1,26 @@
 # Partcounter
 
-**Aktueller Engineering-Stand:** R001.25 HF2 – Protocol Contract  
-**Version:** 0.1.25 · **FileVersion:** 0.1.25.2  
+**Aktueller Engineering-Stand:** R001.25 HF3 – Operating Mode UI  
+**Version:** 0.1.25 · **FileVersion:** 0.1.25.3  
 **Plattform:** Windows 10/11 · C# · .NET 10 LTS · WPF  
 **Anlage:** bis zu 30 Spritzgussmaschinen · Siemens LOGO! · Modbus TCP · WLAN/LAN  
 **LOGO-Protokoll:** Modbus TCP Protocol V3
 
 Partcounter ist ein industrieller Leitstand für Verpackungseinheiten im Spritzguss. Die Siemens LOGO! zählt Maschinenzyklen lokal und steuert den nicht sicherheitsgerichteten VE-Wechsler; Partcounter verwaltet Aufträge, VE-Ziele, Historie, Etikettierung, Reprint, ARBURG ALS/proALPHA, Diagnose, Recovery und Inbetriebnahme.
+
+## R001.25 HF3 – Operating Mode UI
+
+HF3 stellt die Betriebsart-Umschaltung als eindeutig sichtbare reguläre Bedienfunktion bereit:
+
+- dauerhaft sichtbarer Betriebsart-Balken oberhalb der Hauptreiter,
+- direkter Schalter `Simulation ↔ Echtbetrieb`,
+- Anzeige der aktuellen Betriebsart über `SystemStatusText`,
+- keine Admin-Freigabe mehr für die reine Betriebsart-Umschaltung,
+- historischer, admin-abgefangener Kopfzeilen-Schalter wird ausgeblendet,
+- reale Mindestfenstergröße 800×500 passend zum bestehenden Multi-Resolution-Layoutgate,
+- Modbus-/LOGO-/Drucker-/Systemkonfiguration bleibt weiterhin admin-geschützt.
+
+Details: `docs/HOTFIX_R001_25_3_OPERATING_MODE_UI.md`.
 
 ## R001.25 HF2 – Protocol Contract
 
@@ -18,7 +32,7 @@ HF2 härtet das reale PC↔LOGO!-Zusammenspiel, ohne die freigegebene Protocol-V
 - CommandSequence und V3-Payload werden zusätzlich auf ihren freigegebenen Wertebereich geprüft,
 - TCP-Verbindungsaufbau besitzt einen begrenzten Timeout mit eindeutiger IP-/Port-Diagnose,
 - Protocol-Mismatch nennt Soll-/Ist-Version und HR20/VW38,
-- neuer echter TCP/NModbus-Loopback-Integrationstest prüft Connect → HR1..HR13 → HR20..HR40 → Ack/Echos → Reconnect.
+- echter TCP/NModbus-Loopback-Integrationstest prüft Connect → HR1..HR13 → HR20..HR40 → Ack/Echos → Reconnect.
 
 Details: `docs/HOTFIX_R001_25_2_PROTOCOL_CONTRACT.md`.
 
@@ -103,7 +117,7 @@ Für R001.25 ausschließlich verwenden:
 - `docs/logo_v001/LOGO_V001_STATION01_BUILD_SHEET_R001_25.md`
 - `docs/logo_v001/STATION01_PARTCOUNTER_LOGO_V001_R001_25.ini`
 
-Aktueller transferfähiger LOGO!-Binärstand: `PARTCOUNTER_LOGO_V001_R001_25_HF3_4_TRANSFERREADY.lsc`. HF2 erfordert keine Änderung des validierten FBD-/VM-Graphen; die reale Station muss jedoch mit aktivem Modbus-Zugriff und passender Server-/IP-Konfiguration projektiert sein.
+Aktueller transferfähiger LOGO!-Binärstand: `PARTCOUNTER_LOGO_V001_R001_25_HF3_4_TRANSFERREADY.lsc`. HF3 verändert ausschließlich die PC-Bedienoberfläche; die Protocol-V3-Registermatrix und der validierte LOGO!-FBD-/VM-Graph bleiben unverändert.
 
 R001.24/R001.8-Dateien sind historische Revisionsunterlagen und keine aktuelle Bauvorgabe.
 
@@ -118,7 +132,7 @@ Ein freigabefähiger Head muss bestehen:
 5. Portable win-x64.
 6. SingleFile win-x64.
 7. 30-Maschinen-WPF-Stresstest.
-8. Multi-Resolution-WPF-Test.
+8. Multi-Resolution-WPF-Test einschließlich sichtbarer Betriebsart-Leiste.
 9. statischer Final-Audit.
 10. Engineering-/Updatepaketbau.
 
