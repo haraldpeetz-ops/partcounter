@@ -52,8 +52,6 @@ public static class OperatingModeUiBootstrap
         root.Children.Insert(tabIndex, border);
         ToggleButtons.Add(window, toggleButton);
 
-        // MainWindow lädt Maschinen/Artikel in seinem eigenen async Loaded-Handler. Der HF5-
-        // Initialisierer wartet deshalb explizit, bis dieser Basisschritt abgeschlossen ist.
         window.Loaded += OnWindowLoaded;
     }
 
@@ -69,8 +67,15 @@ public static class OperatingModeUiBootstrap
         {
             for (var attempt = 0; attempt < 120; attempt++)
             {
-                if (window.DataContext is MainViewModel vm && vm.Machines.Count > 0 && vm.Articles.Count > 0)
+                if (window.DataContext is MainViewModel vm &&
+                    vm.Machines.Count > 0 &&
+                    vm.Articles.Count > 0 &&
+                    vm.SelectedMachine is not null)
                 {
+                    // Der MainWindow-Loaded-Handler soll seinen Basisschritt (u. a. Event-Hooks
+                    // und dynamische Reiter) zuerst abschließen. Danach wird atomar auf die
+                    // getrennte HF5-Simulationsdomäne umgestellt.
+                    await Task.Delay(150);
                     await vm.EnableHf5IsolationAsync();
                     return;
                 }
