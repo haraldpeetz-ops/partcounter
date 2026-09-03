@@ -81,4 +81,44 @@ public sealed class CoreRegressionTests
         Assert.Equal((uint)999999, ModbusRegisterMap.MaxTotalCyclesPerJob);
         Assert.Equal((ushort)32767, ModbusRegisterMap.MaxSequenceValue);
     }
+
+    [Fact]
+    public void ProtocolV3_JobPayload_PreservesNonZeroHeartbeatAndHold()
+    {
+        var job = new JobParameters(
+            0x00010001,
+            "A-1",
+            "WZ-1",
+            8,
+            1000,
+            125,
+            750,
+            7);
+
+        var payload = LogoModbusClient.BuildJobRegisterPayload(job, 23, 123);
+
+        Assert.Equal(ModbusRegisterMap.ConfigLength, payload.Length);
+        Assert.Equal(ModbusRegisterMap.ProtocolVersion, payload[ModbusRegisterMap.ConfigProtocolVersion]);
+        Assert.Equal((ushort)23, payload[ModbusRegisterMap.ConfigCommandSequence]);
+        Assert.Equal((ushort)123, payload[ModbusRegisterMap.ConfigPcHeartbeat]);
+        Assert.Equal((ushort)7, payload[ModbusRegisterMap.ConfigHoldAfterVeNumber]);
+    }
+
+    [Fact]
+    public void ProtocolV3_JobPayload_RejectsZeroHeartbeat()
+    {
+        var job = new JobParameters(0x00010001, "A-1", "WZ-1", 8, 1000, 125, 750, 1);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            LogoModbusClient.BuildJobRegisterPayload(job, 1, 0));
+    }
+
+    [Fact]
+    public void ProtocolV3_JobPayload_RejectsZeroHold()
+    {
+        var job = new JobParameters(0x00010001, "A-1", "WZ-1", 8, 1000, 125, 750, 0);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            LogoModbusClient.BuildJobRegisterPayload(job, 1, 1));
+    }
 }
