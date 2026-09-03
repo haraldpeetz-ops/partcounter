@@ -13,8 +13,11 @@ public sealed partial class MainViewModel
     private ActiveOrderRecoveryService OrderRecovery =>
         _orderRecovery ??= new ActiveOrderRecoveryService(_database.DatabasePath);
 
+    // HF4: Ein ungeklärter Echtbetrieb-Recovery-Auftrag bleibt unabhängig von der
+    // globalen Betriebsart gesperrt. Der Echtbetrieb darf für Diagnose/andere Stationen
+    // aktiv bleiben, ohne dass auf der ungeklärten Maschine Bedienbefehle möglich werden.
     private bool IsPendingStartupRecovery(MachineState machine) =>
-        IsSimulationMode && _startupRecoveryMachines.Contains(machine.Configuration.MachineNumber);
+        _startupRecoveryMachines.Contains(machine.Configuration.MachineNumber);
 
     private bool HasUnresolvedPendingActivation(MachineState machine) =>
         _liveOrderCheckpoints.TryGetValue(machine.Configuration.MachineNumber, out var checkpoint) &&
