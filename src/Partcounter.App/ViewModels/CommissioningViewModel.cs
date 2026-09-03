@@ -49,6 +49,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
     public CommissioningViewModel(MainViewModel main)
     {
         _main = main;
+        _main.PropertyChanged += OnMainPropertyChanged;
 
         RefreshCommand = new RelayCommand(_ => RefreshLiveDiagnostics());
         ProbeReadCommand = new AsyncRelayCommand(_ => ProbeReadAsync());
@@ -162,6 +163,33 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
         _refreshTimer.Start();
     }
 
+    private void OnMainPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MainViewModel.IsSimulationMode)
+            or nameof(MainViewModel.Hf5IsUsingSimulationMachines)
+            or nameof(MainViewModel.Hf5IsUsingLiveMachines))
+        {
+            var machineNumber = _selectedMachine?.Configuration.MachineNumber;
+            var activeMachine = machineNumber.HasValue
+                ? Machines.FirstOrDefault(m => m.Configuration.MachineNumber == machineNumber.Value)
+                : Machines.FirstOrDefault();
+
+            if (activeMachine is not null && !ReferenceEquals(activeMachine, _selectedMachine))
+            {
+                _selectedMachine = activeMachine;
+                _lastProbeSnapshot = null;
+                OnPropertyChanged(nameof(SelectedMachine));
+                OnPropertyChanged(nameof(EndpointText));
+                OnPropertyChanged(nameof(MachineTitle));
+                _ = LoadSelectedMachineAsync();
+            }
+            else
+            {
+                RefreshLiveDiagnostics();
+            }
+        }
+    }
+
     private async Task LoadSelectedMachineAsync()
     {
         var machine = SelectedMachine;
@@ -174,7 +202,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
             ApplyProfile(profile);
             await LoadChecksAsync(machine.Configuration.MachineNumber);
             RefreshLiveDiagnostics();
-            StatusMessage = $"Inbetriebnahmedaten für M{machine.Configuration.MachineNumber:00} geladen.";
+            StatusMessage = $"Inbetriebnahmedaten für M{machine.Configuration.MachineNumber:00} geladen · {AppVersionInfo.RevisionLabel} · Protocol V{ModbusRegisterMap.ProtocolVersion}.";
         }
         catch (Exception ex)
         {
@@ -306,8 +334,8 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
         if (diagnostics is null)
         {
             ConnectionText = _main.IsSimulationMode
-                ? "Simulation · kein Echtbetrieb-Session"
-                : machine.ConnectionState.ToString();
+                ? "SIMULATION · getrennt · keine Live-Fleet-Session"
+                : $"{machine.ConnectionState} · Protocol V{ModbusRegisterMap.ProtocolVersion}";
 
             if (_lastProbeSnapshot is not null)
             {
@@ -331,7 +359,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
 
         ConnectionText = diagnostics.ConnectionState switch
         {
-            ConnectionState.Online => "ONLINE · Modbus TCP",
+            ConnectionState.Online => $"ONLINE · Modbus TCP V{ModbusRegisterMap.ProtocolVersion}",
             ConnectionState.Offline => $"OFFLINE · {diagnostics.LastMessage ?? "keine Antwort"}",
             ConnectionState.Fault => $"FEHLER · {diagnostics.LastMessage ?? "unbekannt"}",
             _ => diagnostics.ConnectionState.ToString()
@@ -420,6 +448,8 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
 
             var sb = new StringBuilder();
             sb.AppendLine("Bereich;Feld;Wert");
+            AddCsv(sb, "System", "Revision", AppVersionInfo.RevisionLabel);
+            AddCsv(sb, "System", "Protocol", $"Modbus TCP V{ModbusRegisterMap.ProtocolVersion}");
             AddCsv(sb, "Maschine", "Nummer", machine.Configuration.MachineNumber.ToString());
             AddCsv(sb, "Maschine", "Name", machine.Configuration.Name);
             AddCsv(sb, "Netzwerk", "Endpunkt", EndpointText);
@@ -508,7 +538,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
     {
         yield return NewCheck("HW-01", "Hardware", "LOGO!-Typ und Versorgung prüfen", "6ED1052-2MD08-0BA2 / 24 V DC stimmen mit realer Station überein.");
         yield return NewCheck("NET-01", "Netzwerk", "IP, Port und Unit-ID prüfen", "Konfigurierter Endpunkt ist eindeutig und TCP 502 erreichbar.");
-        yield return NewCheck("MOD-01", "Modbus", "ProtocolVersion lesen", "HR20 meldet ProtocolVersion 2.");
+        yield return NewCheck("MOD-01", "Modbus", "ProtocolVersion lesen", $"HR20 meldet ProtocolVersion {ModbusRegisterMap.ProtocolVersion}.");
         yield return NewCheck("HB-01", "Modbus", "PC- und LOGO!-Heartbeat beobachten", "Beide Werte ändern sich zyklisch ohne Stillstandsmeldung.");
         yield return NewCheck("CMD-01", "Modbus", "CommandSequence/AckSequence prüfen", "Jeder neue Befehl wird genau einmal quittiert; Neustart synchronisiert sauber.");
         yield return NewCheck("I1-01", "Zyklus", "24-V-Signal an I1 prüfen", "Signalpegel und gemeinsame 0-V-Referenz sind elektrisch zulässig.");
@@ -521,7 +551,7 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
         yield return NewCheck("VE-02", "VE-Wechsel", "Manuellen VE-Abschluss prüfen", "Teil-VE wird einmal abgeschlossen; LastCompletionReason = 2.");
         yield return NewCheck("COM-01", "Ausfalltest", "PC/WLAN unterbrechen", "LOGO! zählt lokal weiter und führt fälligen VE-Wechsel aus.");
         yield return NewCheck("PWR-01", "Wiederanlauf", "LOGO!-Power-Cycle prüfen", "Q1 bleibt beim Start AUS; Wiederanlauf entspricht freigegebenem Konzept.");
-        yield return NewCheck("DOC-01", "Dokumentation", "Etikett und VE-Historie prüfen", "Pro VE genau ein Datensatz/Etikett mit korrekten Mengen und IDs.");
+        yield return NewCheck("DOC-01", "Dokumentation", "Etikett und VE-Historie prüfen", "Pro VE genau ein produktiver Datensatz/Etikett mit korrekten Mengen und IDs; Simulation bleibt getrennt.");
     }
 
     private static CommissioningCheckRow NewCheck(string code, string group, string description, string criteria) => new()
@@ -533,7 +563,11 @@ public sealed class CommissioningViewModel : INotifyPropertyChanged, IDisposable
         Result = CommissioningCheckResult.Open
     };
 
-    public void Dispose() => _refreshTimer.Stop();
+    public void Dispose()
+    {
+        _refreshTimer.Stop();
+        _main.PropertyChanged -= OnMainPropertyChanged;
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
