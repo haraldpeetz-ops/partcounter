@@ -2,11 +2,12 @@
 
 ## Anlass
 
-Der Integrationsaudit PC ↔ Siemens LOGO! vom 03.09.2026 hat zwei konkrete PC-seitige Vertragsabweichungen sowie eine Diagnoseverbesserung identifiziert:
+Der Integrationsaudit PC ↔ Siemens LOGO! vom 03.09.2026 hat zwei konkrete PC-seitige Vertragsabweichungen, eine Diagnoseverbesserung und eine Testlücke identifiziert:
 
 1. Ein vollständiges Auftragstelegramm schrieb HR12 / VW22 `PcHeartbeat` mit `0`, obwohl Protocol V3 für den aktiven Kommunikationsbetrieb `1..32767` vorsieht.
 2. `LogoModbusClient` akzeptierte `HoldAfterVeNumber = 0`, obwohl ein produktiver V3-Auftrag zwingend eine lokale VE-Grenze `1..32767` benötigt.
 3. Ein nicht erreichbarer TCP-Endpunkt konnte dem Bediener nur eine generische Socket-/Offline-Meldung liefern.
+4. Das Release-Gate prüfte den V3-Vertrag bislang statisch und in Simulation, aber nicht über einen realen TCP/NModbus-Datenpfad.
 
 ## Korrekturen HF2
 
@@ -16,7 +17,8 @@ Der Integrationsaudit PC ↔ Siemens LOGO! vom 03.09.2026 hat zwei konkrete PC-s
 - `CommandSequence` wird bereits beim Aufbau des vollständigen V3-Payloads auf `1..32767` geprüft.
 - TCP-Verbindungsaufbau besitzt einen begrenzten 2,5-s-Timeout mit eindeutiger Meldung aus Maschinenname, IP und Port.
 - Protocol-Mismatch nennt jetzt Soll-/Ist-Version sowie HR20/VW38 und den betroffenen Endpunkt.
-- Neue Regressionstests prüfen gültigen HR1..HR13-Payload, nichtnull Heartbeat sowie die Ablehnung von Heartbeat=0 und HoldAfterVE=0.
+- Regressionstests prüfen gültigen HR1..HR13-Payload, nichtnull Heartbeat sowie die Ablehnung von Heartbeat=0 und HoldAfterVE=0.
+- Ein echter TCP-Modbus-Loopback-Integrationstest verwendet den produktiven `LogoModbusClient` und NModbus. Er prüft Connect → Heartbeat → HR1..HR13 schreiben → HR20..HR40 lesen → AckSequence/Kavitäten/Hold/JobId-Echos → Disconnect/Reconnect.
 
 ## Versionsstand
 
@@ -39,4 +41,4 @@ Die reale Station muss weiterhin in LOGO! Soft Comfort bzw. im Gerät mit aktive
 
 ## Freigabegrenze
 
-HF2 beseitigt die erkannten PC-seitigen Protocol-V3-Vertragsfehler. Die Production-Baseline bleibt trotzdem an die reale M01-Abnahme gekoppelt, insbesondere T01 Protocol-V3-Handshake, Q1-Puls, Command/Ack, Completion-Hold, Reconnect und Power-Cycle/Retentivität.
+HF2 beseitigt die erkannten PC-seitigen Protocol-V3-Vertragsfehler und schließt die automatisierbare TCP-Modbus-Testlücke. Die Production-Baseline bleibt trotzdem an die reale M01-Abnahme gekoppelt, insbesondere T01 mit echter LOGO!, Q1-Puls, Command/Ack unter realem Kommunikationsverlust, Completion-Hold, WLAN-Reconnect und LOGO!-Power-Cycle/Retentivität.
