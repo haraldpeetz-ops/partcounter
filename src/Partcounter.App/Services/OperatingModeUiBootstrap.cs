@@ -9,9 +9,8 @@ namespace Partcounter.Services;
 
 /// <summary>
 /// Stellt die produktionsrelevante Betriebsart-Umschaltung dauerhaft sichtbar bereit.
-/// Der bisherige Schalter in der Kopfzeile bleibt als Zweitzugang erhalten; dieser
-/// Balken wird unabhängig von Bildschirmbreite und DPI-Skalierung direkt oberhalb
-/// der Hauptreiter eingeblendet.
+/// Simulation/Echtbetrieb ist eine Bedienfunktion; administrative Konfigurationen
+/// wie LOGO!/Modbus, Drucker und Systemeinstellungen bleiben weiterhin geschützt.
 /// </summary>
 public static class OperatingModeUiBootstrap
 {
@@ -32,6 +31,17 @@ public static class OperatingModeUiBootstrap
 
         if (window.Content is not DockPanel root)
             throw new InvalidOperationException("MainWindow root must be a DockPanel for the operating-mode bar.");
+
+        // Der alte Kopfzeilen-Schalter wird später vom historischen Admin-Code abgefangen.
+        // Er bleibt technisch erhalten, wird aber ausgeblendet, damit es nur einen eindeutigen
+        // frei bedienbaren Umschalter gibt.
+        var legacyHeaderToggle = FindBoundOperatingModeButton(root);
+        if (legacyHeaderToggle is not null)
+        {
+            legacyHeaderToggle.Visibility = Visibility.Collapsed;
+            legacyHeaderToggle.IsTabStop = false;
+            legacyHeaderToggle.Focusable = false;
+        }
 
         var mainTabs = root.Children
             .OfType<TabControl>()
@@ -134,5 +144,28 @@ public static class OperatingModeUiBootstrap
 
         border.Child = grid;
         return border;
+    }
+
+    private static Button? FindBoundOperatingModeButton(DependencyObject root)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is Button button)
+            {
+                var expression = BindingOperations.GetBindingExpression(button, ContentControl.ContentProperty);
+                if (string.Equals(
+                        expression?.ParentBinding.Path?.Path,
+                        "OperatingModeButtonText",
+                        StringComparison.Ordinal))
+                    return button;
+            }
+
+            var nested = FindBoundOperatingModeButton(child);
+            if (nested is not null)
+                return nested;
+        }
+
+        return null;
     }
 }
